@@ -60,7 +60,7 @@ func TestICSParser_UnfoldingAndEvents(t *testing.T) {
 		"DTSTART;TZID=America/Toronto:20260922T153000\r\n" +
 		"DTEND;TZID=America/Toronto:20260922T163000\r\n" +
 		"SUMMARY:Dentist App\r\n" +
-		"  ointment with Dr. Smith\r\n" +
+		" ointment with Dr. Smith\r\n" +
 		"LOCATION:Aurora Dental Clinic\\, Suite 101\r\n" +
 		"DESCRIPTION:Routine teeth cleaning\\nBring dental insurance card\r\n" +
 		"STATUS:CONFIRMED\r\n" +

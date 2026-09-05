@@ -176,7 +176,7 @@ func (p *Parser) parsePart(body io.Reader, contentTypeHeader string, depth int, 
 }
 
 var (
-	scriptRegex = regexp.MustCompile(`(?is)<(script|style|noscript|iframe|object|embed)[^>]*>.*?</\1>`)
+	scriptRegex = regexp.MustCompile(`(?is)<(script|style|noscript|iframe|object|embed)[^>]*>.*?</(?:script|style|noscript|iframe|object|embed)>`)
 	tagRegex    = regexp.MustCompile(`(?s)<[^>]+>`)
 	spaceRegex  = regexp.MustCompile(`[ \t\r]+`)
 	lineRegex   = regexp.MustCompile(`\n{3,}`)

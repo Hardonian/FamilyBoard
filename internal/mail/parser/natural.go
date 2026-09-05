@@ -49,13 +49,14 @@ var (
 	relativeWeekdayRegex = regexp.MustCompile(`(?i)\b(?:(this|next)\s+)?` + weekdayRegex)
 
 	// Time range pattern: e.g. "3:30-4:30", "3:30 - 4:30pm", "5:00pm - 6:00pm", "5pm-6pm"
-	timeRangeRegex = regexp.MustCompile(`(?i)\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:-|to)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b`)
+	timeRangeRegex = regexp.MustCompile(`(?i)\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:-|to)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b`)
 
-	// Single time pattern: e.g. "at 6 PM", "at 5pm", "5pm", "noon", "midnight", "at 12:30"
-	singleTimeRegex = regexp.MustCompile(`(?i)\b(?:at\s+)?(?:(noon|midnight)|(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)\b`)
+	// Single time pattern: requires "at <time>", or ":MM", or "am/pm", or "noon/midnight"
+	// Prevents bare date numbers like "2" or "22" from being interpreted as hours!
+	singleTimeRegex = regexp.MustCompile(`(?i)(?:\b(noon|midnight)\b|\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b|\b(\d{1,2}):(\d{2})\s*(am|pm)?\b|\b(\d{1,2})\s*(am|pm)\b)`)
 
-	// Location pattern: e.g. "at Aurora Community Centre", "in Room 204", "at Community Pool"
-	locationRegex = regexp.MustCompile(`(?i)\b(?:at|in)\s+([A-Z][A-Za-z0-9\s,.-]+?)(?:\s+(?:on|from|at|\.|$))`)
+	// Location pattern: e.g. "at Aurora Community Centre", "in Room 204"
+	locationRegex = regexp.MustCompile(`(?i)\b(?:at|in)\s+([A-Z][A-Za-z0-9\s,.-]+?)(?:\s+(?:on|from|starting|\.|\n|$)|$)`)
 )
 
 func (p *NaturalLanguageParser) Parse(text, referenceSubject string, now time.Time) (*ParsedEvent, error) {
@@ -144,11 +145,21 @@ func (p *NaturalLanguageParser) Parse(text, referenceSubject string, now time.Ti
 		endMeridiem := strings.ToLower(trMatch[6])
 
 		// If start meridiem is missing, infer from end meridiem
-		if startMeridiem == "" {
+		if startMeridiem == "" && endMeridiem != "" {
 			startMeridiem = endMeridiem
 			if startHour > endHour && endMeridiem == "pm" && startHour != 12 {
 				startMeridiem = "am"
 			}
+		} else if startMeridiem == "" && endMeridiem == "" {
+			// Both missing: e.g. 3:30-4:30
+			if startHour >= 1 && startHour <= 7 {
+				startMeridiem = "pm"
+				endMeridiem = "pm"
+			} else {
+				startMeridiem = "am"
+				endMeridiem = "am"
+			}
+			result.AmbiguityReasons = append(result.AmbiguityReasons, fmt.Sprintf("inferred %s for time range %d:%02d-%d:%02d", startMeridiem, startHour, startMin, endHour, endMin))
 		}
 
 		startHour = normalize12Hour(startHour, startMeridiem)
@@ -170,26 +181,38 @@ func (p *NaturalLanguageParser) Parse(text, referenceSubject string, now time.Ti
 				startTime = time.Date(eventDate.Year(), eventDate.Month(), eventDate.Day(), 0, 0, 0, 0, p.defaultTZ)
 				endTime = startTime.Add(1 * time.Hour)
 				hasSingleTime = true
-			} else if stMatch[2] != "" {
-				h, _ := strconv.Atoi(stMatch[2])
-				m := 0
-				if stMatch[3] != "" {
-					m, _ = strconv.Atoi(stMatch[3])
-				}
-				meridiem := strings.ToLower(stMatch[4])
-				if meridiem == "" {
-					// Guess PM for 1-7, AM for 8-11 if not specified
-					if h >= 1 && h <= 7 {
-						meridiem = "pm"
-					} else {
-						meridiem = "am"
+			} else {
+				var h, m int
+				var meridiem string
+				if stMatch[2] != "" { // at H:M am/pm
+					h, _ = strconv.Atoi(stMatch[2])
+					if stMatch[3] != "" {
+						m, _ = strconv.Atoi(stMatch[3])
 					}
-					result.AmbiguityReasons = append(result.AmbiguityReasons, fmt.Sprintf("inferred %s for ambiguous time %d:%02d", meridiem, h, m))
+					meridiem = strings.ToLower(stMatch[4])
+				} else if stMatch[5] != "" { // H:M am/pm
+					h, _ = strconv.Atoi(stMatch[5])
+					m, _ = strconv.Atoi(stMatch[6])
+					meridiem = strings.ToLower(stMatch[7])
+				} else if stMatch[8] != "" { // H am/pm
+					h, _ = strconv.Atoi(stMatch[8])
+					meridiem = strings.ToLower(stMatch[9])
 				}
-				h = normalize12Hour(h, meridiem)
-				startTime = time.Date(eventDate.Year(), eventDate.Month(), eventDate.Day(), h, m, 0, 0, p.defaultTZ)
-				endTime = startTime.Add(1 * time.Hour)
-				hasSingleTime = true
+
+				if h > 0 || m > 0 || meridiem != "" {
+					if meridiem == "" {
+						if h >= 1 && h <= 7 {
+							meridiem = "pm"
+						} else {
+							meridiem = "am"
+						}
+						result.AmbiguityReasons = append(result.AmbiguityReasons, fmt.Sprintf("inferred %s for ambiguous time %d:%02d", meridiem, h, m))
+					}
+					h = normalize12Hour(h, meridiem)
+					startTime = time.Date(eventDate.Year(), eventDate.Month(), eventDate.Day(), h, m, 0, 0, p.defaultTZ)
+					endTime = startTime.Add(1 * time.Hour)
+					hasSingleTime = true
+				}
 			}
 		}
 	}
