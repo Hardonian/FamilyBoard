@@ -55,7 +55,7 @@ var (
 	// Prevents bare date numbers like "2" or "22" from being interpreted as hours!
 	singleTimeRegex = regexp.MustCompile(`(?i)(?:\b(noon|midnight)\b|\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b|\b(\d{1,2}):(\d{2})\s*(am|pm)?\b|\b(\d{1,2})\s*(am|pm)\b)`)
 
-	// Location pattern: e.g. "at Aurora Community Centre", "in Room 204"
+	// Location pattern: e.g. "at Community Centre", "in Room 204"
 	locationRegex = regexp.MustCompile(`(?i)\b(?:at|in)\s+([A-Z][A-Za-z0-9\s,.-]+?)(?:\s+(?:on|from|starting|\.|\n|$)|$)`)
 )
 

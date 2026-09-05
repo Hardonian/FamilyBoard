@@ -56,10 +56,10 @@ func setupTestServer(t *testing.T) (*web.Server, *db.Store, string) {
 	now := time.Now()
 	if err := store.UpsertOAuthAccount(ctx, &models.OAuthAccount{
 		ID:                "acc-dummy",
-		PersonID:          "person-scott",
+		PersonID:          "person-1",
 		Provider:          "google",
 		ProviderAccountID: "g-kiosk-test",
-		VerifiedEmail:     "scottrmhardie@gmail.com",
+		VerifiedEmail:     "alex@example.com",
 		Scopes:            "calendar",
 		ExpiresAt:         now.Add(24 * time.Hour),
 		Status:            "active",

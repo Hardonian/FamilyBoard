@@ -164,10 +164,10 @@ func BenchmarkDB_ListEventsRange(b *testing.B) {
 	// Seed OAuth account and calendar
 	_ = store.UpsertOAuthAccount(ctx, &models.OAuthAccount{
 		ID:                "acc-bench",
-		PersonID:          "person-scott",
+		PersonID:          "person-1",
 		Provider:          "google",
 		ProviderAccountID: "g-bench",
-		VerifiedEmail:     "scottrmhardie@gmail.com",
+		VerifiedEmail:     "alex@example.com",
 		Scopes:            "cal",
 		ExpiresAt:         now.Add(time.Hour),
 		Status:            "active",
@@ -177,7 +177,7 @@ func BenchmarkDB_ListEventsRange(b *testing.B) {
 		ID:                 calID,
 		OAuthAccountID:     "acc-bench",
 		Provider:           "google",
-		ProviderCalendarID: "scottrmhardie@gmail.com",
+		ProviderCalendarID: "alex@example.com",
 		Name:               "Bench Calendar",
 		EnabledForDisplay:  true,
 		Writable:           true,

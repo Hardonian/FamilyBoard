@@ -44,24 +44,24 @@ func TestOffline_LifecycleAndReconciliationE2E(t *testing.T) {
 	store := db.NewStore(database)
 
 	// Setup account and calendar
-	accID := "acc-scott"
+	accID := "acc-member-1"
 	_ = store.UpsertOAuthAccount(ctx, &models.OAuthAccount{
 		ID:                accID,
-		PersonID:          "person-scott",
+		PersonID:          "person-1",
 		Provider:          "google",
-		ProviderAccountID: "g-scott",
-		VerifiedEmail:     "scottrmhardie@gmail.com",
+		ProviderAccountID: "g-member-1",
+		VerifiedEmail:     "alex@example.com",
 		Scopes:            "cal",
 		ExpiresAt:         time.Now().Add(time.Hour),
 		Status:            "active",
 	})
-	calID := "cal-scott"
+	calID := "cal-primary"
 	_ = store.UpsertCalendar(ctx, &models.Calendar{
 		ID:                 calID,
 		OAuthAccountID:     accID,
 		Provider:           "google",
-		ProviderCalendarID: "scottrmhardie@gmail.com",
-		Name:               "Scott's Calendar",
+		ProviderCalendarID: "alex@example.com",
+		Name:               "Primary Calendar",
 		EnabledForDisplay:  true,
 		Writable:           true,
 		DefaultWriteTarget: true,

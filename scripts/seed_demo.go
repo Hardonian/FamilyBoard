@@ -44,13 +44,13 @@ func main() {
 		log.Fatalf("set metadata: %v", err)
 	}
 
-	// 2. OAuth Accounts for Scott & Michelle
+	// 2. OAuth Accounts for Family Members
 	_ = store.UpsertOAuthAccount(ctx, &models.OAuthAccount{
-		ID:                "acc-scott",
-		PersonID:          "person-scott",
+		ID:                "acc-member-1",
+		PersonID:          "person-1",
 		Provider:          "google",
-		ProviderAccountID: "g-scott",
-		VerifiedEmail:     "scottrmhardie@gmail.com",
+		ProviderAccountID: "g-member-1",
+		VerifiedEmail:     "alex@example.com",
 		Scopes:            "calendar",
 		ExpiresAt:         now.Add(365 * 24 * time.Hour),
 		Status:            "active",
@@ -59,11 +59,11 @@ func main() {
 	})
 
 	_ = store.UpsertOAuthAccount(ctx, &models.OAuthAccount{
-		ID:                "acc-michelle",
-		PersonID:          "person-michelle",
+		ID:                "acc-member-2",
+		PersonID:          "person-2",
 		Provider:          "google",
-		ProviderAccountID: "g-michelle",
-		VerifiedEmail:     "michelleyounghardie@gmail.com",
+		ProviderAccountID: "g-member-2",
+		VerifiedEmail:     "jordan@example.com",
 		Scopes:            "calendar",
 		ExpiresAt:         now.Add(365 * 24 * time.Hour),
 		Status:            "active",
@@ -87,12 +87,12 @@ func main() {
 	}
 	_ = store.UpsertCalendar(ctx, calFamily)
 
-	calScott := &models.Calendar{
-		ID:                 "cal-scott",
-		OAuthAccountID:     "acc-scott",
+	calAlex := &models.Calendar{
+		ID:                 "cal-member-1",
+		OAuthAccountID:     "acc-member-1",
 		Provider:           "google",
-		ProviderCalendarID: "scottrmhardie@gmail.com",
-		Name:               "Scott",
+		ProviderCalendarID: "alex@example.com",
+		Name:               "Alex",
 		DisplayColor:       "#38bdf8",
 		EnabledForDisplay:  true,
 		Writable:           true,
@@ -100,14 +100,14 @@ func main() {
 		CreatedAt:          now,
 		UpdatedAt:          now,
 	}
-	_ = store.UpsertCalendar(ctx, calScott)
+	_ = store.UpsertCalendar(ctx, calAlex)
 
-	calMichelle := &models.Calendar{
-		ID:                 "cal-michelle",
-		OAuthAccountID:     "acc-michelle",
+	calJordan := &models.Calendar{
+		ID:                 "cal-member-2",
+		OAuthAccountID:     "acc-member-2",
 		Provider:           "google",
-		ProviderCalendarID: "michelleyounghardie@gmail.com",
-		Name:               "Michelle",
+		ProviderCalendarID: "jordan@example.com",
+		Name:               "Jordan",
 		DisplayColor:       "#fb7185",
 		EnabledForDisplay:  true,
 		Writable:           true,
@@ -115,7 +115,7 @@ func main() {
 		CreatedAt:          now,
 		UpdatedAt:          now,
 	}
-	_ = store.UpsertCalendar(ctx, calMichelle)
+	_ = store.UpsertCalendar(ctx, calJordan)
 
 	calKids := &models.Calendar{
 		ID:                 "cal-kids",
@@ -142,7 +142,7 @@ func main() {
 			Title:          "School Drop-off 🎒",
 			StartAt:        time.Date(todayYear, todayMonth, todayDay, 8, 30, 0, 0, now.Location()),
 			EndAt:          time.Date(todayYear, todayMonth, todayDay, 9, 0, 0, 0, now.Location()),
-			Location:       "Aurora Elementary",
+			Location:       "Central Elementary",
 			Status:         "confirmed",
 			Source:         "kiosk",
 			LocalCreatedAt: now,
@@ -150,11 +150,11 @@ func main() {
 		},
 		{
 			ID:             "ev-dentist",
-			CalendarID:     calMichelle.ID,
+			CalendarID:     calJordan.ID,
 			Title:          "Dentist Checkup 🦷",
 			StartAt:        time.Date(todayYear, todayMonth, todayDay, 12, 30, 0, 0, now.Location()),
 			EndAt:          time.Date(todayYear, todayMonth, todayDay, 13, 15, 0, 0, now.Location()),
-			Location:       "Aurora Dental Centre",
+			Location:       "City Dental Clinic",
 			Description:    "Annual routine cleaning and checkup.",
 			Status:         "confirmed",
 			Source:         "kiosk",
@@ -192,7 +192,7 @@ func main() {
 			Title:          "Swim Lessons 🏊",
 			StartAt:        time.Date(todayYear, todayMonth, todayDay+1, 10, 0, 0, 0, now.Location()),
 			EndAt:          time.Date(todayYear, todayMonth, todayDay+1, 11, 0, 0, 0, now.Location()),
-			Location:       "Aurora Community Pool",
+			Location:       "Civic Community Pool",
 			Status:         "confirmed",
 			Source:         "kiosk",
 			LocalCreatedAt: now,
@@ -201,7 +201,7 @@ func main() {
 		{
 			ID:             "ev-birthday",
 			CalendarID:     calFamily.ID,
-			Title:          "Michelle's Birthday! 🎂",
+			Title:          "Family Birthday! 🎂",
 			StartAt:        time.Date(todayYear, todayMonth, todayDay+2, 0, 0, 0, 0, now.Location()),
 			EndAt:          time.Date(todayYear, todayMonth, todayDay+3, 0, 0, 0, 0, now.Location()),
 			AllDay:         true,

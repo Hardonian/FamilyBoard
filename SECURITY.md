@@ -15,7 +15,7 @@ The FamilyBoard team takes the security of personal family data seriously.
 If you discover a security vulnerability, please report it privately rather than opening a public issue.
 
 ### How to Report:
-- **Email:** `scottrmhardie@gmail.com`
+- **Email:** `security@familyboard.local` (or submit a GitHub Private Security Advisory)
 - **Subject:** `[SECURITY] FamilyBoard Vulnerability Report`
 - **Details:** Please provide a detailed description of the vulnerability, steps to reproduce, potential impact, and any proof-of-concept code.
 

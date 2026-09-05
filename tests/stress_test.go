@@ -40,10 +40,10 @@ func TestStress_ScaleAndMemory(t *testing.T) {
 	// 1. Create 10 calendars
 	_ = store.UpsertOAuthAccount(ctx, &models.OAuthAccount{
 		ID:                "acc-stress",
-		PersonID:          "person-scott",
+		PersonID:          "person-1",
 		Provider:          "google",
 		ProviderAccountID: "g-stress",
-		VerifiedEmail:     "scottrmhardie@gmail.com",
+		VerifiedEmail:     "alex@example.com",
 		Scopes:            "cal",
 		ExpiresAt:         time.Now().Add(time.Hour),
 		Status:            "active",
