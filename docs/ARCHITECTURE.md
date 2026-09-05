@@ -12,7 +12,7 @@
    - If the home Wi-Fi drops, the local kiosk display continues running seamlessly: creating, editing, and viewing events with zero downtime. Mutations are buffered in a persistent SQLite mutation queue and replayed idempotently when connectivity is restored.
 
 2. **Strict Identity Isolation:**
-   - Designed for dual-identity households (Scott: `scottrmhardie@gmail.com` and Michelle: `michelleyounghardie@gmail.com`).
+   - Designed for multi-identity households (e.g. Parent 1: `alex@example.com` and Parent 2: `jordan@example.com`).
    - Tokens, sync cursors, mail sources, and personal calendars are cryptographically and relationally isolated. Cross-assignment or silent token remapping is blocked at both the API and database constraints levels.
 
 3. **Minimal Resource Footprint (Raspberry Pi 3B / 1 GB RAM):**

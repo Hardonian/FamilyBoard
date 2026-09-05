@@ -1,6 +1,6 @@
 # Google Cloud Platform & OAuth 2.0 Setup Guide
 
-This guide walks through configuring Google Cloud Platform (GCP) to provide OAuth 2.0 credentials for `FamilyBoard` to access Google Calendar and Gmail for Scott and Michelle.
+This guide walks through configuring Google Cloud Platform (GCP) to provide OAuth 2.0 credentials for `FamilyBoard` to access Google Calendar and Gmail for household members.
 
 ---
 
@@ -27,8 +27,8 @@ This guide walks through configuring Google Cloud Platform (GCP) to provide OAut
 2. Choose **External** user type (unless you have a Google Workspace domain) and click **Create**.
 3. Fill in the required application details:
    - **App name:** `FamilyBoard`
-   - **User support email:** `scottrmhardie@gmail.com`
-   - **Developer contact information:** `scottrmhardie@gmail.com`
+   - **User support email:** `<your-admin-email@gmail.com>`
+   - **Developer contact information:** `<your-admin-email@gmail.com>`
 4. Click **Save and Continue**.
 5. **Scopes Step:**
    Click **Add or Remove Scopes** and select:
@@ -39,9 +39,9 @@ This guide walks through configuring Google Cloud Platform (GCP) to provide OAut
    - `https://www.googleapis.com/auth/gmail.readonly`
 6. Click **Save and Continue**.
 7. **Test Users Step (Crucial):**
-   Add the following email addresses under Test users:
-   - `scottrmhardie@gmail.com`
-   - `michelleyounghardie@gmail.com`
+   Add your family member Google account email addresses under Test users:
+   - `<family-member-1@gmail.com>`
+   - `<family-member-2@gmail.com>`
 8. Click **Save and Continue**, then return to the dashboard.
 
 ---
@@ -90,6 +90,6 @@ sudo systemctl restart familyboard
 
 1. Open your browser to the FamilyBoard Admin UI (`http://<PI_LAN_IP>:8080/admin/accounts`).
 2. Log in with your admin credentials.
-3. Click **Link Google Account** next to **Scott**. Log in as `scottrmhardie@gmail.com` and accept permissions.
-4. Click **Link Google Account** next to **Michelle**. Log in as `michelleyounghardie@gmail.com` and accept permissions.
+3. Click **Link Google Account** next to **Family Member 1**. Log in with their Google account and accept permissions.
+4. Click **Link Google Account** next to **Family Member 2**. Log in with their Google account and accept permissions.
 5. The admin UI will display **Linked & Active** for both identities with token files stored in `/var/lib/familyboard/tokens/`.

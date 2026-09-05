@@ -71,6 +71,6 @@ Every HTTP response emitted by `FamilyBoard` includes strict, modern security he
 ## 5. Reporting Vulnerabilities
 
 Please report security vulnerabilities directly to the maintainers via private channels:
-- Email: `scottrmhardie@gmail.com`
+- Email: `security@familyboard.local` (or file a GitHub Security Advisory)
 - Please include steps to reproduce, impact assessment, and affected versions.
 - Security disclosures will be acknowledged within 48 hours and patched in a critical release.

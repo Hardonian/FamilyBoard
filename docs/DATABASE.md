@@ -37,8 +37,8 @@
 ## 2. Table Specifications
 
 ### `people`
-Stores household members and identity assignments. Pre-seeded with Scott (`scottrmhardie@gmail.com`) and Michelle (`michelleyounghardie@gmail.com`).
-- `id` (TEXT PRIMARY KEY): Unique person identifier (e.g. `person-scott`, `person-michelle`).
+Stores household members and identity assignments. Pre-seeded with default household member accounts (configured during initial setup).
+- `id` (TEXT PRIMARY KEY): Unique person identifier (e.g. `person-1`, `person-2`).
 - `display_name` (TEXT NOT NULL): Display name on kiosk.
 - `email` (TEXT UNIQUE NOT NULL): Canonical primary email.
 - `role` (TEXT NOT NULL): `adult`, `child`, or `guest`.
