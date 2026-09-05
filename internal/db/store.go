@@ -903,3 +903,29 @@ func (s *Store) DeleteQuickTemplate(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx, "DELETE FROM quick_templates WHERE id = ?;", id)
 	return err
 }
+
+// PruneRetentionRecords removes aged out completed mutations, dismissed candidates, and expired sessions
+// to keep SQLite database lean and bound storage growth on Raspberry Pi.
+func (s *Store) PruneRetentionRecords(ctx context.Context, mutationAge, candidateAge, sessionAge time.Duration) error {
+	now := time.Now()
+
+	// 1. Completed mutations older than mutationAge
+	mutCutoff := now.Add(-mutationAge)
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM mutation_queue WHERE state = 'completed' AND updated_at < ?;", mutCutoff); err != nil {
+		return fmt.Errorf("prune mutations: %w", err)
+	}
+
+	// 2. Resolved candidates older than candidateAge
+	candCutoff := now.Add(-candidateAge)
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM event_candidates WHERE state IN ('applied', 'dismissed') AND created_at < ?;", candCutoff); err != nil {
+		return fmt.Errorf("prune candidates: %w", err)
+	}
+
+	// 3. Expired sessions
+	sessCutoff := now.Add(-sessionAge)
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM sessions WHERE expires_at < ?;", sessCutoff); err != nil {
+		return fmt.Errorf("prune sessions: %w", err)
+	}
+
+	return nil
+}

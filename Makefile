@@ -13,7 +13,7 @@ endif
 VERSION ?= 1.0.0
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
 DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown")
-LDFLAGS = -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.buildDate=$(DATE)
+LDFLAGS = -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.buildDate=$(DATE)
 
 all: build
 
@@ -30,6 +30,9 @@ test:
 
 test-race:
 	go test -race ./tests/...
+
+bench:
+	go test -v -bench=. -benchmem ./tests/...
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o familyboard ./cmd/familyboard

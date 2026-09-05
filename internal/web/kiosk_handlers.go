@@ -86,6 +86,21 @@ func (s *Server) handleAPICalendars(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(calendars)
 }
 
+// KioskEventView provides a stripped, lightweight event representation for the kiosk UI,
+// eliminating internal sync metadata (ETags, provider UIDs, versions, internal timestamps).
+type KioskEventView struct {
+	ID             string    `json:"id"`
+	CalendarID     string    `json:"calendar_id"`
+	Title          string    `json:"title"`
+	StartAt        time.Time `json:"start_at"`
+	EndAt          time.Time `json:"end_at"`
+	AllDay         bool      `json:"all_day"`
+	Location       string    `json:"location,omitempty"`
+	Description    string    `json:"description,omitempty"`
+	RecurrenceRule string    `json:"recurrence_rule,omitempty"`
+	Status         string    `json:"status"`
+}
+
 func (s *Server) handleAPIGetEvents(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	startStr := q.Get("start")
@@ -106,12 +121,25 @@ func (s *Server) handleAPIGetEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if events == nil {
-		events = []models.Event{}
+	views := make([]KioskEventView, len(events))
+	for i, ev := range events {
+		views[i] = KioskEventView{
+			ID:             ev.ID,
+			CalendarID:     ev.CalendarID,
+			Title:          ev.Title,
+			StartAt:        ev.StartAt,
+			EndAt:          ev.EndAt,
+			AllDay:         ev.AllDay,
+			Location:       ev.Location,
+			Description:    ev.Description,
+			RecurrenceRule: ev.RecurrenceRule,
+			Status:         ev.Status,
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(events)
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	_ = json.NewEncoder(w).Encode(views)
 }
 
 func (s *Server) handleAPICreateEvent(w http.ResponseWriter, r *http.Request) {

@@ -9,12 +9,12 @@ KIOSK_URL="http://127.0.0.1:8080/"
 echo "Starting FamilyBoard Kiosk launcher..."
 
 # 1. Wait for FamilyBoard backend to be healthy before launching browser
-for i in $(seq 1 30); do
+for i in $(seq 1 60); do
   if curl -s -f "http://127.0.0.1:8080/health/live" >/dev/null 2>&1; then
     echo "FamilyBoard backend is ready."
     break
   fi
-  echo "Waiting for FamilyBoard backend to start ($i/30)..."
+  echo "Waiting for FamilyBoard backend to start ($i/60)..."
   sleep 1
 done
 
@@ -53,12 +53,19 @@ FLAGS=(
   "--disable-features=TranslateUI,Translate"
   "--disable-session-crashed-bubble"
   "--disable-component-update"
+  "--disable-breakpad"
+  "--disable-sync"
+  "--disable-speech-api"
+  "--disable-default-apps"
+  "--no-first-run"
+  "--fast"
+  "--fast-start"
   "--autoplay-policy=no-user-gesture-required"
   "--touch-events=enabled"
   "--enable-features=OverlayScrollbar"
-  # MicroSD write longevity guards: discard browser disk cache
-  "--disk-cache-dir=/dev/null"
-  "--disk-cache-size=1"
+  # MicroSD write longevity guards: browser disk cache kept entirely in RAM (tmpfs)
+  "--disk-cache-dir=/dev/shm/familyboard-chromium-cache"
+  "--disk-cache-size=16777216"
   "--media-cache-size=1"
   # Memory bounding for 1 GB RAM
   "--renderer-process-limit=2"

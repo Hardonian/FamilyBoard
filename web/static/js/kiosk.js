@@ -57,7 +57,8 @@
   // --- Initialization ---
   function init() {
     updateClock();
-    setInterval(updateClock, 1000);
+    // Throttled clock update: updates every 15s instead of 1s, reducing idle CPU timer wakeups by 93%
+    setInterval(updateClock, 15000);
 
     setupNetworkMonitoring();
     setupNavigation();
@@ -1158,88 +1159,90 @@
     }
   }
 
+  let isSavingEvent = false;
+
   async function handleEventSave() {
+    if (isSavingEvent) return;
+    isSavingEvent = true;
+
     const btnSave = document.getElementById('btn-save-event');
     if (btnSave) {
       btnSave.disabled = true;
-      btnSave.textContent = 'Adding...';
+      btnSave.textContent = 'Saving...';
     }
 
     const isNLTab = document.getElementById('tab-natural-lang')?.classList.contains('active');
     let title, startDateStr, startTimeStr, endTimeStr, allDay, location, description, calendarID, rrule;
 
-    if (isNLTab) {
-      const parsedTitle = document.getElementById('nl-parsed-title')?.textContent;
-      if (!parsedTitle || parsedTitle === '--') {
-        alert('Please enter a clearer event description.');
-        if (btnSave) { btnSave.disabled = false; btnSave.textContent = 'Add Event'; }
+    try {
+      if (isNLTab) {
+        const parsedTitle = document.getElementById('nl-parsed-title')?.textContent;
+        if (!parsedTitle || parsedTitle === '--') {
+          alert('Please enter a clearer event description.');
+          return;
+        }
+        title = parsedTitle;
+        const text = document.getElementById('nl-input').value;
+
+        // Quick parse call to ensure latest values
+        const parseResp = await fetch('/api/kiosk/parse-natural', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: text })
+        });
+        const parsed = await parseResp.json();
+
+        const start = new Date(parsed.start_at);
+        const end = new Date(parsed.end_at);
+        startDateStr = formatDateForInput(start);
+        startTimeStr = start.toTimeString().substring(0, 5);
+        endTimeStr = end.toTimeString().substring(0, 5);
+        allDay = parsed.all_day;
+        location = parsed.location || '';
+        description = '';
+        calendarID = document.getElementById('event-calendar-id').value;
+        rrule = '';
+      } else {
+        title = document.getElementById('event-title').value.trim();
+        startDateStr = document.getElementById('event-start-date').value;
+        startTimeStr = document.getElementById('event-start-time').value || '17:00';
+        endTimeStr = document.getElementById('event-end-time').value || '18:00';
+        allDay = document.getElementById('event-all-day').checked;
+        location = document.getElementById('event-location').value.trim();
+        description = document.getElementById('event-description').value.trim();
+        calendarID = document.getElementById('event-calendar-id').value;
+        rrule = document.getElementById('event-rrule').value;
+      }
+
+      if (!title) {
+        alert('Please enter an event title.');
         return;
       }
-      title = parsedTitle;
-      const text = document.getElementById('nl-input').value;
 
-      // Quick parse call to ensure latest values
-      const parseResp = await fetch('/api/kiosk/parse-natural', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text })
-      });
-      const parsed = await parseResp.json();
+      if (!calendarID) {
+        alert('Please select a calendar for this event.');
+        return;
+      }
 
-      const start = new Date(parsed.start_at);
-      const end = new Date(parsed.end_at);
-      startDateStr = formatDateForInput(start);
-      startTimeStr = start.toTimeString().substring(0, 5);
-      endTimeStr = end.toTimeString().substring(0, 5);
-      allDay = parsed.all_day;
-      location = parsed.location || '';
-      description = '';
-      calendarID = document.getElementById('event-calendar-id').value;
-      rrule = '';
-    } else {
-      title = document.getElementById('event-title').value.trim();
-      startDateStr = document.getElementById('event-start-date').value;
-      startTimeStr = document.getElementById('event-start-time').value || '17:00';
-      endTimeStr = document.getElementById('event-end-time').value || '18:00';
-      allDay = document.getElementById('event-all-day').checked;
-      location = document.getElementById('event-location').value.trim();
-      description = document.getElementById('event-description').value.trim();
-      calendarID = document.getElementById('event-calendar-id').value;
-      rrule = document.getElementById('event-rrule').value;
-    }
+      const startAt = new Date(`${startDateStr}T${startTimeStr}:00`);
+      const endAt = new Date(`${startDateStr}T${endTimeStr}:00`);
 
-    if (!title) {
-      alert('Please enter an event title.');
-      if (btnSave) { btnSave.disabled = false; btnSave.textContent = 'Add Event'; }
-      return;
-    }
+      const id = document.getElementById('event-id').value;
+      const payload = {
+        id: id || undefined,
+        calendar_id: calendarID,
+        title: title,
+        location: location,
+        description: description,
+        start_at: startAt.toISOString(),
+        end_at: endAt.toISOString(),
+        all_day: allDay,
+        recurrence_rule: rrule
+      };
 
-    if (!calendarID) {
-      alert('Please select a calendar for this event.');
-      if (btnSave) { btnSave.disabled = false; btnSave.textContent = 'Add Event'; }
-      return;
-    }
+      const method = id ? 'PUT' : 'POST';
+      const url = id ? `/api/events/${encodeURIComponent(id)}` : '/api/events';
 
-    const startAt = new Date(`${startDateStr}T${startTimeStr}:00`);
-    const endAt = new Date(`${startDateStr}T${endTimeStr}:00`);
-
-    const id = document.getElementById('event-id').value;
-    const payload = {
-      id: id || undefined,
-      calendar_id: calendarID,
-      title: title,
-      location: location,
-      description: description,
-      start_at: startAt.toISOString(),
-      end_at: endAt.toISOString(),
-      all_day: allDay,
-      recurrence_rule: rrule
-    };
-
-    const method = id ? 'PUT' : 'POST';
-    const url = id ? `/api/events/${encodeURIComponent(id)}` : '/api/events';
-
-    try {
       const resp = await fetch(url, {
         method: method,
         headers: { 'Content-Type': 'application/json' },
@@ -1261,6 +1264,12 @@
       closeQuickAddModal();
       renderView();
       showToast('Saved locally (Offline)', false);
+    } finally {
+      isSavingEvent = false;
+      if (btnSave) {
+        btnSave.disabled = false;
+        btnSave.textContent = 'Add Event';
+      }
     }
   }
 

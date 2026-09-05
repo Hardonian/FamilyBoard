@@ -92,12 +92,13 @@ func (s *Server) initTemplates() error {
 }
 
 func (s *Server) routes() {
-	// Embedded static assets
+	// Embedded static assets with versioned immutable caching
 	staticFS, err := fs.Sub(webassets.Content, "static")
 	if err != nil {
 		panic(err)
 	}
-	s.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
+	staticHandler := http.StripPrefix("/static/", http.FileServer(http.FS(staticFS)))
+	s.mux.Handle("GET /static/", withStaticCache("1.0.0", staticHandler))
 
 	// Health Endpoints
 	s.mux.HandleFunc("GET /health/live", s.handleHealthLive)
@@ -151,7 +152,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	s.mux.ServeHTTP(w, r)
+	withGzip(s.mux).ServeHTTP(w, r)
 }
 
 // BroadcastReload notifies all open kiosk clients via SSE to reload event data.
