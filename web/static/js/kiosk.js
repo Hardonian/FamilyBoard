@@ -178,8 +178,8 @@
       const initial = (cal.name || 'C').charAt(0).toUpperCase();
       let colorClass = 'dest-avatar-default';
       const lower = cal.name.toLowerCase();
-      if (lower.includes('scott')) colorClass = 'dest-avatar-scott';
-      else if (lower.includes('michelle')) colorClass = 'dest-avatar-michelle';
+      if (lower.includes('member-1') || lower.includes('alex')) colorClass = 'dest-avatar-member-1';
+      else if (lower.includes('member-2') || lower.includes('jordan')) colorClass = 'dest-avatar-member-2';
       else if (lower.includes('family')) colorClass = 'dest-avatar-family';
       else if (lower.includes('kids')) colorClass = 'dest-avatar-kids';
 
@@ -1434,8 +1434,8 @@
   function getEventColorClass(ev) {
     const title = (ev.title || '').toLowerCase();
     if (title.includes('birthday')) return 'pill-birthday';
-    if (title.includes('scott')) return 'pill-scott';
-    if (title.includes('michelle')) return 'pill-michelle';
+    if (ev.calendar_id === 'cal-member-1' || title.includes('member-1') || title.includes('alex')) return 'pill-member-1';
+    if (ev.calendar_id === 'cal-member-2' || title.includes('member-2') || title.includes('jordan')) return 'pill-member-2';
     if (title.includes('kids') || title.includes('soccer') || title.includes('swimming')) return 'pill-kids';
     return 'pill-family';
   }
@@ -1443,8 +1443,8 @@
   function getEventCardColorClass(ev) {
     const title = (ev.title || '').toLowerCase();
     if (title.includes('birthday')) return 'card-birthday';
-    if (title.includes('scott')) return 'card-scott';
-    if (title.includes('michelle')) return 'card-michelle';
+    if (ev.calendar_id === 'cal-member-1' || title.includes('member-1') || title.includes('alex')) return 'card-member-1';
+    if (ev.calendar_id === 'cal-member-2' || title.includes('member-2') || title.includes('jordan')) return 'card-member-2';
     if (title.includes('kids') || title.includes('soccer') || title.includes('swimming')) return 'card-kids';
     return 'card-family';
   }
