@@ -66,6 +66,7 @@
     setupEventDetailModal();
     setupDayDrawer();
     setupVirtualKeyboard();
+    setupInactivityAutoReset();
     setupSSE();
 
     loadCalendarsAndTemplates().then(() => {
@@ -1446,6 +1447,96 @@
     if (title.includes('michelle')) return 'card-michelle';
     if (title.includes('kids') || title.includes('soccer') || title.includes('swimming')) return 'card-kids';
     return 'card-family';
+  }
+
+  // --- 15-Minute Inactivity Auto-Reset & 30-Day Default Mode ---
+  // The kiosk defaults to the 30-day Month view whenever plugged in and touched within the last 15 minutes.
+  // If left unattended for > 15 minutes, it automatically closes drawers/modals, resets to Today's 30-day view,
+  // and applies a gentle ambient display dimming state until touched again.
+  const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+  let lastTouchTime = Date.now();
+  let inactivityTimer = null;
+  let isPluggedIn = true; // Default AC appliance
+
+  function setupInactivityAutoReset() {
+    // Check battery charging status if available
+    if (navigator.getBattery) {
+      navigator.getBattery().then(battery => {
+        isPluggedIn = battery.charging;
+        battery.addEventListener('chargingchange', () => {
+          isPluggedIn = battery.charging;
+          handleUserActivity();
+        });
+      }).catch(() => {
+        isPluggedIn = true;
+      });
+    }
+
+    // Register user touch / interaction events
+    const activityEvents = ['touchstart', 'pointerdown', 'mousedown', 'keydown', 'click'];
+    activityEvents.forEach(evt => {
+      window.addEventListener(evt, handleUserActivity, { passive: true });
+    });
+
+    // Start inactivity watchdog
+    resetInactivityTimer();
+  }
+
+  function handleUserActivity() {
+    lastTouchTime = Date.now();
+
+    // If currently dimmed/ambient, wake up instantly into 30-day view
+    if (document.body.classList.contains('kiosk-ambient-dim')) {
+      document.body.classList.remove('kiosk-ambient-dim');
+      if (currentView !== 'hybrid') {
+        resetToDefault30DayView();
+      }
+    }
+
+    resetInactivityTimer();
+  }
+
+  function resetInactivityTimer() {
+    if (inactivityTimer) {
+      clearTimeout(inactivityTimer);
+    }
+    inactivityTimer = setTimeout(onInactivityElapsed, INACTIVITY_TIMEOUT_MS);
+  }
+
+  function resetToDefault30DayView() {
+    // 1. Close any open overlays, modals, and sheets
+    closeQuickAddModal();
+    closeEventDetailSheet();
+    closeDayDrawer();
+    hideVirtualKeyboard();
+
+    // 2. Reset date to today
+    currentDate = new Date();
+
+    // 3. Reset view to 30-day (hybrid Month) view
+    currentView = 'hybrid';
+    document.querySelectorAll('.view-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.view === 'hybrid');
+    });
+
+    // 4. Render fresh view
+    renderView();
+  }
+
+  function onInactivityElapsed() {
+    const elapsed = Date.now() - lastTouchTime;
+    if (elapsed >= INACTIVITY_TIMEOUT_MS) {
+      // Return to default 30-day view
+      resetToDefault30DayView();
+
+      // Apply gentle ambient dimming if plugged in and untouched for 15+ minutes
+      if (isPluggedIn) {
+        document.body.classList.add('kiosk-ambient-dim');
+      }
+    } else {
+      // Reschedule for remaining time
+      inactivityTimer = setTimeout(onInactivityElapsed, INACTIVITY_TIMEOUT_MS - elapsed);
+    }
   }
 
   document.addEventListener('DOMContentLoaded', init);
