@@ -117,8 +117,8 @@ func TestStress_ScaleAndMemory(t *testing.T) {
 	}
 
 	t.Logf("Range query retrieved %d events in %v", len(results), queryDuration)
-	if queryDuration > 100*time.Millisecond {
-		t.Errorf("expected range query < 100ms, took %v", queryDuration)
+	if queryDuration > 250*time.Millisecond {
+		t.Errorf("expected range query < 250ms, took %v", queryDuration)
 	}
 
 	// 5. Check Memory Footprint

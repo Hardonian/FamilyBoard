@@ -50,16 +50,22 @@ func (c *GoogleCalendarClient) executeWithRetry(ctx context.Context, req *http.R
 	maxRetries := 3
 	backoff := 500 * time.Millisecond
 
+	var bodyBytes []byte
+	if req.Body != nil {
+		var err error
+		bodyBytes, err = io.ReadAll(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		_ = req.Body.Close()
+	}
+
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		// Clone request body if retrying
-		var bodyBytes []byte
-		if req.Body != nil {
-			var err error
-			bodyBytes, err = io.ReadAll(req.Body)
-			if err != nil {
-				return nil, err
-			}
+		if bodyBytes != nil {
 			req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+			req.GetBody = func() (io.ReadCloser, error) {
+				return io.NopCloser(bytes.NewReader(bodyBytes)), nil
+			}
 		}
 
 		resp, err := c.httpClient.Do(req)

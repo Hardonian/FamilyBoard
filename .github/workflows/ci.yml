@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    name: Test & Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Verify Formatting
+        run: |
+          UNFORMATTED=$(gofmt -l .)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "Unformatted files found:"
+            echo "$UNFORMATTED"
+            exit 1
+          fi
+
+      - name: Go Vet
+        run: go vet ./...
+
+      - name: Run Unit & Integration Tests
+        run: go test -v ./tests/...
+
+      - name: Run Race Detector Tests
+        run: go test -race -v ./tests/...
+
+      - name: Cross-Compile Linux ARM64 Binaries
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/familyboard-linux-arm64 ./cmd/familyboard
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/familyboardctl-linux-arm64 ./cmd/familyboardctl
+          ls -la dist/
+
+      - name: Validate Pi Deployment Shell Scripts
+        run: |
+          for script in deploy/pi/*.sh deploy/pi/kiosk/*.sh; do
+            if [ -f "$script" ]; then
+              bash -n "$script"
+              echo "Syntax OK: $script"
+            fi
+          done
