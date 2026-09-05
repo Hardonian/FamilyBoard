@@ -61,7 +61,7 @@ func TestICSParser_UnfoldingAndEvents(t *testing.T) {
 		"DTEND;TZID=America/Toronto:20260922T163000\r\n" +
 		"SUMMARY:Dentist App\r\n" +
 		" ointment with Dr. Smith\r\n" +
-		"LOCATION:Aurora Dental Clinic\\, Suite 101\r\n" +
+		"LOCATION:City Dental Clinic\\, Suite 101\r\n" +
 		"DESCRIPTION:Routine teeth cleaning\\nBring dental insurance card\r\n" +
 		"STATUS:CONFIRMED\r\n" +
 		"END:VEVENT\r\n" +
@@ -87,7 +87,7 @@ func TestICSParser_UnfoldingAndEvents(t *testing.T) {
 	}
 
 	// Verify comma unescaping on LOCATION
-	if ev.Location != "Aurora Dental Clinic, Suite 101" {
+	if ev.Location != "City Dental Clinic, Suite 101" {
 		t.Errorf("expected unescaped location, got '%s'", ev.Location)
 	}
 
@@ -138,12 +138,12 @@ func TestNLParser_PracticalFamilyMessages(t *testing.T) {
 			wantAllDay: false,
 		},
 		{
-			input:      "Swimming Wednesday 5pm at Aurora Community Centre",
+			input:      "Swimming Wednesday 5pm at Community Centre",
 			subject:    "Swim lessons",
 			wantStartH: 17,
 			wantStartM: 0,
 			wantAllDay: false,
-			wantLoc:    "Aurora Community Centre",
+			wantLoc:    "Community Centre",
 		},
 		{
 			input:      "School picture day October 2",
@@ -206,10 +206,10 @@ func TestRules_PolicyAutoApproval(t *testing.T) {
 
 	policy := rules.NewPolicyEngine(store, 0.90)
 
-	// Scott is trusted sender
-	trusted, _ := policy.IsSenderTrusted(ctx, "scottrmhardie@gmail.com")
+	// Registered family member is trusted sender
+	trusted, _ := policy.IsSenderTrusted(ctx, "alex@example.com")
 	if !trusted {
-		t.Errorf("expected Scott to be trusted")
+		t.Errorf("expected Alex to be trusted")
 	}
 
 	// Unknown sender is untrusted
@@ -267,10 +267,10 @@ func TestDedupe_SemanticAndUID(t *testing.T) {
 	// Setup person, account, calendar
 	_ = store.UpsertOAuthAccount(ctx, &models.OAuthAccount{
 		ID:                "acc-test",
-		PersonID:          "person-scott",
+		PersonID:          "person-1",
 		Provider:          "google",
 		ProviderAccountID: "g-1",
-		VerifiedEmail:     "scottrmhardie@gmail.com",
+		VerifiedEmail:     "alex@example.com",
 		Scopes:            "cal",
 		ExpiresAt:         time.Now().Add(time.Hour),
 		Status:            "active",
