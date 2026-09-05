@@ -100,6 +100,7 @@ sudo /opt/familyboard/deploy/pi/update.sh /path/to/new-familyboard-linux-arm64
 ```
 
 The updater:
+
 1. Takes a pre-update database snapshot.
 2. Stages the new binary.
 3. Restarts the service.
@@ -111,6 +112,7 @@ The updater:
 ## 7. Storage Retention Policy
 
 FamilyBoard enforces bounded disk usage:
+
 - **Chromium Cache:** Redirected to RAM tmpfs (`/dev/shm/familyboard-chromium-cache`, max 16 MB) with zero persistent writes to microSD.
 - **Processed Messages:** Parsed email metadata pruned after 90 days.
 - **Mutation Queue:** Successfully processed sync mutations pruned after 30 days.

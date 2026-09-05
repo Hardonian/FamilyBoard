@@ -56,6 +56,9 @@ func TestDB_ExplainQueryPlan_ListEventsRange(t *testing.T) {
 			hasEventsScan = true
 		}
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows error: %v", err)
+	}
 
 	t.Logf("Query Plan:\n%s", strings.Join(planLines, "\n"))
 
@@ -200,7 +203,7 @@ func BenchmarkDB_ListEventsRange(b *testing.B) {
 	endQuery := now.AddDate(0, 1, 0)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		events, err := store.ListEventsRange(ctx, startQuery, endQuery)
 		if err != nil {
 			b.Fatalf("list events failed: %v", err)
@@ -235,7 +238,7 @@ func BenchmarkKiosk_GzipCompression(b *testing.B) {
 	rawJSON, _ := json.Marshal(events)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		var buf bytes.Buffer
 		gz, _ := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
 		_, _ = gz.Write(rawJSON)

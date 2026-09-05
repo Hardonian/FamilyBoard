@@ -58,34 +58,43 @@ $ sudo systemctl restart    $ sudo pkill -f chromium
 ## 5 Common Issues & Instant Fixes
 
 ### 1. Kiosk Shows "Offline" Badge
+
 * **Cause:** Home Wi-Fi is temporarily disconnected or Internet DNS is down.
 * **Fix:** Normal calendar viewing and event adding work 100% offline from local SQLite cache. Changes will automatically sync once Wi-Fi reconnects. To force network restart:
+
   ```bash
   sudo systemctl restart NetworkManager # or dhcpcd
   ```
 
 ### 2. Kiosk Shows "Account Needs Reconnecting"
+
 * **Cause:** Google OAuth refresh token was revoked or expired after 6 months.
 * **Fix:** Tap gear icon → log into Admin with password → tap **"Reconnect Scott's Google Calendar"** → complete browser OAuth flow.
 
 ### 3. Screen Is Blank After Power Outage
+
 * **Cause:** Raspberry Pi rebooted before display turned on or resolution hand-shake failed.
 * **Fix:** Power cycle the display first, then reboot the Pi:
+
   ```bash
   sudo reboot
   ```
 
 ### 4. Chromium Shows Error Instead of Calendar
+
 * **Cause:** Backend took longer than 60s to start or had transient lock.
 * **Fix:**
+
   ```bash
   sudo systemctl restart familyboard.service
   sudo pkill -f chromium
   ```
 
 ### 5. MicroSD Card Is Full
+
 * **Cause:** Excessive system logs or unexpected core dumps outside FamilyBoard.
 * **Fix:**
+
   ```bash
   sudo journalctl --vacuum-size=50M
   sudo apt-get clean
