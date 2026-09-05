@@ -1,5 +1,5 @@
 From: suspicious@domain.com
-To: scottrmhardie@gmail.com
+To: alex@example.com
 Subject: Invitation with traversal attachment
 Date: Fri, 18 Sep 2026 11:00:00 -0400
 Content-Type: multipart/mixed; boundary="BOUNDARY_TRAVERSAL"
