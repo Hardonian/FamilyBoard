@@ -15,10 +15,10 @@
   --accent-active: #1d4ed8;
 
   /* Family Identity Palette */
-  --color-scott: #38bdf8;       /* Vibrant Sky Blue */
-  --color-scott-bg: rgba(56, 189, 248, 0.18);
-  --color-michelle: #f472b6;    /* Warm Coral Pink */
-  --color-michelle-bg: rgba(244, 114, 182, 0.18);
+  --color-member-1: #38bdf8;       /* Vibrant Sky Blue */
+  --color-member-1-bg: rgba(56, 189, 248, 0.18);
+  --color-member-2: #f472b6;    /* Warm Coral Pink */
+  --color-member-2-bg: rgba(244, 114, 182, 0.18);
   --color-family: #a78bfa;      /* Royal Purple */
   --color-family-bg: rgba(167, 139, 250, 0.18);
   --color-kids: #fbbf24;        /* Sunny Amber */
@@ -59,10 +59,10 @@
   --accent-primary: #2563eb;
   --accent-hover: #1d4ed8;
 
-  --color-scott: #0284c7;
-  --color-scott-bg: rgba(2, 132, 199, 0.12);
-  --color-michelle: #db2777;
-  --color-michelle-bg: rgba(219, 39, 119, 0.12);
+  --color-member-1: #0284c7;
+  --color-member-1-bg: rgba(2, 132, 199, 0.12);
+  --color-member-2: #db2777;
+  --color-member-2-bg: rgba(219, 39, 119, 0.12);
   --color-family: #7c3aed;
   --color-family-bg: rgba(124, 58, 237, 0.12);
   --color-kids: #d97706;
@@ -513,14 +513,14 @@ body.kiosk-ambient-dim {
   transform: scale(0.96);
 }
 
-.pill-scott {
-  border-left-color: var(--color-scott);
-  background-color: var(--color-scott-bg);
+.pill-member-1 {
+  border-left-color: var(--color-member-1);
+  background-color: var(--color-member-1-bg);
 }
 
-.pill-michelle {
-  border-left-color: var(--color-michelle);
-  background-color: var(--color-michelle-bg);
+.pill-member-2 {
+  border-left-color: var(--color-member-2);
+  background-color: var(--color-member-2-bg);
 }
 
 .pill-family {
@@ -722,8 +722,8 @@ body.kiosk-ambient-dim {
   transform: scale(0.97);
 }
 
-.rail-event-card.card-scott { border-left-color: var(--color-scott); }
-.rail-event-card.card-michelle { border-left-color: var(--color-michelle); }
+.rail-event-card.card-member-1 { border-left-color: var(--color-member-1); }
+.rail-event-card.card-member-2 { border-left-color: var(--color-member-2); }
 .rail-event-card.card-family { border-left-color: var(--color-family); }
 .rail-event-card.card-kids { border-left-color: var(--color-kids); }
 .rail-event-card.card-birthday {
@@ -1517,11 +1517,11 @@ body.kiosk-ambient-dim {
   height: 14px;
   border-radius: 50%;
 }
-.setup-member-dot.scott {
-  background-color: var(--color-scott);
+.setup-member-dot.member-1 {
+  background-color: var(--color-member-1);
 }
-.setup-member-dot.michelle {
-  background-color: var(--color-michelle);
+.setup-member-dot.member-2 {
+  background-color: var(--color-member-2);
 }
 .setup-member-note {
   color: var(--text-muted);
