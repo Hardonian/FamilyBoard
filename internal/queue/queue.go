@@ -57,6 +57,12 @@ func (e *Engine) RegisterProvider(provider calendar.Provider) {
 	e.providers[provider.Name()] = provider
 }
 
+func (e *Engine) SetTokenProvider(tp TokenProvider) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.tokenProvider = tp
+}
+
 func (e *Engine) Start(ctx context.Context) {
 	e.mu.Lock()
 	if e.running {
@@ -142,6 +148,10 @@ func (e *Engine) ProcessItem(ctx context.Context, item *models.MutationQueueItem
 	}
 	if targetAccount == nil {
 		return fmt.Errorf("oauth account %s not found for calendar", cal.OAuthAccountID)
+	}
+
+	if e.tokenProvider == nil {
+		return fmt.Errorf("token provider not configured")
 	}
 
 	token, err := e.tokenProvider.GetValidAccessToken(ctx, targetAccount.PersonID, item.Provider)

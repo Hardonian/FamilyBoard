@@ -1,0 +1,27 @@
+[server]
+host = "127.0.0.1"
+port = 8085
+base_url = "http://127.0.0.1:8085"
+timezone = "America/Toronto"
+device_name = "Kitchen Kiosk"
+
+[database]
+path = "demo_run/demo.db"
+busy_timeout_ms = 5000
+max_open_conns = 4
+max_idle_conns = 2
+
+[kiosk]
+theme = "auto"
+default_view = "hybrid"
+day_starts_at = "07:00"
+night_starts_at = "20:30"
+
+[security]
+session_secret = "demo-session-secret-kiosk-12345678"
+cookie_secure = false
+credentials_dir = "demo_run/credentials"
+
+[auth]
+admin_username = "admin"
+admin_password_hash = "$2a$10$U6dUt0zC70M27AsS9IzQ5ugHD94grlIBq1BeKnQKFv42hDXlEfLRu"
