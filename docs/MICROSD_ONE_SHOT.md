@@ -4,10 +4,11 @@ This guide describes how to turn any compatible Raspberry Pi (Raspberry Pi 3B, 3
 
 > [!IMPORTANT]
 > **Private Repository Architecture & Security**
-> 
+>
 > The **`Hardonian/FamilyBoard`** GitHub repository is **STRICTLY PRIVATE** to protect your household schedules, family calendar data, and API configurations. It does **not** need to be made public, and you should **never** make it public.
-> 
+>
 > Because the repository is private:
+>
 > 1. Unauthenticated `curl` or `wget` commands directly to `raw.githubusercontent.com` will return `404 Not Found`.
 > 2. The **Zero-Token MicroSD Copy Method (Method 1)** is the official, supported, and most secure solution. By copying the installer script and pre-compiled release package from your PC to the MicroSD card, the Raspberry Pi installs **100% offline** with **zero GitHub tokens, zero passwords, and zero internet dependencies during bootstrap**.
 
@@ -17,7 +18,8 @@ This guide describes how to turn any compatible Raspberry Pi (Raspberry Pi 3B, 3
 
 No keyboard, mouse, SSH, or GitHub tokens required. The appliance configures itself on first power-up and reboots directly into the full-screen FamilyBoard kiosk.
 
-### Prerequisites:
+### Prerequisites
+
 * MicroSD Card (16 GB+ Class 10 / A1)
 * USB MicroSD Card Reader on your PC (Windows, Mac, or Linux)
 * Raspberry Pi Imager (Free from [raspberrypi.com/software](https://www.raspberrypi.com/software/))
@@ -49,12 +51,14 @@ You can do this with **one command**, or **drag-and-drop manually**:
 #### Option A: One-Command Automated Prep (Fastest)
 
 **On Windows (PowerShell):**
+
 ```powershell
 # In your local FamilyBoard folder (replace E: with your MicroSD drive letter):
 .\scripts\prepare_sd.ps1 -Drive E:
 ```
 
 **On Linux / macOS (Terminal):**
+
 ```bash
 # In your local FamilyBoard folder (replace with your mount path):
 ./scripts/prepare_sd.sh /media/$USER/bootfs
@@ -63,6 +67,7 @@ make prepare-sd SD=/Volumes/bootfs
 ```
 
 This automated helper:
+
 1. Copies **[`familyboard-setup.sh`](file:///c:/Users/scott/GitHub/FamilyBoard/familyboard-setup.sh)** to the MicroSD card root.
 2. Copies **[`dist/familyboard-1.0.0-rc.1-linux-arm64.tar.gz`](file:///c:/Users/scott/GitHub/FamilyBoard/dist/familyboard-1.0.0-rc.1-linux-arm64.tar.gz)** to the MicroSD card root.
 3. Configures `cmdline.txt` for automatic execution on first boot.
@@ -72,6 +77,7 @@ This automated helper:
 #### Option B: Manual Drag-and-Drop (Windows / Mac / Linux GUI)
 
 If you prefer to copy files manually in your file manager:
+
 1. Open the MicroSD card drive (e.g. `E:\` or `bootfs`).
 2. Copy these **2 files** from your local `FamilyBoard` repository directly to the root of the card:
    * `familyboard-setup.sh`
@@ -79,9 +85,11 @@ If you prefer to copy files manually in your file manager:
 3. *(Optional for Zero-Touch Auto-Run)*:
    * Open `cmdline.txt` on the MicroSD card in a text editor (Notepad, VS Code, TextEdit).
    * At the very end of the line (keep everything on **a single line**, separated by a space), add:
+
      ```text
      systemd.run=/boot/firmware/familyboard-setup.sh systemd.run_success_action=reboot
      ```
+
      *(Note: On Debian 11 Bullseye use `/boot/familyboard-setup.sh` instead).*
    * Save the file.
 4. Safely eject the MicroSD card from your PC.
@@ -106,14 +114,19 @@ If you prefer to copy files manually in your file manager:
 If your Raspberry Pi is already running Raspberry Pi OS:
 
 ### Option A: From the MicroSD Card (Recommended for Private Repo)
+
 If you copied the 2 files to your MicroSD card:
+
 ```bash
 sudo bash /boot/firmware/familyboard-setup.sh
 ```
+
 *(On Debian 11 Bullseye: `sudo bash /boot/familyboard-setup.sh`)*
 
 ### Option B: Via SSH Clone (Using Git SSH Keys)
+
 If you have your GitHub SSH keys configured on the Pi:
+
 ```bash
 git clone git@github.com:Hardonian/FamilyBoard.git
 cd FamilyBoard
@@ -121,7 +134,9 @@ sudo ./deploy/pi/familyboard-setup.sh
 ```
 
 ### Option C: Online One-Shot with GitHub Personal Access Token
+
 If you want to pull directly from the private GitHub repository without cloning:
+
 ```bash
 # Generate a temporary fine-grained or classic GitHub PAT with 'Contents: Read-only'
 export GITHUB_TOKEN="ghp_yourPersonalAccessTokenHere"

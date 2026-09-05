@@ -35,12 +35,15 @@
 ## Turnkey Appliance Deployment
 
 ### Method 1: Zero-Token MicroSD Installation (Recommended for Private Repo)
+
 See the full guide: **[Turnkey MicroSD & One-Shot Appliance Setup Guide](docs/MICROSD_ONE_SHOT.md)**.
+
 1. Flash Raspberry Pi OS (64-bit) with Raspberry Pi Imager.
 2. Run `.\scripts\prepare_sd.ps1 -Drive E:` (or `./scripts/prepare_sd.sh /media/$USER/bootfs`).
 3. Insert into the Raspberry Pi and power on. It installs 100% offline and reboots directly into the full-screen kiosk.
 
 ### Method 2: From a Local Clone
+
 On a running Raspberry Pi OS 64-bit system:
 
 ```bash
@@ -50,6 +53,7 @@ sudo ./deploy/pi/bootstrap.sh
 ```
 
 The bootstrap installer handles everything:
+
 1. Validates hardware prerequisites and checks disk space.
 2. Installs minimal X11, Chromium, and unclutter kiosk display dependencies.
 3. Creates system service user `familyboard` and directories (`/var/lib/familyboard`, `/etc/familyboard`).
