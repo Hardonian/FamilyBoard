@@ -25,13 +25,15 @@ ssh pi@familyboard.local
 sudo ./deploy/pi/create-migration-bundle.sh /tmp/familyboard-migration.tar.gz
 ```
 
-### What is Captured:
+### What is Captured
+
 - Consistent SQLite database snapshot using `VACUUM INTO` (no dirty WAL locks).
 - All OAuth token files from `/var/lib/familyboard/tokens/`.
 - Configuration file `/etc/familyboard/config.toml`.
 - System metadata and SHA-256 checksums in `manifest.json`.
 
 Download the archive to your workstation:
+
 ```bash
 # On your personal computer:
 scp pi@familyboard.local:/tmp/familyboard-migration.tar.gz ~/Desktop/
@@ -51,27 +53,35 @@ scp pi@familyboard.local:/tmp/familyboard-migration.tar.gz ~/Desktop/
 ## 4. Step 3: Run Bootstrap & Restore
 
 1. SSH into the newly imaged Pi:
+
    ```bash
    ssh pi@familyboard.local
    ```
+
 2. Clone the repository and run bootstrap:
+
    ```bash
    git clone https://github.com/Hardonian/FamilyBoard.git
    cd FamilyBoard
    sudo ./deploy/pi/bootstrap.sh
    ```
+
 3. Copy the migration archive from your workstation to the Pi:
+
    ```bash
    # On your computer:
    scp ~/Desktop/familyboard-migration.tar.gz pi@familyboard.local:/tmp/
    ```
+
 4. Restore the migration bundle:
+
    ```bash
    # On the Pi:
    sudo ./deploy/pi/restore-migration-bundle.sh /tmp/familyboard-migration.tar.gz
    ```
 
-### What `restore-migration-bundle.sh` Does:
+### What `restore-migration-bundle.sh` Does
+
 1. Stops the `familyboard` systemd service.
 2. Validates the archive structure and verifies all SHA-256 checksums against `manifest.json`.
 3. Unpacks the database to `/var/lib/familyboard/familyboard.db`.
@@ -85,6 +95,7 @@ scp pi@familyboard.local:/tmp/familyboard-migration.tar.gz ~/Desktop/
 ## 5. Step 4: Verification
 
 Check appliance health:
+
 ```bash
 familyboardctl status
 ```

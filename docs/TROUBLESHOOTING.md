@@ -34,6 +34,7 @@ sudo familyboardctl diagnostics /tmp/familyboard-diag.tar.gz
 ## 2. Symptom-Cause-Solution Decision Trees
 
 ### Symptom 1: Kiosk screen displays "Connection Refused" or blank page
+
 - **Possible Cause A:** Daemon failed to start due to configuration syntax error.
   - *Fix:* Check logs with `journalctl -u familyboard -n 50`. Test config with `familyboard --config /etc/familyboard/config.toml --validate`.
 - **Possible Cause B:** Port conflict (e.g. another service bound to port 8080).
@@ -44,6 +45,7 @@ sudo familyboardctl diagnostics /tmp/familyboard-diag.tar.gz
 ---
 
 ### Symptom 2: OAuth linking fails with `redirect_uri_mismatch`
+
 - **Cause:** The redirect URI entered in GCP or Azure does not match the exact URL accessed in your browser.
 - **Fix:** Ensure the authorized redirect URI in GCP / Azure matches the exact scheme, IP, port, and path:
   `http://192.168.1.150:8080/oauth/google/callback`
@@ -52,6 +54,7 @@ sudo familyboardctl diagnostics /tmp/familyboard-diag.tar.gz
 ---
 
 ### Symptom 3: Calendar events appear on Google/Outlook mobile app but not on Kiosk
+
 - **Possible Cause A:** Polling interval has not elapsed yet.
   - *Fix:* Force immediate sync: `familyboardctl sync-now`.
 - **Possible Cause B:** Stale sync cursor or `410 Gone`.
@@ -62,12 +65,14 @@ sudo familyboardctl diagnostics /tmp/familyboard-diag.tar.gz
 ---
 
 ### Symptom 4: Touch events are inverted, swapped, or offset
+
 - **Cause:** Screen rotation without coordinate transformation matrix.
 - **Fix:** Refer to [docs/PI_KIOSK.md](PI_KIOSK.md). Run `xinput list` to find the touch controller device, then apply the appropriate 90/180/270 degree transformation matrix.
 
 ---
 
 ### Symptom 5: Email schedule events are not being extracted
+
 - **Possible Cause A:** Email arrived from an unlisted sender with confidence below threshold.
   - *Fix:* Check the Kiosk candidate queue or Admin UI under **Candidates**. If the item is pending, click **Approve**. Add the sender to `trusted_senders` in `/etc/familyboard/config.toml` to enable auto-approval.
 - **Possible Cause B:** Email body contained no recognizable dates or ICS attachments.
@@ -76,6 +81,7 @@ sudo familyboardctl diagnostics /tmp/familyboard-diag.tar.gz
 ---
 
 ### Symptom 6: Raspberry Pi displays yellow lightning bolt or reboots unexpectedly
+
 - **Cause:** **Undervoltage.** The power supply is dropping below 4.65V under display/Wi-Fi load.
 - **Verification:** Run `vcgencmd get_throttled`. If bit 0 or bit 16 is set (`0x50000` or `0x50005`), undervoltage has occurred.
 - **Fix:** Replace the power supply with an official Raspberry Pi 5.1V / 2.5A power adapter and use a thick, high-gauge micro-USB cable.
@@ -83,6 +89,7 @@ sudo familyboardctl diagnostics /tmp/familyboard-diag.tar.gz
 ---
 
 ### Symptom 7: "Database is locked" errors in logs
+
 - **Cause:** External process holding a lock or slow microSD card write stall.
 - **Fix:**
   1. Confirm SQLite is in WAL mode: `sqlite3 /var/lib/familyboard/familyboard.db "PRAGMA journal_mode;"` (should return `wal`).
