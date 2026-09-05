@@ -1,8 +1,9 @@
 # Binaries
 /familyboard
 /familyboardctl
-/familyboard-*
-/familyboardctl-*
+/familyboard-linux-*
+/familyboardctl-linux-*
+!/familyboard-setup.sh
 *.exe
 *.exe~
 *.dll
