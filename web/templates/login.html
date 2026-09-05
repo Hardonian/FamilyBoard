@@ -1,16 +1,16 @@
 {{define "content"}}
-<div style="display: flex; align-items: center; justify-content: center; height: 100vh; background-color: var(--bg-primary);">
-  <div class="modal-dialog" style="max-width: 420px;">
-    <h2 class="modal-title" style="text-align: center; color: var(--accent-primary);">FamilyBoard Admin</h2>
-    <p style="text-align: center; color: var(--text-secondary); margin-bottom: 8px;">Please authenticate to access appliance settings</p>
+<div class="login-wrapper">
+  <div class="modal-dialog login-dialog">
+    <h2 class="modal-title login-title">FamilyBoard Admin</h2>
+    <p class="login-sub">Please authenticate to access appliance settings</p>
 
     {{if .Error}}
-    <div style="background-color: rgba(239, 68, 68, 0.15); color: var(--color-danger); padding: 12px; border-radius: var(--radius-sm); font-weight: 600; text-align: center;">
+    <div class="login-error">
       {{.Error}}
     </div>
     {{end}}
 
-    <form method="POST" action="/login" style="display: flex; flex-direction: column; gap: 16px;">
+    <form method="POST" action="/login" class="login-form">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
 
       <div class="form-group">
@@ -23,11 +23,11 @@
         <input type="password" id="password" name="password" class="form-input" required>
       </div>
 
-      <button type="submit" class="btn btn-primary" style="margin-top: 8px;">Sign In</button>
+      <button type="submit" class="btn btn-primary login-submit-btn">Sign In</button>
     </form>
 
-    <div style="text-align: center; margin-top: 16px;">
-      <a href="/" style="color: var(--text-muted); text-decoration: none; font-size: 0.95rem;">← Return to Calendar Kiosk</a>
+    <div class="login-footer">
+      <a href="/" class="login-return-link">← Return to Calendar Kiosk</a>
     </div>
   </div>
 </div>

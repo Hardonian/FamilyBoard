@@ -906,7 +906,7 @@
     const moreContainer = document.getElementById('more-options-container');
     btnMore?.addEventListener('click', () => {
       if (moreContainer) {
-        const isHidden = moreContainer.style.display === 'none';
+        const isHidden = !moreContainer.style.display || moreContainer.style.display === 'none';
         moreContainer.style.display = isHidden ? 'flex' : 'none';
         btnMore.innerHTML = isHidden ? '<span>− Less Options</span>' : '<span>+ More Options (Location, Notes, Repeat)</span>';
       }

@@ -13,28 +13,28 @@
       <a href="/admin?tab=audit" class="admin-nav-item {{if eq .ActiveTab "audit"}}active{{end}}">Audit Log</a>
       <a href="/admin?tab=system" class="admin-nav-item {{if eq .ActiveTab "system"}}active{{end}}">System & Diagnostics</a>
     </nav>
-    <div style="padding-top: 16px; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 8px;">
-      <a href="/admin/lock" class="btn btn-primary" style="font-size: 0.95rem; width: 100%; text-align: center;">← Return to FamilyBoard</a>
-      <a href="/logout" class="btn btn-secondary" style="font-size: 0.95rem; color: var(--color-danger); text-align: center;">Sign Out</a>
+    <div class="admin-sidebar-footer">
+      <a href="/admin/lock" class="btn btn-primary btn-return-kiosk">← Return to FamilyBoard</a>
+      <a href="/logout" class="btn btn-secondary btn-signout">Sign Out</a>
     </div>
   </aside>
 
   <main class="admin-content">
     {{if .Message}}
-    <div style="background-color: rgba(16, 185, 129, 0.15); color: var(--color-success); padding: 14px; border-radius: var(--radius-md); font-weight: 600; margin-bottom: 24px;">
+    <div class="admin-alert-success">
       {{.Message}}
     </div>
     {{end}}
     {{if .Error}}
-    <div style="background-color: rgba(239, 68, 68, 0.15); color: var(--color-danger); padding: 14px; border-radius: var(--radius-md); font-weight: 600; margin-bottom: 24px;">
+    <div class="admin-alert-danger">
       {{.Error}}
     </div>
     {{end}}
 
     {{if eq .ActiveTab "accounts"}}
     <div class="admin-card">
-      <h2 style="margin-bottom: 16px;">Family Accounts & Provider Identity</h2>
-      <p style="color: var(--text-secondary); margin-bottom: 20px;">Independent Google Calendar and Gmail connections for Scott and Michelle. Google verified identities prevent accidental cross-assignment.</p>
+      <h2 class="admin-section-heading">Family Accounts & Provider Identity</h2>
+      <p class="admin-section-sub">Independent Google Calendar and Gmail connections for Scott and Michelle. Google verified identities prevent accidental cross-assignment.</p>
 
       <table class="admin-table">
         <thead>
@@ -60,12 +60,12 @@
               {{end}}
             </td>
             <td>
-              <a href="/admin/oauth/start?person_id={{.ID}}&provider=google&flow=calendar" class="btn btn-primary" style="font-size: 0.9rem; padding: 6px 14px; min-height: 36px;">
+              <a href="/admin/oauth/start?person_id={{.ID}}&provider=google&flow=calendar" class="btn btn-primary btn-table-action">
                 Connect Google Calendar
               </a>
             </td>
             <td>
-              <a href="/admin/oauth/start?person_id={{.ID}}&provider=google&flow=mail" class="btn btn-secondary" style="font-size: 0.9rem; padding: 6px 14px; min-height: 36px;">
+              <a href="/admin/oauth/start?person_id={{.ID}}&provider=google&flow=mail" class="btn btn-secondary btn-table-action">
                 Connect Gmail Intake
               </a>
             </td>
@@ -78,7 +78,7 @@
 
     {{if eq .ActiveTab "calendars"}}
     <div class="admin-card">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <div class="admin-card-header">
         <h2>Synced Calendars</h2>
         <form method="POST" action="/admin/sync-now">
           <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
@@ -102,13 +102,13 @@
           <tr>
             <td><strong>{{.Name}}</strong></td>
             <td>{{.Provider}}</td>
-            <td><span style="display: inline-block; width: 16px; height: 16px; border-radius: 4px; background-color: {{.DisplayColor}};"></span> {{.DisplayColor}}</td>
+            <td><span class="admin-color-swatch" data-color="{{.DisplayColor}}"></span> {{.DisplayColor}}</td>
             <td>{{if .EnabledForDisplay}}✅ Yes{{else}}❌ No{{end}}</td>
             <td>{{if .DefaultWriteTarget}}⭐ Default{{else}}—{{end}}</td>
             <td>{{if .LastSyncedAt}}{{.LastSyncedAt.Format "Jan 02 15:04"}}{{else}}Pending{{end}}</td>
           </tr>
           {{else}}
-          <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No calendars synced yet. Connect an account first.</td></tr>
+          <tr><td colspan="6" class="admin-empty-cell">No calendars synced yet. Connect an account first.</td></tr>
           {{end}}
         </tbody>
       </table>
@@ -118,7 +118,7 @@
     {{if eq .ActiveTab "candidates"}}
     <div class="admin-card">
       <h2>Email Event Approval Queue</h2>
-      <p style="color: var(--text-secondary); margin-bottom: 16px;">Events parsed from emails requiring family confirmation before being added to the calendar.</p>
+      <p class="admin-section-sub-spaced">Events parsed from emails requiring family confirmation before being added to the calendar.</p>
 
       <table class="admin-table">
         <thead>
@@ -138,22 +138,22 @@
             <td>{{.StartAt.Format "Jan 02 15:04"}}</td>
             <td>{{.SourceSender}}</td>
             <td>{{printf "%.0f%%" (mul .Confidence 100)}}</td>
-            <td>{{.ParserMethod}}<br><small style="color: var(--color-warning);">{{.AmbiguityReason}}</small></td>
+            <td>{{.ParserMethod}}<br><small class="admin-text-warning">{{.AmbiguityReason}}</small></td>
             <td>
-              <div style="display: flex; gap: 8px;">
+              <div class="admin-actions-cell">
                 <form method="POST" action="/admin/candidates/{{.ID}}/approve">
                   <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                  <button type="submit" class="btn btn-primary" style="padding: 6px 12px; min-height: 36px; font-size: 0.85rem;">Approve</button>
+                  <button type="submit" class="btn btn-primary admin-btn-action">Approve</button>
                 </form>
                 <form method="POST" action="/admin/candidates/{{.ID}}/reject">
                   <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                  <button type="submit" class="btn btn-secondary" style="padding: 6px 12px; min-height: 36px; font-size: 0.85rem;">Reject</button>
+                  <button type="submit" class="btn btn-secondary admin-btn-action">Reject</button>
                 </form>
               </div>
             </td>
           </tr>
           {{else}}
-          <tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">No pending candidates in the approval queue.</td></tr>
+          <tr><td colspan="6" class="admin-empty-cell">No pending candidates in the approval queue.</td></tr>
           {{end}}
         </tbody>
       </table>
@@ -163,7 +163,7 @@
     {{if eq .ActiveTab "queue"}}
     <div class="admin-card">
       <h2>Outbound Calendar Mutation Queue</h2>
-      <p style="color: var(--text-secondary); margin-bottom: 16px;">Durable queue of local create/update/delete events waiting for remote synchronization.</p>
+      <p class="admin-section-sub-spaced">Durable queue of local create/update/delete events waiting for remote synchronization.</p>
 
       <table class="admin-table">
         <thead>
@@ -186,10 +186,10 @@
             </td>
             <td>{{.AttemptCount}}</td>
             <td>{{.NextAttemptAt.Format "15:04:05"}}</td>
-            <td><small style="color: var(--color-danger);">{{.LastError}}</small></td>
+            <td><small class="admin-text-danger">{{.LastError}}</small></td>
           </tr>
           {{else}}
-          <tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">Mutation queue is empty. All local changes are synced.</td></tr>
+          <tr><td colspan="6" class="admin-empty-cell">Mutation queue is empty. All local changes are synced.</td></tr>
           {{end}}
         </tbody>
       </table>
@@ -199,22 +199,22 @@
     {{if eq .ActiveTab "system"}}
     <div class="admin-card">
       <h2>Appliance Diagnostics & Maintenance</h2>
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin: 20px 0;">
-        <div style="background-color: var(--bg-surface-elevated); padding: 16px; border-radius: var(--radius-md);">
-          <div style="color: var(--text-secondary); font-size: 0.9rem;">Database Status</div>
-          <div style="font-size: 1.3rem; font-weight: bold; color: var(--color-success);">Healthy (WAL)</div>
+      <div class="admin-diagnostics-grid">
+        <div class="admin-diag-card">
+          <div class="admin-diag-label">Database Status</div>
+          <div class="admin-diag-val success">Healthy (WAL)</div>
         </div>
-        <div style="background-color: var(--bg-surface-elevated); padding: 16px; border-radius: var(--radius-md);">
-          <div style="color: var(--text-secondary); font-size: 0.9rem;">Total Cached Events</div>
-          <div style="font-size: 1.3rem; font-weight: bold;">{{.ActiveEventCount}}</div>
+        <div class="admin-diag-card">
+          <div class="admin-diag-label">Total Cached Events</div>
+          <div class="admin-diag-val">{{.ActiveEventCount}}</div>
         </div>
-        <div style="background-color: var(--bg-surface-elevated); padding: 16px; border-radius: var(--radius-md);">
-          <div style="color: var(--text-secondary); font-size: 0.9rem;">Appliance Version</div>
-          <div style="font-size: 1.3rem; font-weight: bold;">v1.0.0</div>
+        <div class="admin-diag-card">
+          <div class="admin-diag-label">Appliance Version</div>
+          <div class="admin-diag-val">v1.0.0</div>
         </div>
       </div>
 
-      <div style="display: flex; gap: 16px; margin-top: 24px;">
+      <div class="admin-footer-actions">
         <a href="/admin/backup/download" class="btn btn-primary">Download SQLite Backup</a>
         <a href="/health/ready" target="_blank" class="btn btn-secondary">Check Health Endpoint</a>
       </div>
@@ -237,6 +237,11 @@
     document.onmousemove = resetIdle;
     document.onkeypress = resetIdle;
     document.ontouchstart = resetIdle;
+
+    // Apply color swatch styles dynamically from data-color
+    document.querySelectorAll('.admin-color-swatch[data-color]').forEach(function(el) {
+      el.style.backgroundColor = el.dataset.color;
+    });
   })();
 </script>
 {{end}}
