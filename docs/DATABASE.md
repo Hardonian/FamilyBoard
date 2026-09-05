@@ -37,7 +37,9 @@
 ## 2. Table Specifications
 
 ### `people`
+
 Stores household members and identity assignments. Pre-seeded with default household member accounts (configured during initial setup).
+
 - `id` (TEXT PRIMARY KEY): Unique person identifier (e.g. `person-1`, `person-2`).
 - `display_name` (TEXT NOT NULL): Display name on kiosk.
 - `email` (TEXT UNIQUE NOT NULL): Canonical primary email.
@@ -46,7 +48,9 @@ Stores household members and identity assignments. Pre-seeded with default house
 - `avatar_path` (TEXT): Local path to avatar image.
 
 ### `oauth_accounts`
+
 Maintains OAuth 2.0 provider tokens and expiration metadata per person.
+
 - `id` (TEXT PRIMARY KEY): Unique identifier.
 - `person_id` (TEXT NOT NULL REFERENCES people(id)): Bound person identity.
 - `provider` (TEXT NOT NULL): `google` or `microsoft`.
@@ -56,7 +60,9 @@ Maintains OAuth 2.0 provider tokens and expiration metadata per person.
 - `status` (TEXT NOT NULL): `active`, `expired`, or `revoked`.
 
 ### `calendars`
+
 Configured calendars linked to people.
+
 - `id` (TEXT PRIMARY KEY): Unique local calendar ID.
 - `person_id` (TEXT NOT NULL REFERENCES people(id)): Owner.
 - `provider` (TEXT NOT NULL): `google`, `microsoft`, or `local`.
@@ -68,7 +74,9 @@ Configured calendars linked to people.
 - `last_synced_at` (TIMESTAMP): Last successful sync timestamp.
 
 ### `events`
+
 Primary calendar events cache and local storage.
+
 - `id` (TEXT PRIMARY KEY): Local event ID (UUID or prefixed slug).
 - `calendar_id` (TEXT NOT NULL REFERENCES calendars(id)).
 - `person_id` (TEXT NOT NULL REFERENCES people(id)).
@@ -85,7 +93,9 @@ Primary calendar events cache and local storage.
 - `etag` (TEXT): Upstream entity tag.
 
 ### `mutation_queue`
+
 Durable queue for offline actions and synchronization retries.
+
 - `id` (TEXT PRIMARY KEY): Mutation ID (`mut-XXXX`).
 - `operation` (TEXT NOT NULL): `create`, `update`, `delete`.
 - `provider` (TEXT NOT NULL): Destination provider.
@@ -99,7 +109,9 @@ Durable queue for offline actions and synchronization retries.
 - `last_error` (TEXT): Diagnostic failure message.
 
 ### `event_candidates`
+
 Pending email extractions awaiting kiosk review.
+
 - `id` (TEXT PRIMARY KEY): Candidate ID (`cand-XXXX`).
 - `source_message_id` (TEXT NOT NULL): Originating message ID.
 - `person_id` (TEXT NOT NULL REFERENCES people(id)).
@@ -110,7 +122,9 @@ Pending email extractions awaiting kiosk review.
 - `status` (TEXT NOT NULL): `pending`, `approved`, `rejected`.
 
 ### `conflicts`
+
 Records synchronization divergences for audit and user review.
+
 - `id` (TEXT PRIMARY KEY).
 - `local_event_id` (TEXT NOT NULL).
 - `remote_event_id` (TEXT NOT NULL).
@@ -120,7 +134,9 @@ Records synchronization divergences for audit and user review.
 - `resolution` (TEXT NOT NULL): `remote_accepted`, `local_accepted`.
 
 ### `audit_log`
+
 Immutable transactional audit trail.
+
 - `id` (TEXT PRIMARY KEY).
 - `actor` (TEXT NOT NULL): `kiosk`, `sync_worker`, `mail_worker`, `admin`.
 - `action` (TEXT NOT NULL): e.g. `event_created`, `oauth_linked`.
@@ -160,7 +176,8 @@ CREATE INDEX IF NOT EXISTS idx_processed_messages_source
 ON processed_messages(source_id, message_id);
 ```
 
-### Benchmark Performance:
+### Benchmark Performance
+
 - **10,000 active events:** Range query across 1 month executes in **< 5 ms**.
 - **Memory footprint:** Under **20 MB RAM** during 10,000-row batch scans.
 
@@ -169,6 +186,7 @@ ON processed_messages(source_id, message_id);
 ## 4. Migration Architecture
 
 Migrations are versioned SQL scripts embedded into the binary using Go `embed.FS`:
+
 1. The migration runner creates `schema_migrations` if missing.
 2. It discovers all files matching `migrations/*.sql` sorted lexically.
 3. For each unapplied migration, it begins an immediate transaction, applies the SQL statements, records the version in `schema_migrations`, and commits.
