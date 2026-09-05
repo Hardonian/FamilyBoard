@@ -6,12 +6,12 @@ This document describes the security model, credential protection, attack mitiga
 
 ## 1. Identity & Credential Isolation
 
-The `FamilyBoard` appliance is designed for multi-user family households with independent identities (e.g., Scott: `scottrmhardie@gmail.com` and Michelle: `michelleyounghardie@gmail.com`).
+The `FamilyBoard` appliance is designed for multi-user family households with independent identities (e.g., Parent 1: `alex@example.com` and Parent 2: `jordan@example.com`).
 
 ### Strict Identity Boundaries
 - **No Token Sharing:** Each user's OAuth refresh tokens, access tokens, and sync cursors are stored in separate token files restricted to filesystem permissions `0600` (`-rw-------`).
 - **Cryptographic Verification:** During OAuth callback handling, `VerifyAccountIsolation` queries the identity provider's user profile endpoint to verify the returned email matches the expected `person_id`.
-- **Silent Remap Prevention:** If Scott attempts to authenticate with Michelle's Google account (or vice versa), the callback is immediately aborted, an audit security event is logged, and the existing token is preserved unmodified.
+- **Silent Remap Prevention:** If one household member attempts to authenticate with another member's account, the callback is immediately aborted, an audit security event is logged, and the existing token is preserved unmodified.
 - **Database Constraints:** Foreign key constraints (`ON DELETE CASCADE`) enforce relation between `oauth_accounts`, `mail_sources`, `calendars`, and their respective `person_id`.
 
 ---

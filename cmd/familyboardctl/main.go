@@ -105,20 +105,21 @@ func runStatus() {
 		ctx := context.Background()
 		accounts, _ := store.ListOAuthAccounts(ctx)
 
-		scottStatus := "not configured"
-		michelleStatus := "not configured"
-
-		for _, acc := range accounts {
-			if strings.Contains(strings.ToLower(acc.VerifiedEmail), "scott") {
-				scottStatus = "connected (" + acc.VerifiedEmail + ")"
+		people, _ := store.ListPeople(ctx)
+		if len(people) > 0 {
+			fmt.Println("Household Accounts:")
+			for _, p := range people {
+				status := "not configured"
+				for _, acc := range accounts {
+					if acc.PersonID == p.ID {
+						status = fmt.Sprintf("connected (%s, %s)", acc.Provider, acc.VerifiedEmail)
+						break
+					}
+				}
+				fmt.Printf("  %-18s: %s\n", p.DisplayName, status)
 			}
-			if strings.Contains(strings.ToLower(acc.VerifiedEmail), "michelle") {
-				michelleStatus = "connected (" + acc.VerifiedEmail + ")"
-			}
+			fmt.Println()
 		}
-
-		fmt.Printf("Scott Calendar:    %s\n", scottStatus)
-		fmt.Printf("Michelle Calendar: %s\n\n", michelleStatus)
 
 		pendingMut, _ := store.CountPendingMutations(ctx)
 		pendingCand, _ := store.CountPendingCandidates(ctx)

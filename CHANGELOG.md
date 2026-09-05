@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Core Daemon & Storage:**
   - Embedded SQLite storage engine using pure Go `modernc.org/sqlite` driver (no CGO runtime dependencies).
   - Configured WAL mode (`PRAGMA journal_mode=WAL;`), memory-mapped I/O, and busy timeout protection for SD card longevity.
-  - Transaction-safe embedded SQL migration runner with schema pre-seeding for Scott (`scottrmhardie@gmail.com`) and Michelle (`michelleyounghardie@gmail.com`).
+  - Transaction-safe embedded SQL migration runner with schema pre-seeding for default household member identities.
   - Automatic corrupt database quarantine mechanism on startup.
 - **Identity & Security Isolation:**
   - Strict account isolation preventing cross-assignment or silent token remapping.

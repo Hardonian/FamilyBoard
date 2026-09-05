@@ -12,7 +12,7 @@
 ## Key Features
 
 - **Sovereign & Local-First:** Runs an embedded SQLite database in WAL mode. If home Wi-Fi drops, the kitchen touchscreen never freezes, blanks, or drops edits. All changes are stored locally and replayed automatically upon reconnection.
-- **Dual-Identity Household Isolation:** Native support for independent accounts for Scott (`scottrmhardie@gmail.com`) and Michelle (`michelleyounghardie@gmail.com`). Strict identity isolation blocks cross-assignment, cross-pollination, or silent token remapping.
+- **Multi-Identity Household Isolation:** Native support for independent accounts for family members (e.g., Parent 1: `alex@example.com` and Parent 2: `jordan@example.com`). Strict identity isolation blocks cross-assignment, cross-pollination, or silent token remapping.
 - **Autonomous Email Ingestion Pipeline:** Ingests calendar invitations, school newsletters, soccer practice schedules, and dentist appointments from Gmail and Microsoft Graph. Uses RFC 5545 `.ics` parsing, natural language date extraction (`America/Toronto`), and optional LAN AI fallback (Ollama/vLLM) with strict SSRF protection.
 - **Ultra-Low Resource Footprint:** Pure Go daemon using `modernc.org/sqlite` (no CGO cross-compilation headaches). Baseline memory consumption is under **20 MB RAM**, leaving 980+ MB for the OS and Chromium kiosk.
 - **Zero Runtime Dependencies:** Server-rendered HTML templates via embedded Go `embed.FS`, vanilla CSS with light/dark high-contrast themes, and vanilla JavaScript. Zero CDN calls, zero npm packages, and zero external runtime requirements.
