@@ -33,7 +33,7 @@ func (s *Server) handleKiosk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	deviceName := s.cfg.Server.DeviceName
-	if meta != nil && meta.DeviceName != "" {
+	if meta.DeviceName != "" {
 		deviceName = meta.DeviceName
 	}
 
