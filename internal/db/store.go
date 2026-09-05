@@ -57,6 +57,47 @@ func (s *Store) GetPersonByEmail(ctx context.Context, email string) (*models.Per
 	return &p, nil
 }
 
+func (s *Store) GetPerson(ctx context.Context, id string) (*models.Person, error) {
+	var p models.Person
+	var enabled int
+	row := s.db.QueryRowContext(ctx, "SELECT id, display_name, email, enabled, created_at, updated_at FROM people WHERE id = ?;", id)
+	if err := row.Scan(&p.ID, &p.DisplayName, &p.Email, &enabled, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get person: %w", err)
+	}
+	p.Enabled = (enabled == 1)
+	return &p, nil
+}
+
+func (s *Store) UpsertPerson(ctx context.Context, p *models.Person) error {
+	now := time.Now()
+	if p.CreatedAt.IsZero() {
+		p.CreatedAt = now
+	}
+	p.UpdatedAt = now
+
+	enabledInt := 0
+	if p.Enabled {
+		enabledInt = 1
+	}
+
+	query := `INSERT INTO people (id, display_name, email, enabled, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			display_name = excluded.display_name,
+			email = excluded.email,
+			enabled = excluded.enabled,
+			updated_at = excluded.updated_at;`
+
+	_, err := s.db.ExecContext(ctx, query, p.ID, p.DisplayName, p.Email, enabledInt, p.CreatedAt, p.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("upsert person: %w", err)
+	}
+	return nil
+}
+
 // --- OAuth Accounts ---
 
 func (s *Store) GetOAuthAccount(ctx context.Context, personID, provider string) (*models.OAuthAccount, error) {

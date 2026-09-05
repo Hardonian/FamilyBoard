@@ -23,29 +23,39 @@ func NewPolicyEngine(store *db.Store, confidenceThreshold float64) *PolicyEngine
 	}
 }
 
-// IsSenderTrusted checks whether the sender email or domain is approved in trusted_senders or belongs to Scott/Michelle.
+// IsSenderTrusted checks whether the sender email or domain is approved in trusted_senders or belongs to a household member.
 func (p *PolicyEngine) IsSenderTrusted(ctx context.Context, senderEmail string) (bool, error) {
 	senderEmail = strings.ToLower(strings.TrimSpace(senderEmail))
-
-	// Scott and Michelle are inherently trusted
-	if strings.Contains(senderEmail, "scottrmhardie@gmail.com") || strings.Contains(senderEmail, "michelleyounghardie@gmail.com") {
-		return true, nil
+	if senderEmail == "" {
+		return false, nil
 	}
 
-	senders, err := p.store.ListTrustedSenders(ctx)
-	if err != nil {
-		return false, err
-	}
+	if p.store != nil {
+		// Household members with registered emails are inherently trusted
+		people, err := p.store.ListPeople(ctx)
+		if err == nil {
+			for _, person := range people {
+				if person.Enabled && person.Email != "" && strings.EqualFold(person.Email, senderEmail) {
+					return true, nil
+				}
+			}
+		}
 
-	for _, s := range senders {
-		if !s.Enabled {
-			continue
+		senders, err := p.store.ListTrustedSenders(ctx)
+		if err != nil {
+			return false, err
 		}
-		if s.Email != "" && strings.EqualFold(s.Email, senderEmail) {
-			return true, nil
-		}
-		if s.Domain != "" && strings.HasSuffix(senderEmail, "@"+strings.ToLower(s.Domain)) {
-			return true, nil
+
+		for _, s := range senders {
+			if !s.Enabled {
+				continue
+			}
+			if s.Email != "" && strings.EqualFold(s.Email, senderEmail) {
+				return true, nil
+			}
+			if s.Domain != "" && strings.HasSuffix(senderEmail, "@"+strings.ToLower(s.Domain)) {
+				return true, nil
+			}
 		}
 	}
 
