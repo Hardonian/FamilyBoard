@@ -107,9 +107,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /{$}", s.handleKiosk)
 	s.mux.HandleFunc("GET /api/calendars", s.handleAPICalendars)
 	s.mux.HandleFunc("GET /api/events", s.handleAPIGetEvents)
-	s.mux.HandleFunc("POST /api/events", s.handleAPICreateEvent)
-	s.mux.HandleFunc("PUT /api/events/{id}", s.handleAPIUpdateEvent)
-	s.mux.HandleFunc("DELETE /api/events/{id}", s.handleAPIDeleteEvent)
+	s.mux.HandleFunc("POST /api/events", s.requireKioskWriteAccess(s.handleAPICreateEvent))
+	s.mux.HandleFunc("PUT /api/events/{id}", s.requireKioskWriteAccess(s.handleAPIUpdateEvent))
+	s.mux.HandleFunc("DELETE /api/events/{id}", s.requireKioskWriteAccess(s.handleAPIDeleteEvent))
+	s.mux.HandleFunc("POST /api/events/{id}/restore", s.requireKioskWriteAccess(s.handleAPIRestoreEvent))
+	s.mux.HandleFunc("GET /api/kiosk/templates", s.handleAPIGetTemplates)
+	s.mux.HandleFunc("POST /api/kiosk/parse-natural", s.handleAPIParseNatural)
 	s.mux.HandleFunc("GET /api/events/stream", s.handleSSEStream)
 
 	// Auth & Setup
@@ -121,6 +124,7 @@ func (s *Server) routes() {
 
 	// Admin Dashboard
 	s.mux.HandleFunc("GET /admin", s.requireAuth(s.handleAdminDashboard))
+	s.mux.HandleFunc("GET /admin/lock", s.handleAdminLock)
 	s.mux.HandleFunc("POST /admin/sync-now", s.requireAuth(s.handleAdminSyncNow))
 	s.mux.HandleFunc("POST /admin/candidates/{id}/approve", s.requireAuth(s.handleAdminCandidateApprove))
 	s.mux.HandleFunc("POST /admin/candidates/{id}/reject", s.requireAuth(s.handleAdminCandidateReject))

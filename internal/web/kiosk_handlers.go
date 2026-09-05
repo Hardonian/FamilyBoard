@@ -5,12 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Hardonian/FamilyBoard/internal/models"
 )
 
 func (s *Server) handleKiosk(w http.ResponseWriter, r *http.Request) {
+	// Issue physical localhost capability cookie if request is on loopback
+	s.issueKioskCapabilityCookie(w, r)
+
 	// Check if appliance needs first-run wizard setup
 	meta, err := s.store.GetDeviceMetadata(r.Context())
 	if err != nil || meta == nil {
@@ -33,10 +37,39 @@ func (s *Server) handleKiosk(w http.ResponseWriter, r *http.Request) {
 		deviceName = meta.DeviceName
 	}
 
+	calendars, _ := s.store.ListDisplayCalendars(r.Context())
+	people, _ := s.store.ListPeople(r.Context())
+	templates, _ := s.store.ListQuickTemplates(r.Context())
+
+	defaultView, _ := s.store.GetSetting(r.Context(), "kiosk_default_view")
+	if defaultView == "" {
+		defaultView = s.cfg.Kiosk.DefaultView
+	}
+	if defaultView == "" {
+		defaultView = "hybrid"
+	}
+
+	timeFormat, _ := s.store.GetSetting(r.Context(), "kiosk_time_format")
+	if timeFormat == "" {
+		timeFormat = "12h"
+	}
+
+	birthdayHighlight, _ := s.store.GetSetting(r.Context(), "kiosk_birthday_highlight")
+	if birthdayHighlight == "" {
+		birthdayHighlight = "true"
+	}
+
 	data := map[string]interface{}{
-		"Title":      deviceName,
-		"Theme":      theme,
-		"DeviceName": deviceName,
+		"Title":             deviceName,
+		"Theme":             theme,
+		"DeviceName":        deviceName,
+		"Calendars":         calendars,
+		"People":            people,
+		"QuickTemplates":    templates,
+		"DefaultView":       defaultView,
+		"TimeFormat":        timeFormat,
+		"BirthdayHighlight": birthdayHighlight == "true",
+		"IsLocalhost":       s.isLocalhost(r),
 	}
 
 	s.render(w, "kiosk.html", data)
@@ -88,32 +121,41 @@ func (s *Server) handleAPICreateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if ev.Title == "" || ev.CalendarID == "" {
-		http.Error(w, "title and calendar_id are required", http.StatusBadRequest)
+	if strings.TrimSpace(ev.Title) == "" || ev.CalendarID == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Event title and destination calendar are required."})
 		return
 	}
 
-	cal, err := s.store.GetCalendar(r.Context(), ev.CalendarID)
-	if err != nil || cal == nil {
-		http.Error(w, "calendar not found", http.StatusBadRequest)
+	// Enforce writable calendar privilege boundary
+	cal, err := s.isCalendarWritable(r.Context(), ev.CalendarID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
 	now := time.Now()
-	ev.ID = fmt.Sprintf("evt-local-%d", now.UnixNano())
+	if ev.ID == "" {
+		ev.ID = fmt.Sprintf("evt-local-%d", now.UnixNano())
+	}
 	ev.Provider = cal.Provider
-	ev.Source = "local_ui"
+	ev.Source = "kiosk"
 	ev.Status = "confirmed"
 	ev.LocalCreatedAt = now
 	ev.LocalUpdatedAt = now
 
-	// 1. Write to local database
+	// 1. Write to local SQLite database
 	if err := s.store.UpsertEvent(r.Context(), &ev); err != nil {
-		http.Error(w, "save event locally: "+err.Error(), http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Failed to save event locally: " + err.Error()})
 		return
 	}
 
-	// 2. Enqueue into durable outbound mutation queue
+	// 2. Enqueue into durable outbound mutation queue for Google / Microsoft sync
 	payload, _ := json.Marshal(ev)
 	mutation := &models.MutationQueueItem{
 		ID:             fmt.Sprintf("mut-%d", now.UnixNano()),
@@ -162,12 +204,25 @@ func (s *Server) handleAPIUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if update.CalendarID != "" && update.CalendarID != existing.CalendarID {
+		cal, err := s.isCalendarWritable(r.Context(), update.CalendarID)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		existing.CalendarID = cal.ID
+		existing.Provider = cal.Provider
+	}
+
 	existing.Title = update.Title
 	existing.Description = update.Description
 	existing.Location = update.Location
 	existing.StartAt = update.StartAt
 	existing.EndAt = update.EndAt
 	existing.AllDay = update.AllDay
+	existing.Source = "kiosk"
 	existing.LocalUpdatedAt = time.Now()
 
 	if err := s.store.UpsertEvent(r.Context(), existing); err != nil {
@@ -228,7 +283,7 @@ func (s *Server) handleAPIDeleteEvent(w http.ResponseWriter, r *http.Request) {
 		CalendarID:     existing.CalendarID,
 		LocalEventID:   existing.ID,
 		Payload:        string(payload),
-		IdempotencyKey: fmt.Sprintf("idemp-del-%s", existing.ID),
+		IdempotencyKey: fmt.Sprintf("idemp-del-%s-%d", existing.ID, time.Now().UnixNano()),
 		AttemptCount:   0,
 		NextAttemptAt:  time.Now(),
 		State:          models.QueuePending,
@@ -243,8 +298,104 @@ func (s *Server) handleAPIDeleteEvent(w http.ResponseWriter, r *http.Request) {
 		s.BroadcastReload()
 	}()
 
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"status":"deleted"}`))
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"status": "deleted", "id": id, "event": existing})
+}
+
+func (s *Server) handleAPIRestoreEvent(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "missing id", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.store.RestoreEvent(r.Context(), id); err != nil {
+		http.Error(w, "restore event locally: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	restored, err := s.store.GetEvent(r.Context(), id)
+	if err == nil && restored != nil {
+		payload, _ := json.Marshal(restored)
+		mutation := &models.MutationQueueItem{
+			ID:             fmt.Sprintf("mut-%d", time.Now().UnixNano()),
+			Operation:      "create",
+			Provider:       restored.Provider,
+			CalendarID:     restored.CalendarID,
+			LocalEventID:   restored.ID,
+			Payload:        string(payload),
+			IdempotencyKey: fmt.Sprintf("idemp-rest-%s-%d", restored.ID, time.Now().UnixNano()),
+			AttemptCount:   0,
+			NextAttemptAt:  time.Now(),
+			State:          models.QueuePending,
+			CreatedAt:      time.Now(),
+			UpdatedAt:      time.Now(),
+		}
+		_ = s.store.EnqueueMutation(r.Context(), mutation)
+	}
+
+	go func() {
+		_ = s.queueEngine.ProcessBatch(context.Background(), 5)
+		s.BroadcastReload()
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"status": "restored", "id": id, "event": restored})
+}
+
+func (s *Server) handleAPIGetTemplates(w http.ResponseWriter, r *http.Request) {
+	templates, err := s.store.ListQuickTemplates(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if templates == nil {
+		templates = []models.QuickTemplate{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(templates)
+}
+
+type parseNaturalRequest struct {
+	Text string `json:"text"`
+}
+
+type parseNaturalResponse struct {
+	Title            string    `json:"title"`
+	StartAt          time.Time `json:"start_at"`
+	EndAt            time.Time `json:"end_at"`
+	AllDay           bool      `json:"all_day"`
+	Location         string    `json:"location"`
+	Confidence       float64   `json:"confidence"`
+	AmbiguityReasons []string  `json:"ambiguity_reasons,omitempty"`
+}
+
+func (s *Server) handleAPIParseNatural(w http.ResponseWriter, r *http.Request) {
+	var req parseNaturalRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	parsed, err := s.nlParser.Parse(req.Text, "", time.Now())
+	if err != nil {
+		http.Error(w, "parse error: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	resp := parseNaturalResponse{
+		Title:            parsed.Title,
+		StartAt:          parsed.StartAt,
+		EndAt:            parsed.EndAt,
+		AllDay:           parsed.AllDay,
+		Location:         parsed.Location,
+		Confidence:       parsed.Confidence,
+		AmbiguityReasons: parsed.AmbiguityReasons,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func (s *Server) handleSSEStream(w http.ResponseWriter, r *http.Request) {

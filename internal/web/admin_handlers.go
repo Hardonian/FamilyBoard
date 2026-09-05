@@ -20,15 +20,8 @@ const sessionCookieName = "fb_session"
 
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie(sessionCookieName)
-		if err != nil || cookie.Value == "" {
-			http.Redirect(w, r, "/login?next="+r.URL.Path, http.StatusSeeOther)
-			return
-		}
-
-		tokenHash := auth.HashToken(cookie.Value)
-		sess, err := s.store.GetSession(r.Context(), tokenHash)
-		if err != nil || sess == nil {
+		sess, ok := s.isAuthenticatedAdmin(r)
+		if !ok || sess == nil {
 			http.SetCookie(w, &http.Cookie{
 				Name:     sessionCookieName,
 				Value:    "",
@@ -40,9 +33,30 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		_ = s.store.TouchSession(r.Context(), tokenHash)
+		cookie, _ := r.Cookie(sessionCookieName)
+		if cookie != nil {
+			_ = s.store.TouchSession(r.Context(), auth.HashToken(cookie.Value))
+		}
 		next(w, r)
 	}
+}
+
+func (s *Server) handleAdminLock(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie(sessionCookieName)
+	if err == nil && cookie.Value != "" {
+		tokenHash := auth.HashToken(cookie.Value)
+		_ = s.store.DeleteSession(r.Context(), tokenHash)
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+	})
+
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (s *Server) handleLoginGet(w http.ResponseWriter, r *http.Request) {

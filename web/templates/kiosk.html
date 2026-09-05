@@ -1,105 +1,316 @@
 {{define "content"}}
+<!-- Top Glanceable Header -->
 <header class="kiosk-header">
-  <div class="header-clock-section">
+  <div class="header-clock-section" id="brand-header" title="FamilyBoard Appliance">
     <div id="clock-time" class="header-time">--:--</div>
-    <div id="clock-date" class="header-date">Loading date...</div>
+    <div class="header-date-weather">
+      <div id="clock-date" class="header-date">Loading...</div>
+      <div id="weather-slot" class="header-weather-slot">☀️ 22°C · Toronto</div>
+    </div>
   </div>
 
   <div class="header-controls">
-    <div id="status-badge" class="status-badge">
+    <div id="status-badge" class="status-badge" title="Appliance Sync Status">
       <span class="status-dot"></span>
-      <span id="status-text">Appliance Ready</span>
+      <span id="status-text">Synced</span>
     </div>
 
     <div class="view-selector">
-      <button class="view-btn active" data-view="month">Month</button>
-      <button class="view-btn" data-view="agenda">Agenda</button>
+      <button class="view-btn active" data-view="hybrid">Month</button>
+      <button class="view-btn" data-view="week">Week</button>
+      <button class="view-btn" data-view="today">Today</button>
     </div>
 
+    <a href="/admin" class="btn-admin-link" id="link-admin" title="Appliance Settings">Admin</a>
     <button id="btn-add-event" class="btn btn-primary">+ Add Event</button>
   </div>
 </header>
 
-<main class="calendar-container">
-  <div class="calendar-nav-bar">
-    <h2 id="nav-title" class="nav-title">Loading...</h2>
-    <div class="nav-arrows">
-      <button id="btn-today" class="btn btn-secondary">Today</button>
-      <button id="btn-prev" class="arrow-btn" aria-label="Previous Month">‹</button>
-      <button id="btn-next" class="arrow-btn" aria-label="Next Month">›</button>
+<!-- Main Kiosk Layout -->
+<main class="kiosk-main-layout">
+  <!-- Calendar Main Pane -->
+  <div class="calendar-main-pane">
+    <div class="calendar-nav-bar">
+      <div class="nav-title-group">
+        <h2 id="nav-title" class="nav-title">Loading Calendar...</h2>
+      </div>
+      <div class="nav-arrows">
+        <button id="btn-today" class="btn btn-secondary">Today</button>
+        <button id="btn-prev" class="arrow-btn" aria-label="Previous">‹</button>
+        <button id="btn-next" class="arrow-btn" aria-label="Next">›</button>
+      </div>
+    </div>
+
+    <!-- Month View Container -->
+    <div id="month-view-container" class="month-view-container">
+      <div class="weekday-header">
+        <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+      </div>
+      <div id="days-grid" class="days-grid"></div>
+    </div>
+
+    <!-- Week View Container -->
+    <div id="week-view-container" class="week-view-container" style="display: none;">
+      <div class="week-columns-grid" id="week-columns-grid"></div>
+    </div>
+
+    <!-- Full Today View Container -->
+    <div id="today-view-container" class="today-view-full" style="display: none;">
+      <div class="today-hero-banner">
+        <div>
+          <h1 id="today-hero-date" class="today-hero-date">Today's Schedule</h1>
+          <p id="today-hero-sub" class="today-hero-sub">Here is what the family has planned for today</p>
+        </div>
+        <button id="btn-today-hero-add" class="btn btn-primary">+ Add Event</button>
+      </div>
+      <div id="today-full-cards-grid" class="today-cards-grid"></div>
     </div>
   </div>
 
-  <div id="month-grid" class="month-grid">
-    <div class="weekday-header">
-      <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+  <!-- Glanceable Today & Upcoming Side Rail -->
+  <aside id="today-side-rail" class="today-side-rail">
+    <div class="rail-header">
+      <div class="rail-title">
+        <span>Today's Family Schedule</span>
+        <span class="rail-badge-today" id="rail-today-badge">TODAY</span>
+      </div>
     </div>
-    <div id="days-grid" class="days-grid"></div>
-  </div>
 
-  <div id="agenda-view" class="agenda-view" style="display: none;"></div>
+    <div id="rail-events-list" class="rail-events-list">
+      <!-- Injected via kiosk.js -->
+    </div>
+
+    <!-- Quick Templates Bar -->
+    <div class="rail-quick-templates">
+      <div class="rail-templates-title">⚡ Quick Add Templates</div>
+      <div class="templates-scroll-row" id="templates-scroll-row">
+        <!-- Injected via kiosk.js -->
+      </div>
+    </div>
+  </aside>
 </main>
 
-<!-- Add/Edit Event Modal -->
+<!-- Slide-Over Day Drawer (Tapping any day in Month view) -->
+<div id="day-drawer-overlay" class="day-drawer-overlay" style="display: none;">
+  <div class="day-drawer">
+    <div class="drawer-header">
+      <div id="drawer-date-title" class="drawer-date-title">Day Agenda</div>
+      <button id="btn-close-drawer" class="drawer-close-btn" aria-label="Close">✕</button>
+    </div>
+    <div id="drawer-events-list" class="drawer-events-list"></div>
+    <div class="drawer-actions">
+      <button id="btn-drawer-add-event" class="btn btn-primary" style="width: 100%;">+ Add to this day</button>
+    </div>
+  </div>
+</div>
+
+<!-- Touch-First Quick Add Modal -->
 <div id="event-modal" class="modal-overlay" style="display: none;">
   <div class="modal-dialog">
-    <h3 id="modal-title" class="modal-title">New Family Event</h3>
+    <div class="modal-header-tabs">
+      <button type="button" class="modal-tab-btn active" id="tab-quick-tap">Quick Tap Entry</button>
+      <button type="button" class="modal-tab-btn" id="tab-natural-lang">Natural Language</button>
+    </div>
+
     <form id="event-form">
       <input type="hidden" id="event-id">
+      <input type="hidden" id="event-calendar-id">
 
-      <div class="form-group">
-        <label class="form-label" for="event-title">Event Title</label>
-        <input type="text" id="event-title" class="form-input" required placeholder="e.g. Soccer Practice">
-      </div>
+      <div class="modal-scrollable-body">
+        <!-- Tab 1: Quick Tap Mode -->
+        <div id="mode-quick-tap">
+          <!-- Step 1: What? -->
+          <div>
+            <label class="modal-section-title" for="event-title">1. What is the event?</label>
+            <input type="text" id="event-title" class="form-input-lg" placeholder="e.g. Soccer Practice, Dentist" required autocomplete="off">
+            <div class="suggestion-chips-row">
+              <span class="suggestion-chip" data-title="Soccer Practice" data-icon="⚽">⚽ Soccer</span>
+              <span class="suggestion-chip" data-title="Swimming" data-icon="🏊">🏊 Swimming</span>
+              <span class="suggestion-chip" data-title="School Event" data-icon="🏫">🏫 School</span>
+              <span class="suggestion-chip" data-title="Dentist" data-icon="🦷">🦷 Dentist</span>
+              <span class="suggestion-chip" data-title="Doctor Appointment" data-icon="🩺">🩺 Doctor</span>
+              <span class="suggestion-chip" data-title="Birthday Party" data-icon="🎂">🎂 Birthday</span>
+              <span class="suggestion-chip" data-title="Family Dinner" data-icon="🍽️">🍽️ Dinner</span>
+              <span class="suggestion-chip" data-title="Grocery Shopping" data-icon="🛒">🛒 Grocery</span>
+            </div>
+          </div>
 
-      <div class="form-group">
-        <label class="form-label" for="event-calendar-id">Calendar</label>
-        <select id="event-calendar-id" class="form-select"></select>
-      </div>
+          <!-- Step 2: Who? (Calendar / Person Destination Tiles) -->
+          <div>
+            <label class="modal-section-title">2. Who is this for?</label>
+            <div id="dest-tiles-grid" class="dest-tiles-grid">
+              <!-- Dynamically populated from /api/calendars -->
+            </div>
+          </div>
 
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label" for="event-start-date">Date</label>
-          <input type="date" id="event-start-date" class="form-input" required>
+          <!-- Step 3: When? (One-Tap Relative Dates) -->
+          <div>
+            <label class="modal-section-title">3. When is it?</label>
+            <div class="relative-dates-row" id="relative-dates-row">
+              <button type="button" class="date-btn selected" data-rel="today">Today</button>
+              <button type="button" class="date-btn" data-rel="tomorrow">Tomorrow</button>
+              <button type="button" class="date-btn" data-rel="sat" id="btn-rel-sat">Saturday</button>
+              <button type="button" class="date-btn" data-rel="sun" id="btn-rel-sun">Sunday</button>
+              <button type="button" class="date-btn" data-rel="next-week">Next Week</button>
+              <button type="button" class="date-btn" data-rel="custom" id="btn-rel-custom">Pick Date</button>
+            </div>
+            <div id="custom-date-container" style="display: none; margin-top: 10px;">
+              <input type="date" id="event-start-date" class="form-input-lg">
+            </div>
+          </div>
+
+          <!-- Step 4: Time & Duration -->
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <label class="modal-section-title">4. What time?</label>
+              <label style="display: flex; align-items: center; gap: 8px; font-weight: 700; cursor: pointer;">
+                <input type="checkbox" id="event-all-day" style="width: 22px; height: 22px;"> All Day Event
+              </label>
+            </div>
+
+            <div id="time-controls-container" style="display: flex; flex-direction: column; gap: 12px;">
+              <div class="time-chips-grid" id="time-chips-grid">
+                <button type="button" class="time-chip" data-time="08:00">8:00 AM</button>
+                <button type="button" class="time-chip" data-time="09:00">9:00 AM</button>
+                <button type="button" class="time-chip" data-time="12:00">12:00 PM</button>
+                <button type="button" class="time-chip" data-time="15:00">3:00 PM</button>
+                <button type="button" class="time-chip" data-time="16:00">4:00 PM</button>
+                <button type="button" class="time-chip selected" data-time="17:00">5:00 PM</button>
+                <button type="button" class="time-chip" data-time="18:00">6:00 PM</button>
+                <button type="button" class="time-chip" data-time="19:00">7:00 PM</button>
+              </div>
+
+              <div>
+                <label class="modal-section-title" style="font-size: 0.95rem;">Duration</label>
+                <div class="durations-row" id="durations-row">
+                  <button type="button" class="dur-chip" data-dur="30">30 min</button>
+                  <button type="button" class="dur-chip" data-dur="45">45 min</button>
+                  <button type="button" class="dur-chip selected" data-dur="60">1 hr</button>
+                  <button type="button" class="dur-chip" data-dur="90">1.5 hr</button>
+                  <button type="button" class="dur-chip" data-dur="120">2 hr</button>
+                </div>
+              </div>
+            </div>
+            <input type="hidden" id="event-start-time" value="17:00">
+            <input type="hidden" id="event-duration-min" value="60">
+            <input type="hidden" id="event-end-date">
+            <input type="hidden" id="event-end-time" value="18:00">
+          </div>
+
+          <!-- Collapsible More Options -->
+          <div>
+            <button type="button" id="btn-toggle-more" style="background: none; border: none; color: var(--accent-primary); font-size: 1.1rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+              <span>+ More Options (Location, Notes, Repeat)</span>
+            </button>
+            <div id="more-options-container" style="display: none; flex-direction: column; gap: 14px; margin-top: 14px;">
+              <div>
+                <label class="modal-section-title" for="event-location">Location</label>
+                <input type="text" id="event-location" class="form-input-lg" placeholder="e.g. Aurora Community Centre">
+              </div>
+              <div>
+                <label class="modal-section-title" for="event-description">Notes</label>
+                <textarea id="event-description" class="form-input-lg" style="height: 80px; padding: 10px;" placeholder="Optional notes"></textarea>
+              </div>
+              <div>
+                <label class="modal-section-title">Does this repeat?</label>
+                <div class="durations-row" id="recurrence-row">
+                  <button type="button" class="dur-chip selected" data-recur="">No</button>
+                  <button type="button" class="dur-chip" data-recur="RRULE:FREQ=WEEKLY">Weekly</button>
+                  <button type="button" class="dur-chip" data-recur="RRULE:FREQ=WEEKLY;INTERVAL=2">Every 2 Weeks</button>
+                  <button type="button" class="dur-chip" data-recur="RRULE:FREQ=MONTHLY">Monthly</button>
+                </div>
+                <input type="hidden" id="event-rrule" value="">
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="form-group">
-          <label class="form-label" for="event-start-time">Start Time</label>
-          <input type="time" id="event-start-time" class="form-input">
+
+        <!-- Tab 2: Natural Language Mode -->
+        <div id="mode-natural-lang" style="display: none; flex-direction: column; gap: 18px;">
+          <div>
+            <label class="modal-section-title">Describe the event in natural language:</label>
+            <input type="text" id="nl-input" class="form-input-lg" placeholder="e.g. Soccer Thursday 6pm for 1 hour at Aurora Complex">
+            <p style="color: var(--text-muted); font-size: 0.95rem; margin-top: 6px;">Type freely. FamilyBoard understands days, times, and locations automatically.</p>
+          </div>
+
+          <div class="nl-preview-card" id="nl-preview-card" style="display: none;">
+            <div class="nl-preview-title" id="nl-parsed-title">--</div>
+            <div class="nl-preview-item" id="nl-parsed-datetime">📅 --</div>
+            <div class="nl-preview-item" id="nl-parsed-location">📍 --</div>
+            <div class="nl-preview-item" id="nl-parsed-cal">🟣 Family Calendar</div>
+          </div>
         </div>
       </div>
 
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label" for="event-end-date">End Date</label>
-          <input type="date" id="event-end-date" class="form-input" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="event-end-time">End Time</label>
-          <input type="time" id="event-end-time" class="form-input">
-        </div>
-      </div>
-
-      <div class="form-group" style="flex-direction: row; align-items: center; gap: 8px;">
-        <input type="checkbox" id="event-all-day" style="width: 22px; height: 22px;">
-        <label class="form-label" for="event-all-day" style="cursor: pointer;">All-Day Event</label>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label" for="event-location">Location (optional)</label>
-        <input type="text" id="event-location" class="form-input" placeholder="e.g. Community Centre">
-      </div>
-
-      <div class="form-group">
-        <label class="form-label" for="event-description">Notes (optional)</label>
-        <textarea id="event-description" class="form-textarea" rows="2"></textarea>
-      </div>
-
+      <!-- Action Buttons -->
       <div class="modal-actions">
-        <button type="button" id="btn-delete-event" class="btn btn-danger" style="display: none; margin-right: auto;">Delete</button>
         <button type="button" id="btn-cancel-modal" class="btn btn-secondary">Cancel</button>
-        <button type="submit" class="btn btn-primary">Save Event</button>
+        <button type="submit" id="btn-save-event" class="btn btn-primary">Add Event</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- Event Detail & Delete Sheet -->
+<div id="event-detail-modal" class="modal-overlay" style="display: none;">
+  <div class="modal-dialog" style="max-width: 540px;">
+    <div style="padding: 24px; display: flex; flex-direction: column; gap: 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <h2 id="detail-title" style="font-size: 1.8rem; font-weight: 800; line-height: 1.2;">Event Title</h2>
+        <button type="button" id="btn-close-detail" class="drawer-close-btn">✕</button>
+      </div>
+
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <span id="detail-cal-badge" style="padding: 6px 14px; border-radius: var(--radius-full); font-weight: 700; font-size: 0.95rem;">Calendar</span>
+        <span id="detail-source-badge" style="color: var(--text-muted); font-size: 0.9rem;">Synced</span>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+        <div id="detail-datetime" style="font-size: 1.2rem; font-weight: 700; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+          📅 <span>Date and Time</span>
+        </div>
+        <div id="detail-location-row" style="font-size: 1.1rem; color: var(--text-muted); display: none; align-items: center; gap: 8px;">
+          📍 <span id="detail-location">Location</span>
+        </div>
+        <div id="detail-description-row" style="font-size: 1.05rem; color: var(--text-secondary); display: none; margin-top: 6px; padding: 12px; background-color: var(--bg-surface-elevated); border-radius: var(--radius-md);">
+          <span id="detail-description">Description</span>
+        </div>
+      </div>
+
+      <!-- Delete Confirmation Box (Hidden initially) -->
+      <div id="detail-delete-confirm-box" style="display: none; background-color: rgba(239, 68, 68, 0.15); border: 1px solid var(--color-danger); border-radius: var(--radius-md); padding: 16px; margin-top: 8px;">
+        <p style="font-weight: 700; color: var(--color-danger); margin-bottom: 12px;">Delete this event from FamilyBoard?</p>
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+          <button type="button" id="btn-cancel-delete" class="btn btn-secondary" style="min-height: 44px; padding: 6px 16px;">Cancel</button>
+          <button type="button" id="btn-confirm-delete" class="btn btn-danger" style="min-height: 44px; padding: 6px 16px;">Yes, Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-actions" id="detail-normal-actions">
+      <button type="button" id="btn-detail-delete" class="btn btn-danger" style="margin-right: auto;">Delete</button>
+      <button type="button" id="btn-detail-edit" class="btn btn-secondary">Edit</button>
+      <button type="button" id="btn-detail-ok" class="btn btn-primary">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Built-In Touch Virtual Keyboard -->
+<div id="virtual-keyboard" class="virtual-keyboard" style="display: none;">
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 4px 6px;">
+    <span style="font-size: 0.9rem; font-weight: 700; color: var(--text-muted);">FamilyBoard Touch Keyboard</span>
+    <button type="button" id="btn-hide-keyboard" style="background: none; border: none; color: var(--text-secondary); font-weight: 700; font-size: 1rem; cursor: pointer;">Hide Keyboard ✕</button>
+  </div>
+  <div id="keyboard-rows">
+    <!-- Generated dynamically in kiosk.js -->
+  </div>
+</div>
+
+<!-- Toast Container for "Added ✓" and "Undo" -->
+<div id="toast-container" class="toast-container" style="display: none;">
+  <div id="toast-bubble" class="toast-bubble">
+    <span id="toast-message">Added ✓</span>
+    <button type="button" id="toast-undo-btn" class="toast-undo-btn" style="display: none;">Undo</button>
   </div>
 </div>
 {{end}}

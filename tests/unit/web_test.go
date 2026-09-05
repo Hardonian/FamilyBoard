@@ -162,6 +162,7 @@ func TestWeb_KioskRedirectAndEventCRUD(t *testing.T) {
 	bodyBytes, _ := json.Marshal(createPayload)
 
 	req = httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewReader(bodyBytes))
+	req.RemoteAddr = "127.0.0.1:1234"
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -197,6 +198,7 @@ func TestWeb_KioskRedirectAndEventCRUD(t *testing.T) {
 
 	// 5. API Delete Event
 	req = httptest.NewRequest(http.MethodDelete, "/api/events/"+created.ID, nil)
+	req.RemoteAddr = "127.0.0.1:1234"
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {

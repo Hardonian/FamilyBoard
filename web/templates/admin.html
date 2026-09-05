@@ -14,8 +14,8 @@
       <a href="/admin?tab=system" class="admin-nav-item {{if eq .ActiveTab "system"}}active{{end}}">System & Diagnostics</a>
     </nav>
     <div style="padding-top: 16px; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 8px;">
-      <a href="/" class="btn btn-secondary" style="font-size: 0.95rem;">Calendar Kiosk</a>
-      <a href="/logout" class="btn btn-secondary" style="font-size: 0.95rem; color: var(--color-danger);">Sign Out</a>
+      <a href="/admin/lock" class="btn btn-primary" style="font-size: 0.95rem; width: 100%; text-align: center;">← Return to FamilyBoard</a>
+      <a href="/logout" class="btn btn-secondary" style="font-size: 0.95rem; color: var(--color-danger); text-align: center;">Sign Out</a>
     </div>
   </aside>
 
@@ -210,7 +210,7 @@
         </div>
         <div style="background-color: var(--bg-surface-elevated); padding: 16px; border-radius: var(--radius-md);">
           <div style="color: var(--text-secondary); font-size: 0.9rem;">Appliance Version</div>
-          <div style="font-size: 1.3rem; font-weight: bold;">v0.9.0</div>
+          <div style="font-size: 1.3rem; font-weight: bold;">v1.0.0</div>
         </div>
       </div>
 
@@ -222,4 +222,21 @@
     {{end}}
   </main>
 </div>
+
+<script>
+  // Automatic 15-minute inactivity return to physical kiosk
+  (function() {
+    let idleTimer;
+    function resetIdle() {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(function() {
+        window.location.href = '/admin/lock';
+      }, 15 * 60 * 1000);
+    }
+    window.onload = resetIdle;
+    document.onmousemove = resetIdle;
+    document.onkeypress = resetIdle;
+    document.ontouchstart = resetIdle;
+  })();
+</script>
 {{end}}
