@@ -1,5 +1,5 @@
 From: legitimate@domain.com
-To: michelleyounghardie@gmail.com
+To: jordan@example.com
 Subject: Nested Multipart Test
 Date: Thu, 17 Sep 2026 10:30:00 -0400
 Content-Type: multipart/mixed; boundary="BOUNDARY_OUTER"
@@ -13,12 +13,12 @@ Content-Type: multipart/alternative; boundary="BOUNDARY_INNER"
 --BOUNDARY_INNER
 Content-Type: text/plain; charset=utf-8
 
-Swimming Wednesday 5pm at Aurora Community Centre.
+Swimming Wednesday 5pm at Community Centre.
 
 --BOUNDARY_INNER
 Content-Type: text/html; charset=utf-8
 
-<p>Swimming Wednesday 5pm at Aurora Community Centre.</p>
+<p>Swimming Wednesday 5pm at Community Centre.</p>
 
 --BOUNDARY_INNER--
 --BOUNDARY_MIDDLE--
