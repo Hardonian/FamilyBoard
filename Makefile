@@ -55,7 +55,13 @@ pi-bootstrap-check:
 	@"$(BASH_BIN)" -n deploy/pi/create-migration-bundle.sh
 	@"$(BASH_BIN)" -n deploy/pi/restore-migration-bundle.sh
 	@"$(BASH_BIN)" -n deploy/pi/kiosk/familyboard-kiosk.sh
+	@"$(BASH_BIN)" -n deploy/pi/familyboard-setup.sh
+	@"$(BASH_BIN)" -n familyboard-setup.sh
+	@"$(BASH_BIN)" -n scripts/prepare_sd.sh
 	@echo "All shell scripts passed syntax checks."
+
+prepare-sd:
+	@"$(BASH_BIN)" scripts/prepare_sd.sh $(SD)
 
 release-check: fmt vet test test-race build build-arm64 pi-bootstrap-check
 	@echo "=== FamilyBoard Canonical Release Gate PASSED ==="
