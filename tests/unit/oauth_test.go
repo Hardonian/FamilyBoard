@@ -37,7 +37,7 @@ func TestTokenStorage_PermissionsAndLifecycle(t *testing.T) {
 	}
 
 	// Verify file permissions on disk (must be 0600 on Unix)
-	p := filepath.Join(tmpDir, "acc-member-1.token.json")
+	p := filepath.Join(tmpDir, accountID+".token.json")
 	info, err := os.Stat(p)
 	if err != nil {
 		t.Fatalf("expected token file to exist: %v", err)

@@ -16,26 +16,31 @@ Thank you for contributing to `FamilyBoard`! This document outlines development 
 ## 2. Setting Up Local Development
 
 1. **Clone the repository:**
+
    ```bash
    git clone https://github.com/Hardonian/FamilyBoard.git
    cd FamilyBoard
    ```
 
 2. **Verify dependencies:**
+
    ```bash
    go mod download
    go mod verify
    ```
 
 3. **Copy example configuration:**
+
    ```bash
    cp config.example.toml config.toml
    ```
 
 4. **Run the local development server:**
+
    ```bash
    go run ./cmd/familyboard --config config.toml
    ```
+
    Open your browser to `http://127.0.0.1:8080/kiosk` or `http://127.0.0.1:8080/admin`.
 
 ---

@@ -72,6 +72,7 @@ scopes = [
 ```
 
 Restart the appliance service:
+
 ```bash
 sudo systemctl restart familyboard
 ```

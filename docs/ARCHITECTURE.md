@@ -82,6 +82,7 @@
 ## 3. Data Flow & Subsystems
 
 ### A. Calendar Synchronization Subsystem (`internal/sync`, `internal/calendar`)
+
 - **Direction:** Bidirectional.
 - **Remote to Local:**
   - Scheduled background loop (default: every 5 minutes) checks configured Google and Microsoft accounts.
@@ -95,6 +96,7 @@
   - The queue worker picks up pending items and replays them against the upstream provider using exponential backoff with jitter.
 
 ### B. Mail Intake & Event Extraction Subsystem (`internal/candidates`, `internal/mail`)
+
 - **Ingestion:** Polls configured user mailboxes (Gmail REST API, Microsoft Graph Mail) at safe, rate-limited intervals.
 - **Deduplication:** High-speed deduplication against `processed_messages` using provider Message-ID and SHA-256 content hashes.
 - **Parsing Tier 1 (ICS Attachments):** RFC 5545 compliant recursive parser (`internal/mail/ics`) extracts structured `VEVENT` data, handling line unfolding, recurrence rules, and cancellation notices.
@@ -105,6 +107,7 @@
   - Ambiguous or low-confidence extractions are queued in `event_candidates` for one-touch kiosk approval.
 
 ### C. Web Presentation & Kiosk Engine (`internal/web`, `web/`)
+
 - **Zero Runtime Dependencies:** No external JS bundles, polyfills, or CSS frameworks. The display UI runs indefinitely without internet access.
 - **Server-Side Templates:** Go `html/template` delivers fast, low-memory HTML rendering.
 - **Live Updates:** Server-Sent Events (SSE) push calendar mutations and candidate alerts to the kiosk in real time.
