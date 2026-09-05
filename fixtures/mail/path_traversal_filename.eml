@@ -1,0 +1,29 @@
+From: suspicious@domain.com
+To: scottrmhardie@gmail.com
+Subject: Invitation with traversal attachment
+Date: Fri, 18 Sep 2026 11:00:00 -0400
+Content-Type: multipart/mixed; boundary="BOUNDARY_TRAVERSAL"
+
+--BOUNDARY_TRAVERSAL
+Content-Type: text/plain; charset=utf-8
+
+Please find the attached calendar event.
+
+--BOUNDARY_TRAVERSAL
+Content-Type: text/calendar; charset=utf-8; method=REQUEST
+Content-Disposition: attachment; filename="../../../../../etc/shadow.ics"
+
+BEGIN:VCALENDAR
+VERSION:2.0
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:traversal-uid-123@domain.com
+DTSTART;TZID=America/Toronto:20260925T140000
+DTEND;TZID=America/Toronto:20260925T150000
+SUMMARY:Soccer Tournament
+LOCATION:Main Field
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR
+
+--BOUNDARY_TRAVERSAL--
