@@ -8,6 +8,8 @@ else
     BASH_BIN := bash
 endif
 
+.PHONY: all fmt vet lint test test-race build build-arm64 pi-bootstrap-check release-check clean
+
 VERSION ?= 1.0.0
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
 DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown")
