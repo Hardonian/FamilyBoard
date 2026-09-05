@@ -171,19 +171,19 @@ func TestDB_EventCRUDAndRangeQueries(t *testing.T) {
 	// Create events
 	baseTime := time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC)
 	event1 := &models.Event{
-		ID:               "evt-1",
-		Provider:         "google",
-		ProviderEventID:  "pevt-1",
-		ProviderUID:      "uid-1@google.com",
-		CalendarID:       cal.ID,
-		Title:            "Dentist Appointment",
-		StartAt:          baseTime,
-		EndAt:            baseTime.Add(1 * time.Hour),
-		Timezone:         "America/Toronto",
-		Status:           "confirmed",
-		Source:           "local_ui",
-		LocalCreatedAt:   time.Now(),
-		LocalUpdatedAt:   time.Now(),
+		ID:              "evt-1",
+		Provider:        "google",
+		ProviderEventID: "pevt-1",
+		ProviderUID:     "uid-1@google.com",
+		CalendarID:      cal.ID,
+		Title:           "Dentist Appointment",
+		StartAt:         baseTime,
+		EndAt:           baseTime.Add(1 * time.Hour),
+		Timezone:        "America/Toronto",
+		Status:          "confirmed",
+		Source:          "local_ui",
+		LocalCreatedAt:  time.Now(),
+		LocalUpdatedAt:  time.Now(),
 	}
 	if err := store.UpsertEvent(ctx, event1); err != nil {
 		t.Fatalf("failed to upsert event: %v", err)

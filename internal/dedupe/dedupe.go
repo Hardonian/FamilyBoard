@@ -35,8 +35,8 @@ func SemanticFingerprint(title string, startAt time.Time, calendarID string) str
 }
 
 type DedupeResult struct {
-	IsDuplicate    bool
-	Reason         string
+	IsDuplicate     bool
+	Reason          string
 	ExistingEventID string
 }
 

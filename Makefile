@@ -1,4 +1,12 @@
-.PHONY: all fmt vet lint test test-race build build-arm64 pi-bootstrap-check release-check clean
+ifeq ($(OS),Windows_NT)
+    SHELL := C:/PROGRA~1/Git/bin/bash.exe
+    .SHELLFLAGS := -c
+    BASH_BIN := C:/PROGRA~1/Git/bin/bash.exe
+else
+    SHELL := /bin/bash
+    .SHELLFLAGS := -c
+    BASH_BIN := bash
+endif
 
 VERSION ?= 1.0.0
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
@@ -31,14 +39,14 @@ build-arm64:
 
 pi-bootstrap-check:
 	@echo "Checking deploy/pi shell scripts syntax..."
-	@bash -n deploy/pi/bootstrap.sh
-	@bash -n deploy/pi/install.sh
-	@bash -n deploy/pi/update.sh
-	@bash -n deploy/pi/verify.sh
-	@bash -n deploy/pi/uninstall.sh
-	@bash -n deploy/pi/create-migration-bundle.sh
-	@bash -n deploy/pi/restore-migration-bundle.sh
-	@bash -n deploy/pi/kiosk/familyboard-kiosk.sh
+	@"$(BASH_BIN)" -n deploy/pi/bootstrap.sh
+	@"$(BASH_BIN)" -n deploy/pi/install.sh
+	@"$(BASH_BIN)" -n deploy/pi/update.sh
+	@"$(BASH_BIN)" -n deploy/pi/verify.sh
+	@"$(BASH_BIN)" -n deploy/pi/uninstall.sh
+	@"$(BASH_BIN)" -n deploy/pi/create-migration-bundle.sh
+	@"$(BASH_BIN)" -n deploy/pi/restore-migration-bundle.sh
+	@"$(BASH_BIN)" -n deploy/pi/kiosk/familyboard-kiosk.sh
 	@echo "All shell scripts passed syntax checks."
 
 release-check: fmt vet test test-race build build-arm64 pi-bootstrap-check

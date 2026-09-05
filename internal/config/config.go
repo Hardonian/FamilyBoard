@@ -30,10 +30,10 @@ type ServerConfig struct {
 }
 
 type DatabaseConfig struct {
-	Path           string `toml:"path"`
-	BusyTimeoutMs  int    `toml:"busy_timeout_ms"`
-	MaxOpenConns   int    `toml:"max_open_conns"`
-	MaxIdleConns   int    `toml:"max_idle_conns"`
+	Path          string `toml:"path"`
+	BusyTimeoutMs int    `toml:"busy_timeout_ms"`
+	MaxOpenConns  int    `toml:"max_open_conns"`
+	MaxIdleConns  int    `toml:"max_idle_conns"`
 }
 
 type KioskConfig struct {
@@ -70,10 +70,10 @@ type MicrosoftConfig struct {
 }
 
 type SyncConfig struct {
-	CalendarIntervalSeconds       int `toml:"calendar_interval_seconds"`
-	MailIntervalSeconds           int `toml:"mail_interval_seconds"`
-	MutationRetryIntervalSeconds  int `toml:"mutation_retry_interval_seconds"`
-	MaxMutationAttempts           int `toml:"max_mutation_attempts"`
+	CalendarIntervalSeconds      int `toml:"calendar_interval_seconds"`
+	MailIntervalSeconds          int `toml:"mail_interval_seconds"`
+	MutationRetryIntervalSeconds int `toml:"mutation_retry_interval_seconds"`
+	MaxMutationAttempts          int `toml:"max_mutation_attempts"`
 }
 
 type MailConfig struct {

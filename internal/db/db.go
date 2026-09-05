@@ -53,8 +53,8 @@ func Open(dbPath string, busyTimeoutMs, maxOpenConns, maxIdleConns int) (*DB, er
 		"PRAGMA foreign_keys = ON;",
 		"PRAGMA journal_mode = WAL;",
 		"PRAGMA synchronous = NORMAL;",
-		"PRAGMA cache_size = -8000;",      // ~8MB memory cache
-		"PRAGMA mmap_size = 33554432;",    // 32MB memory mapped I/O
+		"PRAGMA cache_size = -8000;",        // ~8MB memory cache
+		"PRAGMA mmap_size = 33554432;",      // 32MB memory mapped I/O
 		"PRAGMA wal_autocheckpoint = 1000;", // Bounded WAL size
 	}
 

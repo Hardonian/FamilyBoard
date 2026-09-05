@@ -176,16 +176,16 @@ type googleEventsResponse struct {
 }
 
 type googleEvent struct {
-	ID          string   `json:"id"`
-	ICalUID     string   `json:"iCalUID"`
-	Status      string   `json:"status"` // "confirmed", "tentative", "cancelled"
-	Summary     string   `json:"summary"`
-	Description string   `json:"description"`
-	Location    string   `json:"location"`
-	ETag        string   `json:"etag"`
-	Recurrence  []string `json:"recurrence"`
-	RecurringEventID string `json:"recurringEventId"`
-	Organizer   struct {
+	ID               string   `json:"id"`
+	ICalUID          string   `json:"iCalUID"`
+	Status           string   `json:"status"` // "confirmed", "tentative", "cancelled"
+	Summary          string   `json:"summary"`
+	Description      string   `json:"description"`
+	Location         string   `json:"location"`
+	ETag             string   `json:"etag"`
+	Recurrence       []string `json:"recurrence"`
+	RecurringEventID string   `json:"recurringEventId"`
+	Organizer        struct {
 		Email       string `json:"email"`
 		DisplayName string `json:"displayName"`
 	} `json:"organizer"`

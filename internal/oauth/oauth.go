@@ -19,11 +19,11 @@ import (
 )
 
 var (
-	ErrAccountMismatch  = errors.New("authenticated account does not match expected family member identity")
-	ErrInvalidState     = errors.New("invalid or expired oauth state parameter")
-	ErrTokenExpired     = errors.New("oauth token has expired and cannot be refreshed")
-	ErrAccountRevoked   = errors.New("access revoked by provider or invalid credentials")
-	ErrTokenNotFound    = errors.New("credential token not found in secure storage")
+	ErrAccountMismatch = errors.New("authenticated account does not match expected family member identity")
+	ErrInvalidState    = errors.New("invalid or expired oauth state parameter")
+	ErrTokenExpired    = errors.New("oauth token has expired and cannot be refreshed")
+	ErrAccountRevoked  = errors.New("access revoked by provider or invalid credentials")
+	ErrTokenNotFound   = errors.New("credential token not found in secure storage")
 )
 
 // StoredToken holds tokens on disk with expiry and scope metadata.

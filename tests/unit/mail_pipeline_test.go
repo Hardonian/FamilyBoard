@@ -110,14 +110,14 @@ func TestNLParser_PracticalFamilyMessages(t *testing.T) {
 	referenceDate := time.Date(2026, 9, 1, 9, 0, 0, 0, time.UTC)
 
 	cases := []struct {
-		input       string
-		subject     string
-		wantMonth   time.Month
-		wantDay     int
-		wantStartH  int
-		wantStartM  int
-		wantAllDay  bool
-		wantLoc     string
+		input      string
+		subject    string
+		wantMonth  time.Month
+		wantDay    int
+		wantStartH int
+		wantStartM int
+		wantAllDay bool
+		wantLoc    string
 	}{
 		{
 			input:      "Soccer September 18 at 6 PM",

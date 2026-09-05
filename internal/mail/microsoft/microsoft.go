@@ -37,10 +37,10 @@ func (c *Client) Name() string {
 
 type listMessagesResponse struct {
 	Value []struct {
-		ID                  string `json:"id"`
-		Subject             string `json:"subject"`
-		ReceivedDateTime    string `json:"receivedDateTime"`
-		From                struct {
+		ID               string `json:"id"`
+		Subject          string `json:"subject"`
+		ReceivedDateTime string `json:"receivedDateTime"`
+		From             struct {
 			EmailAddress struct {
 				Address string `json:"address"`
 				Name    string `json:"name"`
