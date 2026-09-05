@@ -52,9 +52,25 @@ func setupTestServer(t *testing.T) (*web.Server, *db.Store, string) {
 	hash, _ := auth.HashPassword("secretpass123")
 	cfg.Auth.AdminPasswordHash = hash
 
-	// Pre-seed writable and read-only calendars
+	// Pre-seed OAuth account
 	now := time.Now()
-	_ = store.UpsertCalendar(ctx, &models.Calendar{
+	if err := store.UpsertOAuthAccount(ctx, &models.OAuthAccount{
+		ID:                "acc-dummy",
+		PersonID:          "person-scott",
+		Provider:          "google",
+		ProviderAccountID: "g-kiosk-test",
+		VerifiedEmail:     "scottrmhardie@gmail.com",
+		Scopes:            "calendar",
+		ExpiresAt:         now.Add(24 * time.Hour),
+		Status:            "active",
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}); err != nil {
+		t.Fatalf("upsert oauth account: %v", err)
+	}
+
+	// Pre-seed writable and read-only calendars
+	if err := store.UpsertCalendar(ctx, &models.Calendar{
 		ID:                 "cal-writable-family",
 		OAuthAccountID:     "acc-dummy",
 		Provider:           "google",
@@ -65,9 +81,11 @@ func setupTestServer(t *testing.T) (*web.Server, *db.Store, string) {
 		DefaultWriteTarget: true,
 		CreatedAt:          now,
 		UpdatedAt:          now,
-	})
+	}); err != nil {
+		t.Fatalf("upsert writable calendar: %v", err)
+	}
 
-	_ = store.UpsertCalendar(ctx, &models.Calendar{
+	if err := store.UpsertCalendar(ctx, &models.Calendar{
 		ID:                 "cal-readonly-holidays",
 		OAuthAccountID:     "acc-dummy",
 		Provider:           "google",
@@ -78,7 +96,9 @@ func setupTestServer(t *testing.T) (*web.Server, *db.Store, string) {
 		DefaultWriteTarget: false,
 		CreatedAt:          now,
 		UpdatedAt:          now,
-	})
+	}); err != nil {
+		t.Fatalf("upsert readonly calendar: %v", err)
+	}
 
 	// Metadata
 	_ = store.SetDeviceMetadata(ctx, &models.DeviceMetadata{

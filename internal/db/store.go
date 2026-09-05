@@ -903,4 +903,3 @@ func (s *Store) DeleteQuickTemplate(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx, "DELETE FROM quick_templates WHERE id = ?;", id)
 	return err
 }
-
