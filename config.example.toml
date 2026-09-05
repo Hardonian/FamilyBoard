@@ -1,0 +1,67 @@
+# FamilyBoard Configuration Template
+# Copy to /etc/familyboard/config.toml (appliance) or config.toml (local dev)
+
+[server]
+host = "127.0.0.1"
+port = 8080
+base_url = "http://127.0.0.1:8080"
+timezone = "America/Toronto"
+device_name = "FamilyBoard Appliance"
+
+[database]
+path = "familyboard.db"
+busy_timeout_ms = 5000
+max_open_conns = 4
+max_idle_conns = 2
+
+[kiosk]
+# Theme: "light", "dark", or "auto" (switches at day/night times)
+theme = "auto"
+default_view = "month"
+day_starts_at = "07:00"
+night_starts_at = "20:30"
+screen_blank_enabled = false
+screen_blank_schedule = "23:00-06:00"
+
+[security]
+# Set a unique session secret in production. The setup wizard generates this automatically.
+session_secret = ""
+# Set to true only if accessing via HTTPS
+cookie_secure = false
+credentials_dir = "credentials"
+
+[auth]
+admin_username = "admin"
+# Stored as modern bcrypt / argon2 hash. Configured via first-run wizard.
+admin_password_hash = ""
+
+[google]
+client_id = ""
+client_secret = ""
+redirect_url = "http://127.0.0.1:8080/oauth/callback/google"
+
+[microsoft]
+enabled = false
+client_id = ""
+client_secret = ""
+redirect_url = "http://127.0.0.1:8080/oauth/callback/microsoft"
+
+[sync]
+calendar_interval_seconds = 180
+mail_interval_seconds = 300
+mutation_retry_interval_seconds = 30
+max_mutation_attempts = 5
+
+[mail]
+max_message_size_bytes = 10485760  # 10 MB limit
+max_body_parse_bytes = 5242880     # 5 MB limit
+auto_approve_confidence_threshold = 0.90
+gmail_label = "FamilyBoard"
+
+[ai]
+# Optional LAN AI endpoint (Ollama / vLLM / LocalAI)
+# Disabled by default. Only accessible via private LAN IPs.
+enabled = false
+endpoint = "http://127.0.0.1:11434/v1"
+model = "llama3:latest"
+timeout_seconds = 3
