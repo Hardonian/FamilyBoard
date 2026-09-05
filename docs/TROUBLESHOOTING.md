@@ -63,7 +63,7 @@ sudo familyboardctl diagnostics /tmp/familyboard-diag.tar.gz
 
 ### Symptom 4: Touch events are inverted, swapped, or offset
 - **Cause:** Screen rotation without coordinate transformation matrix.
-- **Fix:** Refer to [docs/PI_KIOSK.md](file:///c:/Users/scott/GitHub/FamilyBoard/docs/PI_KIOSK.md). Run `xinput list` to find the touch controller device, then apply the appropriate 90/180/270 degree transformation matrix.
+- **Fix:** Refer to [docs/PI_KIOSK.md](PI_KIOSK.md). Run `xinput list` to find the touch controller device, then apply the appropriate 90/180/270 degree transformation matrix.
 
 ---
 

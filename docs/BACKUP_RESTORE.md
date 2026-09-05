@@ -35,8 +35,8 @@ familyboard-backup-20261015_030000.tar.gz
 ├── config/
 │   └── config.toml          # System configuration
 └── tokens/
-    ├── google_scott.json    # OAuth token stores (0600)
-    └── google_michelle.json
+    ├── acc-member-1.json    # OAuth token stores (0600)
+    └── acc-member-2.json
 ```
 
 ---

@@ -69,7 +69,7 @@ $ sudo systemctl restart    $ sudo pkill -f chromium
 ### 2. Kiosk Shows "Account Needs Reconnecting"
 
 * **Cause:** Google OAuth refresh token was revoked or expired after 6 months.
-* **Fix:** Tap gear icon → log into Admin with password → tap **"Reconnect Scott's Google Calendar"** → complete browser OAuth flow.
+* **Fix:** Tap gear icon → log into Admin with password → tap **"Reconnect Calendar"** next to the affected account → complete browser OAuth flow.
 
 ### 3. Screen Is Blank After Power Outage
 

@@ -21,7 +21,7 @@ func TestTokenStorage_PermissionsAndLifecycle(t *testing.T) {
 		t.Fatalf("failed to create token storage: %v", err)
 	}
 
-	accountID := "acc-scott"
+	accountID := "acc-person-1"
 	token := &oauth.StoredToken{
 		AccessToken:  "access-12345",
 		TokenType:    "Bearer",

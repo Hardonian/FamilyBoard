@@ -165,6 +165,6 @@ When `familyboard-setup.sh` runs, it completely re-configures the operating syst
 
 ## First-Run Household Usage
 
-1. **Viewing Schedule:** The 30-day Month view is displayed with Scott and Michelle's color-coded events.
+1. **Viewing Schedule:** The 30-day Month view is displayed with family members' color-coded events.
 2. **Adding an Event:** Tap the large `+ Add Event` button in the header. Tap who it's for, tap an activity chip (e.g. *Soccer*, *Dentist*), tap a date and time, then tap *Add Event*.
 3. **Admin Settings:** Tap the gear icon `⚙` at top right to enter the password-protected admin portal for Google Calendar/Gmail account linking.

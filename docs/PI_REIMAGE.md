@@ -89,4 +89,4 @@ Check appliance health:
 familyboardctl status
 ```
 
-Verify that both Scott and Michelle's accounts remain connected, all calendar events are immediately visible on the kiosk display, and sync resumes seamlessly without requiring re-authentication.
+Verify that all household accounts remain connected, all calendar events are immediately visible on the kiosk display, and sync resumes seamlessly without requiring re-authentication.

@@ -72,7 +72,7 @@ make release-check
 - **Zero Runtime UI Dependencies:** No npm packages, external JS CDNs, or CSS frameworks. All web assets are embedded into the Go binary using `embed.FS`.
 - **Timezone Awareness:** All calendar operations, event calculations, and date parsing must explicitly respect the configured timezone (default: `America/Toronto`).
 - **Resource Constraints:** Keep memory footprint strictly bounded. Remember the target hardware is a Raspberry Pi 3B with 1 GB of shared RAM.
-- **Account Isolation:** Any changes touching authentication, OAuth, tokens, or sync must preserve strict isolation between Scott and Michelle's identities.
+- **Account Isolation:** Any changes touching authentication, OAuth, tokens, or sync must preserve strict isolation between independent household identities.
 
 ---
 

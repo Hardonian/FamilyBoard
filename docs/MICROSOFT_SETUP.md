@@ -81,6 +81,6 @@ sudo systemctl restart familyboard
 ## 6. Authorizing Microsoft Accounts
 
 1. Navigate to `http://<PI_LAN_IP>:8080/admin/accounts`.
-2. Click **Link Microsoft Account** for either Scott or Michelle.
+2. Click **Link Microsoft Account** for the desired household member.
 3. Complete the Microsoft OAuth consent flow.
 4. Verify the status reflects **Active** with Microsoft Graph sync enabled.

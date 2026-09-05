@@ -74,7 +74,7 @@ func main() {
 	// 3. Calendars
 	calFamily := &models.Calendar{
 		ID:                 "cal-family",
-		OAuthAccountID:     "acc-scott",
+		OAuthAccountID:     "acc-member-1",
 		Provider:           "google",
 		ProviderCalendarID: "family@group.calendar.google.com",
 		Name:               "Family Hub",
@@ -119,7 +119,7 @@ func main() {
 
 	calKids := &models.Calendar{
 		ID:                 "cal-kids",
-		OAuthAccountID:     "acc-scott",
+		OAuthAccountID:     "acc-member-1",
 		Provider:           "google",
 		ProviderCalendarID: "kids@group.calendar.google.com",
 		Name:               "Kids & School",
