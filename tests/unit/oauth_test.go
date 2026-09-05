@@ -28,7 +28,7 @@ func TestTokenStorage_PermissionsAndLifecycle(t *testing.T) {
 		RefreshToken: "refresh-67890",
 		Expiry:       time.Now().Add(1 * time.Hour),
 		Scopes:       "calendar email",
-		Email:        "scottrmhardie@gmail.com",
+		Email:        "alex@example.com",
 	}
 
 	// Save token
@@ -37,7 +37,7 @@ func TestTokenStorage_PermissionsAndLifecycle(t *testing.T) {
 	}
 
 	// Verify file permissions on disk (must be 0600 on Unix)
-	p := filepath.Join(tmpDir, "acc-scott.token.json")
+	p := filepath.Join(tmpDir, "acc-member-1.token.json")
 	info, err := os.Stat(p)
 	if err != nil {
 		t.Fatalf("expected token file to exist: %v", err)
@@ -75,7 +75,7 @@ func TestStateManager_HMACAndTampering(t *testing.T) {
 	secret := "test-secret-key-1234567890123456"
 	sm := oauth.NewStateManager(secret)
 
-	stateStr, err := sm.GenerateState("person-scott", "google", "calendar", 5*time.Minute)
+	stateStr, err := sm.GenerateState("person-1", "google", "calendar", 5*time.Minute)
 	if err != nil {
 		t.Fatalf("failed to generate state: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestStateManager_HMACAndTampering(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected valid state, got error: %v", err)
 	}
-	if parsed.PersonID != "person-scott" || parsed.Provider != "google" || parsed.Flow != "calendar" {
+	if parsed.PersonID != "person-1" || parsed.Provider != "google" || parsed.Flow != "calendar" {
 		t.Errorf("unexpected parsed state: %+v", parsed)
 	}
 
@@ -97,7 +97,7 @@ func TestStateManager_HMACAndTampering(t *testing.T) {
 	}
 
 	// Expired state verification
-	expiredState, err := sm.GenerateState("person-scott", "google", "calendar", -1*time.Minute)
+	expiredState, err := sm.GenerateState("person-1", "google", "calendar", -1*time.Minute)
 	if err != nil {
 		t.Fatalf("failed to generate expired state: %v", err)
 	}
@@ -108,21 +108,21 @@ func TestStateManager_HMACAndTampering(t *testing.T) {
 }
 
 func TestAccountIsolation_VerifyAccountIsolation(t *testing.T) {
-	scottEmail := "scottrmhardie@gmail.com"
-	michelleEmail := "michelleyounghardie@gmail.com"
+	member1Email := "alex@example.com"
+	member2Email := "jordan@example.com"
 
-	// Scott matches Scott
-	if err := oauth.VerifyAccountIsolation(scottEmail, "scottrmhardie@gmail.com"); err != nil {
-		t.Errorf("expected matching Scott email to pass: %v", err)
+	// Member 1 matches Member 1
+	if err := oauth.VerifyAccountIsolation(member1Email, "alex@example.com"); err != nil {
+		t.Errorf("expected matching Member 1 email to pass: %v", err)
 	}
 
 	// Case-insensitive match
-	if err := oauth.VerifyAccountIsolation(scottEmail, "ScottRMHardie@Gmail.com"); err != nil {
-		t.Errorf("expected case-insensitive matching Scott email to pass: %v", err)
+	if err := oauth.VerifyAccountIsolation(member1Email, "Alex@Example.Com"); err != nil {
+		t.Errorf("expected case-insensitive matching Member 1 email to pass: %v", err)
 	}
 
-	// Scott attempted with Michelle email -> MUST FAIL
-	err := oauth.VerifyAccountIsolation(scottEmail, michelleEmail)
+	// Member 1 attempted with Member 2 email -> MUST FAIL
+	err := oauth.VerifyAccountIsolation(member1Email, member2Email)
 	if err == nil {
 		t.Fatalf("expected cross-assignment error, got nil")
 	}
@@ -131,8 +131,8 @@ func TestAccountIsolation_VerifyAccountIsolation(t *testing.T) {
 		t.Logf("Got expected mismatch error: %v", err)
 	}
 
-	// Michelle attempted with random email -> MUST FAIL
-	err = oauth.VerifyAccountIsolation(michelleEmail, "stranger@gmail.com")
+	// Member 2 attempted with random email -> MUST FAIL
+	err = oauth.VerifyAccountIsolation(member2Email, "stranger@gmail.com")
 	if err == nil {
 		t.Fatalf("expected stranger email rejection, got nil")
 	}

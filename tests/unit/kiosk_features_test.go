@@ -51,7 +51,7 @@ func TestKiosk_NaturalLanguageParseAPI(t *testing.T) {
 	defer cleanup()
 
 	payload := map[string]string{
-		"text": "Swimming Wednesday 5pm at Aurora Community Centre",
+		"text": "Swimming Wednesday 5pm at Community Centre",
 	}
 	bodyBytes, _ := json.Marshal(payload)
 
@@ -74,8 +74,8 @@ func TestKiosk_NaturalLanguageParseAPI(t *testing.T) {
 		t.Errorf("expected title to contain 'Swimming', got '%v'", resp["title"])
 	}
 
-	if resp["location"] != "Aurora Community Centre" {
-		t.Errorf("expected location 'Aurora Community Centre', got '%v'", resp["location"])
+	if resp["location"] != "Community Centre" {
+		t.Errorf("expected location 'Community Centre', got '%v'", resp["location"])
 	}
 }
 
@@ -89,10 +89,10 @@ func TestKiosk_EventRestoreAPI(t *testing.T) {
 	now := time.Now()
 	_ = store.UpsertOAuthAccount(ctx, &models.OAuthAccount{
 		ID:                "acc-restore-test",
-		PersonID:          "person-scott",
+		PersonID:          "person-1",
 		Provider:          "google",
 		ProviderAccountID: "g-restore-test",
-		VerifiedEmail:     "scottrmhardie@gmail.com",
+		VerifiedEmail:     "alex@example.com",
 		Scopes:            "cal",
 		ExpiresAt:         now.Add(time.Hour),
 		Status:            "active",
@@ -102,7 +102,7 @@ func TestKiosk_EventRestoreAPI(t *testing.T) {
 		ID:                 calID,
 		OAuthAccountID:     "acc-restore-test",
 		Provider:           "google",
-		ProviderCalendarID: "scottrmhardie@gmail.com",
+		ProviderCalendarID: "alex@example.com",
 		Name:               "Family Calendar",
 		EnabledForDisplay:  true,
 		Writable:           true,

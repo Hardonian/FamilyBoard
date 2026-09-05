@@ -63,7 +63,7 @@ func TestDB_MigrationsAndInitialSeeds(t *testing.T) {
 		t.Errorf("expected at least 9 seeded quick templates, got %d (err: %v)", len(tmpls), err)
 	}
 
-	// Verify Scott & Michelle seeded
+	// Verify initial family accounts seeded
 	people, err := store.ListPeople(ctx)
 	if err != nil {
 		t.Fatalf("failed to list people: %v", err)
@@ -72,20 +72,20 @@ func TestDB_MigrationsAndInitialSeeds(t *testing.T) {
 		t.Fatalf("expected 2 people, got %d", len(people))
 	}
 
-	scott, err := store.GetPersonByEmail(ctx, "scottrmhardie@gmail.com")
-	if err != nil || scott == nil {
-		t.Fatalf("expected Scott to exist: %v", err)
+	alex, err := store.GetPersonByEmail(ctx, "alex@example.com")
+	if err != nil || alex == nil {
+		t.Fatalf("expected Alex to exist: %v", err)
 	}
-	if scott.DisplayName != "Scott" {
-		t.Errorf("expected display name Scott, got %s", scott.DisplayName)
+	if alex.DisplayName != "Alex" {
+		t.Errorf("expected display name Alex, got %s", alex.DisplayName)
 	}
 
-	michelle, err := store.GetPersonByEmail(ctx, "michelleyounghardie@gmail.com")
-	if err != nil || michelle == nil {
-		t.Fatalf("expected Michelle to exist: %v", err)
+	jordan, err := store.GetPersonByEmail(ctx, "jordan@example.com")
+	if err != nil || jordan == nil {
+		t.Fatalf("expected Jordan to exist: %v", err)
 	}
-	if michelle.DisplayName != "Michelle" {
-		t.Errorf("expected display name Michelle, got %s", michelle.DisplayName)
+	if jordan.DisplayName != "Jordan" {
+		t.Errorf("expected display name Jordan, got %s", jordan.DisplayName)
 	}
 }
 
@@ -141,15 +141,15 @@ func TestDB_EventCRUDAndRangeQueries(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Create oauth account for Scott
+	// Create oauth account for member 1
 	acc := &models.OAuthAccount{
-		ID:                  "acc-scott",
-		PersonID:            "person-scott",
+		ID:                  "acc-member-1",
+		PersonID:            "person-1",
 		Provider:            "google",
-		ProviderAccountID:   "google-scott-1",
-		VerifiedEmail:       "scottrmhardie@gmail.com",
+		ProviderAccountID:   "google-member-1",
+		VerifiedEmail:       "alex@example.com",
 		Scopes:              "https://www.googleapis.com/auth/calendar",
-		CredentialReference: "tokens/scott.json",
+		CredentialReference: "tokens/member1.json",
 		ExpiresAt:           time.Now().Add(1 * time.Hour),
 		Status:              "active",
 	}
@@ -159,11 +159,11 @@ func TestDB_EventCRUDAndRangeQueries(t *testing.T) {
 
 	// Create calendar
 	cal := &models.Calendar{
-		ID:                 "cal-scott-primary",
+		ID:                 "cal-primary",
 		OAuthAccountID:     acc.ID,
 		Provider:           "google",
-		ProviderCalendarID: "scottrmhardie@gmail.com",
-		Name:               "Scott's Calendar",
+		ProviderCalendarID: "alex@example.com",
+		Name:               "Primary Calendar",
 		Timezone:           "America/Toronto",
 		DisplayColor:       "#3b82f6",
 		EnabledForDisplay:  true,

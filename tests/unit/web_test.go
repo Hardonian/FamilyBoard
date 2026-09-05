@@ -119,10 +119,10 @@ func TestWeb_KioskRedirectAndEventCRUD(t *testing.T) {
 	// Setup mock calendar
 	_ = store.UpsertOAuthAccount(ctx, &models.OAuthAccount{
 		ID:                "acc-test",
-		PersonID:          "person-scott",
+		PersonID:          "person-1",
 		Provider:          "google",
 		ProviderAccountID: "g-1",
-		VerifiedEmail:     "scottrmhardie@gmail.com",
+		VerifiedEmail:     "alex@example.com",
 		Scopes:            "cal",
 		ExpiresAt:         time.Now().Add(time.Hour),
 		Status:            "active",
@@ -132,7 +132,7 @@ func TestWeb_KioskRedirectAndEventCRUD(t *testing.T) {
 		ID:                 calID,
 		OAuthAccountID:     "acc-test",
 		Provider:           "google",
-		ProviderCalendarID: "scottrmhardie@gmail.com",
+		ProviderCalendarID: "alex@example.com",
 		Name:               "Family Calendar",
 		EnabledForDisplay:  true,
 		Writable:           true,
