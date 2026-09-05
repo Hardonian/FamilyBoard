@@ -68,8 +68,8 @@ make prepare-sd SD=/Volumes/bootfs
 
 This automated helper:
 
-1. Copies **[`familyboard-setup.sh`](file:///c:/Users/scott/GitHub/FamilyBoard/familyboard-setup.sh)** to the MicroSD card root.
-2. Copies **[`dist/familyboard-1.0.0-rc.1-linux-arm64.tar.gz`](file:///c:/Users/scott/GitHub/FamilyBoard/dist/familyboard-1.0.0-rc.1-linux-arm64.tar.gz)** to the MicroSD card root.
+1. Copies **[`familyboard-setup.sh`](../familyboard-setup.sh)** to the MicroSD card root.
+2. Copies **[`dist/familyboard-1.0.0-rc.1-linux-arm64.tar.gz`](../dist/familyboard-1.0.0-rc.1-linux-arm64.tar.gz)** to the MicroSD card root.
 3. Configures `cmdline.txt` for automatic execution on first boot.
 
 ---
