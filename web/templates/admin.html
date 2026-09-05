@@ -33,8 +33,8 @@
 
     {{if eq .ActiveTab "accounts"}}
     <div class="admin-card">
-      <h2 class="admin-section-heading">Family Accounts & Provider Identity</h2>
-      <p class="admin-section-sub">Independent Google Calendar and Gmail connections for Scott and Michelle. Google verified identities prevent accidental cross-assignment.</p>
+      <h2 class="admin-section-heading">Family Accounts &amp; Provider Identity</h2>
+      <p class="admin-section-sub">Independent Google Calendar and Microsoft Outlook connections for registered family members. Verified identities prevent accidental cross-assignment.</p>
 
       <table class="admin-table">
         <thead>
@@ -43,7 +43,7 @@
             <th>Expected Email</th>
             <th>Provider Status</th>
             <th>Calendar Action</th>
-            <th>Gmail Action</th>
+            <th>Mail Action</th>
           </tr>
         </thead>
         <tbody>
@@ -60,14 +60,28 @@
               {{end}}
             </td>
             <td>
-              <a href="/admin/oauth/start?person_id={{.ID}}&provider=google&flow=calendar" class="btn btn-primary btn-table-action">
+              {{$prov := index $.ProviderMap .ID}}
+              {{if eq $prov "microsoft"}}
+              <a href="/admin/oauth/start?person_id={{.ID}}&amp;provider=microsoft&amp;flow=calendar" class="btn btn-primary btn-table-action">
+                Connect Outlook Calendar
+              </a>
+              {{else}}
+              <a href="/admin/oauth/start?person_id={{.ID}}&amp;provider=google&amp;flow=calendar" class="btn btn-primary btn-table-action">
                 Connect Google Calendar
               </a>
+              {{end}}
             </td>
             <td>
-              <a href="/admin/oauth/start?person_id={{.ID}}&provider=google&flow=mail" class="btn btn-secondary btn-table-action">
+              {{$prov := index $.ProviderMap .ID}}
+              {{if eq $prov "microsoft"}}
+              <a href="/admin/oauth/start?person_id={{.ID}}&amp;provider=microsoft&amp;flow=mail" class="btn btn-secondary btn-table-action">
+                Connect Outlook Mail
+              </a>
+              {{else}}
+              <a href="/admin/oauth/start?person_id={{.ID}}&amp;provider=google&amp;flow=mail" class="btn btn-secondary btn-table-action">
                 Connect Gmail Intake
               </a>
+              {{end}}
             </td>
           </tr>
           {{end}}

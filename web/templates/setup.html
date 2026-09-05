@@ -59,21 +59,31 @@
       </div>
     </div>
 
-    <!-- Step 4: Primary Family Accounts Information -->
+    <!-- Step 4: Primary Family Accounts & Email Providers -->
     <div class="admin-card">
-      <h3 class="setup-section-title">4. Family Member Accounts</h3>
-      <p class="setup-section-desc">Pre-configured independent family identities:</p>
-      <ul class="setup-members-list">
-        <li class="setup-member-item">
-          <span class="setup-member-dot scott"></span>
-          <strong>Scott:</strong> <code>scottrmhardie@gmail.com</code>
-        </li>
-        <li class="setup-member-item">
-          <span class="setup-member-dot michelle"></span>
-          <strong>Michelle:</strong> <code>michelleyounghardie@gmail.com</code>
-        </li>
-      </ul>
-      <p class="setup-member-note">You can authorize and connect their respective Google accounts immediately after initialization in the Admin dashboard.</p>
+      <h3 class="setup-section-title">4. Family Member Accounts &amp; Email Providers</h3>
+      <p class="setup-section-desc">Enter your family members' names and email addresses. FamilyBoard automatically detects Gmail or Outlook and configures calendar synchronization.</p>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="member1_name">Family Member 1 Name</label>
+          <input type="text" id="member1_name" name="member1_name" class="form-input" value="{{if .Member1Name}}{{.Member1Name}}{{else}}Family Member 1{{end}}" placeholder="e.g. Alex" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="member1_email">Email Address</label>
+          <input type="email" id="member1_email" name="member1_email" class="form-input" value="{{.Member1Email}}" placeholder="e.g. member1@gmail.com or member1@outlook.com" required>
+        </div>
+      </div>
+      <div class="form-row form-group-spaced">
+        <div class="form-group">
+          <label class="form-label" for="member2_name">Family Member 2 Name</label>
+          <input type="text" id="member2_name" name="member2_name" class="form-input" value="{{if .Member2Name}}{{.Member2Name}}{{else}}Family Member 2{{end}}" placeholder="e.g. Jordan" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="member2_email">Email Address</label>
+          <input type="email" id="member2_email" name="member2_email" class="form-input" value="{{.Member2Email}}" placeholder="e.g. member2@gmail.com or member2@outlook.com" required>
+        </div>
+      </div>
+      <p class="setup-member-note">Provider synchronization targets (Google Calendar or Microsoft Outlook) are automatically detected by email domain (<code>@gmail.com</code> vs. <code>@outlook.com</code> / <code>@hotmail.com</code>). You can authorize their accounts in the Admin dashboard.</p>
     </div>
 
     <div class="setup-actions">

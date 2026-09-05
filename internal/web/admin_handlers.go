@@ -224,22 +224,85 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 
 	_ = s.cfg.Save("config.toml")
 
+	ctx := r.Context()
+	now := time.Now()
+
 	// Mark device initialized in DB
-	_ = s.store.SetDeviceMetadata(r.Context(), &models.DeviceMetadata{
+	_ = s.store.SetDeviceMetadata(ctx, &models.DeviceMetadata{
 		DeviceName:    deviceName,
 		Timezone:      tz,
-		InitializedAt: time.Now(),
-		Version:       "v0.9.0",
+		InitializedAt: now,
+		Version:       "v1.0.0",
 		KioskSettings: "{}",
 	})
+
+	// Process dynamic family members and configure calendar sync targets
+	member1Name := strings.TrimSpace(r.FormValue("member1_name"))
+	member1Email := strings.TrimSpace(r.FormValue("member1_email"))
+	member2Name := strings.TrimSpace(r.FormValue("member2_name"))
+	member2Email := strings.TrimSpace(r.FormValue("member2_email"))
+
+	if member1Name == "" {
+		member1Name = "Family Member 1"
+	}
+	if member2Name == "" {
+		member2Name = "Family Member 2"
+	}
+
+	if member1Email != "" {
+		_ = s.store.UpsertPerson(ctx, &models.Person{
+			ID:          "person-1",
+			DisplayName: member1Name,
+			Email:       member1Email,
+			Enabled:     true,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		})
+		prov1 := DetectEmailProvider(member1Email)
+		_ = s.store.UpsertCalendar(ctx, &models.Calendar{
+			ID:                 "cal-member-1",
+			Provider:           prov1,
+			ProviderCalendarID: member1Email,
+			Name:               member1Name,
+			DisplayColor:       "#38bdf8",
+			EnabledForDisplay:  true,
+			Writable:           true,
+			DefaultWriteTarget: true,
+			CreatedAt:          now,
+			UpdatedAt:          now,
+		})
+	}
+
+	if member2Email != "" {
+		_ = s.store.UpsertPerson(ctx, &models.Person{
+			ID:          "person-2",
+			DisplayName: member2Name,
+			Email:       member2Email,
+			Enabled:     true,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		})
+		prov2 := DetectEmailProvider(member2Email)
+		_ = s.store.UpsertCalendar(ctx, &models.Calendar{
+			ID:                 "cal-member-2",
+			Provider:           prov2,
+			ProviderCalendarID: member2Email,
+			Name:               member2Name,
+			DisplayColor:       "#fb7185",
+			EnabledForDisplay:  true,
+			Writable:           true,
+			DefaultWriteTarget: false,
+			CreatedAt:          now,
+			UpdatedAt:          now,
+		})
+	}
 
 	// Create initial admin session
 	token, _ := auth.GenerateSecureToken(32)
 	tokenHash := auth.HashToken(token)
-	now := time.Now()
 	expiresAt := now.Add(24 * time.Hour)
 
-	_ = s.store.CreateSession(r.Context(), &models.Session{
+	_ = s.store.CreateSession(ctx, &models.Session{
 		TokenHash:    tokenHash,
 		UserID:       s.cfg.Auth.AdminUsername,
 		ExpiresAt:    expiresAt,
@@ -260,6 +323,17 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin?tab=accounts", http.StatusSeeOther)
 }
 
+// DetectEmailProvider inspects an email domain and returns "microsoft" for Outlook/Hotmail/Live, or "google" for others.
+func DetectEmailProvider(email string) string {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if strings.HasSuffix(email, "@outlook.com") || strings.HasSuffix(email, "@hotmail.com") ||
+		strings.HasSuffix(email, "@live.com") || strings.HasSuffix(email, "@msn.com") ||
+		strings.HasSuffix(email, "@office365.com") {
+		return "microsoft"
+	}
+	return "google"
+}
+
 func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	tab := r.URL.Query().Get("tab")
 	if tab == "" {
@@ -272,6 +346,11 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	accountsMap := make(map[string]models.OAuthAccount)
 	for _, a := range accounts {
 		accountsMap[a.PersonID] = a
+	}
+
+	providerMap := make(map[string]string)
+	for _, p := range people {
+		providerMap[p.ID] = DetectEmailProvider(p.Email)
 	}
 
 	calendars, _ := s.store.ListCalendars(ctx)
@@ -291,6 +370,7 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		"CSRFToken":             csrfToken,
 		"People":                people,
 		"AccountsMap":           accountsMap,
+		"ProviderMap":           providerMap,
 		"Calendars":             calendars,
 		"Candidates":            candidates,
 		"QueueItems":            queueItems,

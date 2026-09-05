@@ -14,10 +14,10 @@ CREATE TABLE IF NOT EXISTS people (
     updated_at DATETIME NOT NULL
 );
 
--- Seed initial Scott and Michelle family accounts
+-- Seed initial family accounts (placeholder identities configured via setup wizard)
 INSERT OR IGNORE INTO people (id, display_name, email, enabled, created_at, updated_at) VALUES
-('person-scott', 'Scott', 'scottrmhardie@gmail.com', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-('person-michelle', 'Michelle', 'michelleyounghardie@gmail.com', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+('person-1', 'Alex', 'alex@example.com', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('person-2', 'Jordan', 'jordan@example.com', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
 CREATE TABLE IF NOT EXISTS oauth_accounts (
     id TEXT PRIMARY KEY,
