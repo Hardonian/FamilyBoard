@@ -1,8 +1,8 @@
 # Binaries
-familyboard
-familyboardctl
-familyboard-*-arm64
-familyboard-*-amd64
+/familyboard
+/familyboardctl
+/familyboard-*
+/familyboardctl-*
 *.exe
 *.exe~
 *.dll
@@ -32,16 +32,17 @@ config.toml
 *.db-wal
 *.db-shm
 *.db-journal
-familyboard.db*
+/familyboard.db*
 state.json
+/demo_run/*.db*
 
 # Local directories
-data/
-backups/
-diagnostics/
-staging/
-logs/
-credentials/
+/data/
+/backups/
+/diagnostics/
+/staging/
+/logs/
+/credentials/
 
 # System / Editor
 .idea/
