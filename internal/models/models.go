@@ -231,3 +231,17 @@ type TrustedSender struct {
 	Enabled     bool      `json:"enabled"`
 	CreatedAt   time.Time `json:"created_at"`
 }
+
+// QuickTemplate represents a 1-tap event creation shortcut on the kiosk.
+type QuickTemplate struct {
+	ID                     string    `json:"id"`
+	Title                  string    `json:"title"`
+	CalendarID             string    `json:"calendar_id,omitempty"`
+	DefaultDurationMinutes int       `json:"default_duration_minutes"`
+	Icon                   string    `json:"icon"`
+	Category               string    `json:"category"`
+	Location               string    `json:"location,omitempty"`
+	AllDay                 bool      `json:"all_day"`
+	DisplayOrder           int       `json:"display_order"`
+	CreatedAt              time.Time `json:"created_at"`
+}
