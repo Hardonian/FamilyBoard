@@ -53,8 +53,14 @@ func TestDB_MigrationsAndInitialSeeds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get current version: %v", err)
 	}
-	if ver != 2 {
-		t.Errorf("expected migration version 2, got %d", ver)
+	if ver < 3 {
+		t.Errorf("expected migration version >= 3, got %d", ver)
+	}
+
+	// Verify Quick Templates seeded
+	tmpls, err := store.ListQuickTemplates(ctx)
+	if err != nil || len(tmpls) < 9 {
+		t.Errorf("expected at least 9 seeded quick templates, got %d (err: %v)", len(tmpls), err)
 	}
 
 	// Verify Scott & Michelle seeded

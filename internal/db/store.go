@@ -389,6 +389,12 @@ func (s *Store) SoftDeleteEvent(ctx context.Context, id string) error {
 	return err
 }
 
+func (s *Store) RestoreEvent(ctx context.Context, id string) error {
+	now := time.Now()
+	_, err := s.db.ExecContext(ctx, "UPDATE events SET deleted_at = NULL, local_updated_at = ?, status = 'confirmed' WHERE id = ?;", now, id)
+	return err
+}
+
 func (s *Store) CountActiveEvents(ctx context.Context) (int, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM events WHERE deleted_at IS NULL;").Scan(&count)
@@ -828,3 +834,73 @@ func (s *Store) SetDeviceMetadata(ctx context.Context, m *models.DeviceMetadata)
 		return err
 	})
 }
+
+// --- Quick Templates ---
+
+func (s *Store) ListQuickTemplates(ctx context.Context) ([]models.QuickTemplate, error) {
+	query := `SELECT id, title, COALESCE(calendar_id, ''), default_duration_minutes, icon, category, location, all_day, display_order, created_at
+		FROM quick_templates ORDER BY display_order ASC, title ASC;`
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("list quick templates: %w", err)
+	}
+	defer rows.Close()
+
+	var list []models.QuickTemplate
+	for rows.Next() {
+		var t models.QuickTemplate
+		var allDayInt int
+		if err := rows.Scan(&t.ID, &t.Title, &t.CalendarID, &t.DefaultDurationMinutes, &t.Icon, &t.Category, &t.Location, &allDayInt, &t.DisplayOrder, &t.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan quick template: %w", err)
+		}
+		t.AllDay = (allDayInt == 1)
+		list = append(list, t)
+	}
+	return list, rows.Err()
+}
+
+func (s *Store) GetQuickTemplate(ctx context.Context, id string) (*models.QuickTemplate, error) {
+	query := `SELECT id, title, COALESCE(calendar_id, ''), default_duration_minutes, icon, category, location, all_day, display_order, created_at
+		FROM quick_templates WHERE id = ?;`
+	row := s.db.QueryRowContext(ctx, query, id)
+	var t models.QuickTemplate
+	var allDayInt int
+	if err := row.Scan(&t.ID, &t.Title, &t.CalendarID, &t.DefaultDurationMinutes, &t.Icon, &t.Category, &t.Location, &allDayInt, &t.DisplayOrder, &t.CreatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get quick template: %w", err)
+	}
+	t.AllDay = (allDayInt == 1)
+	return &t, nil
+}
+
+func (s *Store) UpsertQuickTemplate(ctx context.Context, t *models.QuickTemplate) error {
+	query := `INSERT INTO quick_templates (id, title, calendar_id, default_duration_minutes, icon, category, location, all_day, display_order, created_at)
+		VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			title = excluded.title,
+			calendar_id = excluded.calendar_id,
+			default_duration_minutes = excluded.default_duration_minutes,
+			icon = excluded.icon,
+			category = excluded.category,
+			location = excluded.location,
+			all_day = excluded.all_day,
+			display_order = excluded.display_order;`
+	now := time.Now()
+	if t.CreatedAt.IsZero() {
+		t.CreatedAt = now
+	}
+	allDay := 0
+	if t.AllDay {
+		allDay = 1
+	}
+	_, err := s.db.ExecContext(ctx, query, t.ID, t.Title, t.CalendarID, t.DefaultDurationMinutes, t.Icon, t.Category, t.Location, allDay, t.DisplayOrder, t.CreatedAt)
+	return err
+}
+
+func (s *Store) DeleteQuickTemplate(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM quick_templates WHERE id = ?;", id)
+	return err
+}
+

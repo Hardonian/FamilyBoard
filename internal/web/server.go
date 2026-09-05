@@ -13,6 +13,7 @@ import (
 	"github.com/Hardonian/FamilyBoard/internal/auth"
 	"github.com/Hardonian/FamilyBoard/internal/config"
 	"github.com/Hardonian/FamilyBoard/internal/db"
+	"github.com/Hardonian/FamilyBoard/internal/mail/parser"
 	"github.com/Hardonian/FamilyBoard/internal/oauth"
 	"github.com/Hardonian/FamilyBoard/internal/queue"
 	calsync "github.com/Hardonian/FamilyBoard/internal/sync"
@@ -29,6 +30,7 @@ type Server struct {
 	msOAuth      *oauth.MicrosoftClient
 	syncEngine   *calsync.Engine
 	queueEngine  *queue.Engine
+	nlParser     *parser.NaturalLanguageParser
 	templates    map[string]*template.Template
 	sseMu        sync.Mutex
 	sseClients   map[chan string]struct{}
@@ -55,6 +57,7 @@ func NewServer(
 		msOAuth:      msOAuth,
 		syncEngine:   syncEngine,
 		queueEngine:  queueEngine,
+		nlParser:     parser.NewNaturalLanguageParser(cfg.Server.Timezone),
 		sseClients:   make(map[chan string]struct{}),
 		mux:          http.NewServeMux(),
 	}
