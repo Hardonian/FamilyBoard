@@ -1,6 +1,6 @@
 .PHONY: all fmt vet lint test test-race build build-arm64 pi-bootstrap-check release-check clean
 
-VERSION ?= 0.9.0
+VERSION ?= 1.0.0
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
 DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown")
 LDFLAGS = -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.buildDate=$(DATE)
@@ -41,7 +41,7 @@ pi-bootstrap-check:
 	@bash -n deploy/pi/kiosk/familyboard-kiosk.sh
 	@echo "All shell scripts passed syntax checks."
 
-release-check: fmt vet test build build-arm64 pi-bootstrap-check
+release-check: fmt vet test test-race build build-arm64 pi-bootstrap-check
 	@echo "=== FamilyBoard Canonical Release Gate PASSED ==="
 
 clean:
