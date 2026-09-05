@@ -571,9 +571,7 @@ func (s *Server) handleOAuthCallbackGoogle(w http.ResponseWriter, r *http.Reques
 			name = userInfo.Email
 		}
 		color := "#3b82f6"
-		if person, err := s.store.GetPerson(r.Context(), parsedState.PersonID); err == nil && person != nil && person.Color != "" {
-			color = person.Color
-		} else if parsedState.PersonID == "person-2" {
+		if parsedState.PersonID == "person-2" {
 			color = "#f472b6"
 		}
 
