@@ -94,9 +94,7 @@ systemctl enable familyboard.service
 systemctl restart familyboard.service
 
 # 7. Configure Chromium Kiosk Autostart (Idempotent Managed Block)
-echo "Configuring kiosk autostart..."
-mkdir -p /home/familyboard-kiosk/.config/labwc
-mkdir -p /home/familyboard-kiosk/.config/lxsession/LXDE-pi
+echo "Configuring kiosk autostart across desktop environments..."
 install -m 0755 "$SCRIPT_DIR/kiosk/familyboard-kiosk.sh" /usr/local/bin/familyboard-kiosk.sh
 
 MANAGED_START="# BEGIN FAMILYBOARD MANAGED KIOSK"
@@ -117,9 +115,26 @@ update_autostart_file() {
   echo "$MANAGED_BLOCK" >> "$target"
 }
 
-# Apply to Wayland (labwc) and X11 configurations
-update_autostart_file "/home/familyboard-kiosk/.config/labwc/autostart"
-update_autostart_file "/home/familyboard-kiosk/.config/lxsession/LXDE-pi/autostart"
-chown -R familyboard-kiosk:familyboard-kiosk /home/familyboard-kiosk/.config || true
+# Collect target users (dedicated kiosk user, invoking sudo user, and standard pi user)
+TARGET_USERS=("familyboard-kiosk")
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+  TARGET_USERS+=("$SUDO_USER")
+fi
+if [ -d "/home/pi" ] && [[ ! " ${TARGET_USERS[*]} " =~ " pi " ]]; then
+  TARGET_USERS+=("pi")
+fi
+
+for u in "${TARGET_USERS[@]}"; do
+  user_home=$(getent passwd "$u" 2>/dev/null | cut -d: -f6 || echo "")
+  if [ -n "$user_home" ] && [ -d "$user_home" ]; then
+    # Wayland (Debian 12 Bookworm / labwc)
+    update_autostart_file "$user_home/.config/labwc/autostart"
+    # X11 (Debian 11 Bullseye / LXDE-pi)
+    update_autostart_file "$user_home/.config/lxsession/LXDE-pi/autostart"
+    # Openbox / lightweight window managers
+    update_autostart_file "$user_home/.config/openbox/autostart"
+    chown -R "$u:$u" "$user_home/.config" 2>/dev/null || true
+  fi
+done
 
 echo "=== FamilyBoard Installation Complete ==="

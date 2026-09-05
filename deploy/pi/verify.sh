@@ -57,6 +57,35 @@ if command -v vcgencmd >/dev/null 2>&1; then
   else
     report "WARN" "Throttling" "Throttling detected: $THROTTLE. Check power supply."
   fi
+
+  TEMP=$(vcgencmd measure_temp 2>/dev/null | cut -d= -f2 || echo "")
+  if [ -n "$TEMP" ]; then
+    report "PASS" "SoC Temperature" "$TEMP"
+  fi
+fi
+
+# Display Resolution Check
+if command -v fbset >/dev/null 2>&1; then
+  RES=$(fbset 2>/dev/null | grep -oE 'geometry [0-9]+ [0-9]+' | sed 's/geometry //' || echo "")
+  if [ -n "$RES" ]; then
+    report "PASS" "Framebuffer" "$RES"
+  fi
+elif command -v xrandr >/dev/null 2>&1 && [ -n "${DISPLAY:-}" ]; then
+  RES=$(xrandr --current 2>/dev/null | grep '\*' | awk '{print $1}' | head -n1 || echo "")
+  if [ -n "$RES" ]; then
+    report "PASS" "Display" "$RES"
+  fi
+fi
+
+# Time Synchronization
+if command -v timedatectl >/dev/null 2>&1; then
+  NTP_SYNC=$(timedatectl show -p NTPSynchronized --value 2>/dev/null || echo "")
+  TZ=$(timedatectl show -p Timezone --value 2>/dev/null || echo "")
+  if [ "$NTP_SYNC" = "yes" ]; then
+    report "PASS" "Time Sync" "NTP synchronized (Timezone: ${TZ:-UTC})"
+  else
+    report "WARN" "Time Sync" "NTP not yet synchronized (Timezone: ${TZ:-UTC})"
+  fi
 fi
 
 # 2. OS & Storage

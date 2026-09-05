@@ -41,6 +41,7 @@ state.json
 /backups/
 /diagnostics/
 /staging/
+/dist/
 /logs/
 /credentials/
 

@@ -18,11 +18,15 @@ for i in $(seq 1 60); do
   sleep 1
 done
 
-# 2. Disable screen saver and DPMS on X11 if present
+# 2. Disable screen saver, DPMS, and hide mouse pointer on touch display
 if command -v xset >/dev/null 2>&1 && [ -n "${DISPLAY:-}" ]; then
   xset s off || true
   xset -dpms || true
   xset s noblank || true
+fi
+if command -v unclutter >/dev/null 2>&1 && [ -n "${DISPLAY:-}" ]; then
+  pkill unclutter 2>/dev/null || true
+  unclutter -idle 1 -root &
 fi
 
 # 3. Detect Chromium executable

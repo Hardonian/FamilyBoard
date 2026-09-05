@@ -204,6 +204,7 @@ DEPS=(
   "jq"
   "sqlite3"
   "chromium-browser"
+  "unclutter"
 )
 
 # If chromium-browser is virtual or transitional, fallback to chromium
@@ -216,7 +217,7 @@ done
 
 if [ ${#INSTALL_PKGS[@]} -gt 0 ]; then
   echo "Installing required packages: ${INSTALL_PKGS[*]}..."
-  apt-get install -y "${INSTALL_PKGS[@]}" || apt-get install -y chromium ca-certificates curl jq sqlite3
+  apt-get install -y "${INSTALL_PKGS[@]}" || apt-get install -y chromium ca-certificates curl jq sqlite3 unclutter || true
 fi
 
 # 9. Application Installation
@@ -230,7 +231,7 @@ cat <<EOF > "$STATE_FILE"
   "bootstrap_stage": "installed",
   "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
   "pi_model": "$PI_MODEL",
-  "version": "0.9.0"
+  "version": "1.0.0-rc.1"
 }
 EOF
 

@@ -10,7 +10,7 @@ endif
 
 .PHONY: all fmt vet lint test test-race build build-arm64 pi-bootstrap-check release-check clean
 
-VERSION ?= 1.0.0
+VERSION ?= 1.0.0-rc.1
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
 DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown")
 LDFLAGS = -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.buildDate=$(DATE)
@@ -42,6 +42,9 @@ build-arm64:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o familyboard-linux-arm64 ./cmd/familyboard
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o familyboardctl-linux-arm64 ./cmd/familyboardctl
 
+package-arm64: build-arm64
+	@"$(BASH_BIN)" scripts/package_release.sh $(VERSION)
+
 pi-bootstrap-check:
 	@echo "Checking deploy/pi shell scripts syntax..."
 	@"$(BASH_BIN)" -n deploy/pi/bootstrap.sh
@@ -59,4 +62,4 @@ release-check: fmt vet test test-race build build-arm64 pi-bootstrap-check
 
 clean:
 	rm -f familyboard familyboardctl familyboard.exe familyboardctl.exe familyboard-linux-arm64 familyboardctl-linux-arm64
-	rm -rf backups/ diagnostics/ staging/
+	rm -rf backups/ diagnostics/ staging/ dist/
