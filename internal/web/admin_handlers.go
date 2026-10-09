@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Hardonian/FamilyBoard/internal/auth"
+	"github.com/Hardonian/FamilyBoard/internal/hardware"
 	"github.com/Hardonian/FamilyBoard/internal/models"
 	"github.com/Hardonian/FamilyBoard/internal/oauth"
 )
@@ -364,6 +365,17 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 
 	csrfToken, _ := auth.GenerateSecureToken(16)
 
+	hwInfo := s.hwMgr.GetSystemInfo(ctx)
+	wifiStatus := s.hwMgr.Wifi().GetStatus(ctx)
+	btStatus := s.hwMgr.Bluetooth().GetStatus(ctx)
+	beacons := s.hwMgr.Bluetooth().ListBeacons()
+	var wifiAPs []hardware.WifiAccessPoint
+	var btDevices []hardware.BluetoothDevice
+	if tab == "hardware" {
+		wifiAPs, _ = s.hwMgr.Wifi().ScanNetworks(ctx)
+		btDevices, _ = s.hwMgr.Bluetooth().ScanDevices(ctx)
+	}
+
 	data := map[string]interface{}{
 		"Title":                 "Admin Dashboard",
 		"Theme":                 "dark",
@@ -379,6 +391,12 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		"PendingQueueCount":     pendingQueueCount,
 		"PendingConflictCount":  len(conflicts),
 		"ActiveEventCount":      activeEventCount,
+		"HardwareInfo":          hwInfo,
+		"WifiStatus":            wifiStatus,
+		"WifiAPs":               wifiAPs,
+		"BluetoothStatus":       btStatus,
+		"BluetoothDevices":      btDevices,
+		"FamilyBeacons":         beacons,
 		"Message":               r.URL.Query().Get("msg"),
 		"Error":                 r.URL.Query().Get("err"),
 	}

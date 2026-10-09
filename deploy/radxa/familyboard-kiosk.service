@@ -1,0 +1,28 @@
+[Unit]
+Description=FamilyBoard Fullscreen Wayland Kiosk
+Documentation=https://github.com/Hardonian/FamilyBoard
+After=familyboard.service systemd-user-sessions.service plymouth-quit-wait.service
+Wants=familyboard.service
+Conflicts=getty@tty7.service
+
+[Service]
+User=familyboard
+Group=familyboard
+PAMName=login
+WorkingDirectory=/var/lib/familyboard
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+Environment=WLR_LIBINPUT_NO_CONFIG=1
+Environment=MOZ_ENABLE_WAYLAND=1
+ExecStart=/usr/bin/cage -s -- /usr/local/bin/familyboard-kiosk.sh
+Restart=always
+RestartSec=2s
+
+# TTY setup for DRM/KMS direct access
+TTYPath=/dev/tty7
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=familyboard-kiosk
+
+[Install]
+WantedBy=graphical.target

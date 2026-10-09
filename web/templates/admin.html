@@ -11,7 +11,8 @@
       <a href="/admin?tab=queue" class="admin-nav-item {{if eq .ActiveTab "queue"}}active{{end}}">Mutation Queue ({{.PendingQueueCount}})</a>
       <a href="/admin?tab=senders" class="admin-nav-item {{if eq .ActiveTab "senders"}}active{{end}}">Trusted Senders</a>
       <a href="/admin?tab=audit" class="admin-nav-item {{if eq .ActiveTab "audit"}}active{{end}}">Audit Log</a>
-      <a href="/admin?tab=system" class="admin-nav-item {{if eq .ActiveTab "system"}}active{{end}}">System & Diagnostics</a>
+      <a href="/admin?tab=hardware" class="admin-nav-item {{if eq .ActiveTab "hardware"}}active{{end}}">Hardware &amp; Network</a>
+      <a href="/admin?tab=system" class="admin-nav-item {{if eq .ActiveTab "system"}}active{{end}}">System &amp; Diagnostics</a>
     </nav>
     <div class="admin-sidebar-footer">
       <a href="/admin/lock" class="btn btn-primary btn-return-kiosk">← Return to FamilyBoard</a>
@@ -280,6 +281,293 @@
           {{end}}
         </tbody>
       </table>
+    </div>
+    {{end}}
+
+    {{if eq .ActiveTab "hardware"}}
+    <div class="admin-card">
+      <div class="admin-card-header-flex">
+        <div>
+          <h2 class="admin-section-heading">Radxa Dragon Appliance Hardware &amp; Diagnostics</h2>
+          <p class="admin-section-sub">Qualcomm Snapdragon QCS6490 SoC telemetry, onboard thermal sensors, and system resources.</p>
+        </div>
+        <span class="status-badge {{if .HardwareInfo.IsRadxaDragon}}status-badge-home{{end}}">
+          {{if .HardwareInfo.IsRadxaDragon}}Radxa Dragon Native ARM64{{else}}Host Emulation{{end}}
+        </span>
+      </div>
+
+      <div class="admin-diagnostics-grid">
+        <div class="admin-diag-card">
+          <div class="admin-diag-label">Appliance Model</div>
+          <div class="admin-diag-val">{{.HardwareInfo.HardwareModel}}</div>
+          <small class="admin-diag-sub">{{.HardwareInfo.Architecture}} · {{.HardwareInfo.Kernel}}</small>
+        </div>
+        <div class="admin-diag-card">
+          <div class="admin-diag-label">CPU Temperature</div>
+          <div class="admin-diag-val {{if lt .HardwareInfo.CPUTempCelsius 65.0}}success{{else if lt .HardwareInfo.CPUTempCelsius 80.0}}warning{{else}}danger{{end}}">
+            {{printf "%.1f" .HardwareInfo.CPUTempCelsius}}&deg;C
+          </div>
+          <small class="admin-diag-sub">{{.HardwareInfo.NumCPU}} Cores (Qualcomm Kryo 670)</small>
+        </div>
+        <div class="admin-diag-card">
+          <div class="admin-diag-label">Memory Utilization</div>
+          <div class="admin-diag-val">{{.HardwareInfo.MemoryUsedMB}} / {{.HardwareInfo.MemoryTotalMB}} MB</div>
+          <small class="admin-diag-sub">{{printf "%.1f" .HardwareInfo.MemoryPercent}}% allocated</small>
+        </div>
+        <div class="admin-diag-card">
+          <div class="admin-diag-label">Internal Storage</div>
+          <div class="admin-diag-val">{{printf "%.1f" .HardwareInfo.DiskUsedGB}} / {{printf "%.1f" .HardwareInfo.DiskTotalGB}} GB</div>
+          <small class="admin-diag-sub">{{printf "%.1f" .HardwareInfo.DiskPercent}}% used</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Wi-Fi 6E Management & Onboarding Hotspot -->
+    <div class="admin-card">
+      <div class="admin-card-header-flex">
+        <div>
+          <h2 class="admin-section-heading">Wi-Fi 6E Wireless Networking</h2>
+          <p class="admin-section-sub">NetworkManager wireless interface (wlan0) with plug-and-play onboarding hotspot fallback.</p>
+        </div>
+        <div class="admin-action-group">
+          <button type="button" id="btn-rescan-wifi" class="btn btn-secondary btn-sm" aria-label="Scan available Wi-Fi networks">Scan Networks</button>
+          <button type="button" id="btn-toggle-hotspot" class="btn btn-secondary btn-sm" data-active="{{.WifiStatus.HotspotActive}}" aria-label="Toggle setup hotspot">
+            {{if .WifiStatus.HotspotActive}}Disable Setup Hotspot{{else}}Enable Setup Hotspot{{end}}
+          </button>
+        </div>
+      </div>
+
+      <div class="admin-status-strip">
+        <div class="status-strip-item">
+          <span class="status-strip-label">Status:</span>
+          {{if .WifiStatus.Connected}}
+          <span class="status-badge status-badge-home">Connected</span>
+          {{else}}
+          <span class="status-badge offline">Disconnected</span>
+          {{end}}
+        </div>
+        <div class="status-strip-item">
+          <span class="status-strip-label">Network (SSID):</span>
+          <strong>{{if .WifiStatus.SSID}}{{.WifiStatus.SSID}}{{else}}None{{end}}</strong>
+        </div>
+        <div class="status-strip-item">
+          <span class="status-strip-label">Appliance IP:</span>
+          <code>{{if .WifiStatus.IPAddress}}{{.WifiStatus.IPAddress}}{{else}}--{{end}}</code>
+        </div>
+        <div class="status-strip-item">
+          <span class="status-strip-label">Signal:</span>
+          <span>{{.WifiStatus.SignalPercent}}%</span>
+        </div>
+        {{if .WifiStatus.HotspotActive}}
+        <div class="status-strip-item">
+          <span class="status-strip-label">Hotspot Active:</span>
+          <span class="status-badge status-badge-default">FamilyBoard-Setup (192.168.4.1)</span>
+        </div>
+        {{end}}
+      </div>
+
+      <h3 class="admin-subheading">Available Wireless Networks</h3>
+      <div id="wifi-networks-container">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>SSID</th>
+              <th>Signal</th>
+              <th>Security</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="wifi-networks-tbody">
+            {{range .WifiAPs}}
+            <tr>
+              <td><strong>{{.SSID}}</strong></td>
+              <td>{{.SignalPercent}}%</td>
+              <td><span class="badge-subtle">{{.Security}}</span></td>
+              <td>
+                {{if .IsCurrent}}
+                <span class="status-badge status-badge-home">Active</span>
+                {{else}}
+                <span class="admin-text-muted">Available</span>
+                {{end}}
+              </td>
+              <td>
+                {{if .IsCurrent}}
+                <span class="admin-text-muted">Connected</span>
+                {{else}}
+                <button type="button" class="btn btn-primary btn-sm btn-connect-wifi" data-ssid="{{.SSID}}" data-security="{{.Security}}" aria-label="Connect to {{.SSID}}">
+                  Connect
+                </button>
+                {{end}}
+              </td>
+            </tr>
+            {{else}}
+            <tr><td colspan="5" class="admin-empty-cell">Click "Scan Networks" to discover nearby Wi-Fi access points.</td></tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Connect to Wi-Fi Dialog / Inline Box -->
+      <div id="wifi-connect-box" class="admin-connect-box hidden">
+        <h4 id="wifi-connect-title">Connect to Wi-Fi</h4>
+        <form id="wifi-connect-form" class="admin-inline-form">
+          <input type="hidden" id="wifi-connect-ssid" name="ssid" value="">
+          <div class="form-group-compact">
+            <label for="wifi-connect-password">Passphrase / Security Key:</label>
+            <input type="password" id="wifi-connect-password" name="password" class="form-input" placeholder="Enter Wi-Fi password" aria-label="Wi-Fi password" title="Wi-Fi password">
+          </div>
+          <div class="form-actions-inline">
+            <button type="submit" id="btn-submit-wifi-connect" class="btn btn-primary btn-sm">Join Network</button>
+            <button type="button" id="btn-cancel-wifi-connect" class="btn btn-secondary btn-sm">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Bluetooth 5.2 & Household Presence Detection -->
+    <div class="admin-card">
+      <div class="admin-card-header-flex">
+        <div>
+          <h2 class="admin-section-heading">Bluetooth 5.2 &amp; Household Presence Detection</h2>
+          <p class="admin-section-sub">Passive BLE advertisement beacon tracking. Detect family members' phones or smartwatches without cloud services or internet.</p>
+        </div>
+        <div class="admin-action-group">
+          <button type="button" id="btn-toggle-bluetooth" class="btn btn-secondary btn-sm" data-powered="{{.BluetoothStatus.Powered}}" aria-label="Toggle Bluetooth adapter power">
+            {{if .BluetoothStatus.Powered}}Turn Bluetooth Off{{else}}Turn Bluetooth On{{end}}
+          </button>
+          <button type="button" id="btn-rescan-bluetooth" class="btn btn-secondary btn-sm" aria-label="Scan nearby Bluetooth devices">Scan Devices</button>
+        </div>
+      </div>
+
+      <div class="admin-status-strip">
+        <div class="status-strip-item">
+          <span class="status-strip-label">Adapter:</span>
+          <span>{{.BluetoothStatus.Name}}</span>
+        </div>
+        <div class="status-strip-item">
+          <span class="status-strip-label">MAC Address:</span>
+          <code>{{.BluetoothStatus.MACAddress}}</code>
+        </div>
+        <div class="status-strip-item">
+          <span class="status-strip-label">Power:</span>
+          {{if .BluetoothStatus.Powered}}
+          <span class="status-badge status-badge-home">Powered On</span>
+          {{else}}
+          <span class="status-badge offline">Powered Off</span>
+          {{end}}
+        </div>
+      </div>
+
+      <h3 class="admin-subheading">Registered Family Presence Beacons</h3>
+      <p class="admin-section-sub-spaced">When a registered device is detected within radio range (RSSI &gt; -85 dBm), FamilyBoard marks the member as Home on the kiosk header.</p>
+
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Family Member</th>
+            <th>Device Name</th>
+            <th>Bluetooth MAC</th>
+            <th>Presence</th>
+            <th>Signal (RSSI)</th>
+            <th>Last Detected</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="presence-beacons-tbody">
+          {{range .FamilyBeacons}}
+          <tr>
+            <td><strong>{{.PersonName}}</strong></td>
+            <td>{{.DeviceName}}</td>
+            <td><code>{{.MACAddress}}</code></td>
+            <td>
+              {{if .IsPresent}}
+              <span class="status-badge status-badge-home">Home</span>
+              {{else}}
+              <span class="status-badge offline">Away</span>
+              {{end}}
+            </td>
+            <td>{{.RSSI}} dBm</td>
+            <td><small>{{.LastSeen.Format "Jan 02 15:04"}}</small></td>
+            <td>
+              <button type="button" class="btn btn-danger btn-sm btn-delete-beacon" data-id="{{.ID}}" aria-label="Remove presence beacon for {{.PersonName}}">
+                Remove
+              </button>
+            </td>
+          </tr>
+          {{else}}
+          <tr><td colspan="7" class="admin-empty-cell">No presence beacons registered. Add family members below.</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+
+      <!-- Register New Beacon Form -->
+      <div class="admin-beacon-register-box">
+        <h4 class="admin-subheading-small">Register Family Member Device for Presence</h4>
+        <form id="form-register-beacon" class="admin-form-grid">
+          <div class="form-group-compact">
+            <label for="beacon-person-name">Family Member Name:</label>
+            <input type="text" id="beacon-person-name" name="person_name" class="form-input" placeholder="e.g. Alex" required aria-label="Family Member Name" title="Family Member Name">
+          </div>
+          <div class="form-group-compact">
+            <label for="beacon-device-name">Device Name:</label>
+            <input type="text" id="beacon-device-name" name="device_name" class="form-input" placeholder="e.g. Alex's Phone" required aria-label="Device Name" title="Device Name">
+          </div>
+          <div class="form-group-compact">
+            <label for="beacon-mac-address">Bluetooth MAC Address:</label>
+            <input type="text" id="beacon-mac-address" name="mac_address" class="form-input" placeholder="e.g. DC:A6:32:01:4F:18" required aria-label="Bluetooth MAC Address" title="Bluetooth MAC Address">
+          </div>
+          <div class="form-group-compact form-group-action">
+            <button type="submit" class="btn btn-primary btn-sm">Add Presence Tracker</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Discovered Nearby Bluetooth Devices -->
+      <details class="admin-collapsible-section">
+        <summary class="admin-collapsible-summary">Nearby Discovered Devices (Click to inspect or pair)</summary>
+        <table class="admin-table admin-table-compact">
+          <thead>
+            <tr>
+              <th>Device Name</th>
+              <th>MAC Address</th>
+              <th>RSSI</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="bluetooth-devices-tbody">
+            {{range .BluetoothDevices}}
+            <tr>
+              <td><strong>{{if .Name}}{{.Name}}{{else}}Unknown BLE Device{{end}}</strong></td>
+              <td><code>{{.MACAddress}}</code></td>
+              <td>{{.RSSI}} dBm</td>
+              <td>
+                <button type="button" class="btn btn-secondary btn-sm btn-quick-add-beacon" data-mac="{{.MACAddress}}" data-name="{{.Name}}" aria-label="Use {{.MACAddress}} as beacon">
+                  Use for Presence
+                </button>
+              </td>
+            </tr>
+            {{else}}
+            <tr><td colspan="4" class="admin-empty-cell">Click "Scan Devices" to search for nearby Bluetooth radios.</td></tr>
+            {{end}}
+          </tbody>
+        </table>
+      </details>
+    </div>
+
+    <!-- Appliance Power & System Controls -->
+    <div class="admin-card">
+      <h2 class="admin-section-heading">Radxa Dragon Appliance Power &amp; Lifecycle</h2>
+      <p class="admin-section-sub">Safely restart or power down the Qualcomm single-board computer.</p>
+
+      <div class="admin-footer-actions">
+        <button type="button" id="btn-reboot-appliance" class="btn btn-secondary" aria-label="Reboot FamilyBoard Appliance">
+          Restart Appliance
+        </button>
+        <button type="button" id="btn-shutdown-appliance" class="btn btn-danger" aria-label="Shut down FamilyBoard Appliance">
+          Shut Down Appliance
+        </button>
+      </div>
     </div>
     {{end}}
 

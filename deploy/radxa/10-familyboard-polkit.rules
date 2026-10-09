@@ -1,0 +1,17 @@
+/* Polkit rules for FamilyBoard appliance on Radxa Dragon
+ * Allows the non-root familyboard user to manage Wi-Fi and Bluetooth
+ */
+polkit.addRule(function(action, subject) {
+    if (subject.user === "familyboard") {
+        if (action.id.indexOf("org.freedesktop.NetworkManager.") === 0) {
+            return polkit.Result.YES;
+        }
+        if (action.id.indexOf("org.bluez.") === 0) {
+            return polkit.Result.YES;
+        }
+        if (action.id === "org.freedesktop.login1.reboot" ||
+            action.id === "org.freedesktop.login1.power-off") {
+            return polkit.Result.YES;
+        }
+    }
+});

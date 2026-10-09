@@ -42,8 +42,22 @@ build-arm64:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o familyboard-linux-arm64 ./cmd/familyboard
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o familyboardctl-linux-arm64 ./cmd/familyboardctl
 
+build-radxa: build-arm64
+	@echo "Native Radxa Dragon ARM64 binaries built successfully."
+
 package-arm64: build-arm64
 	@"$(BASH_BIN)" scripts/package_release.sh $(VERSION)
+
+package-radxa: build-radxa
+	@mkdir -p dist
+	@tar -czf dist/familyboard-radxa-dragon-$(VERSION).tar.gz familyboard-linux-arm64 familyboardctl-linux-arm64 deploy/radxa/ config.example.toml
+	@echo "Generated dist/familyboard-radxa-dragon-$(VERSION).tar.gz"
+
+radxa-check:
+	@echo "Checking deploy/radxa shell scripts syntax..."
+	@"$(BASH_BIN)" -n deploy/radxa/familyboard-kiosk.sh
+	@"$(BASH_BIN)" -n deploy/radxa/setup-radxa.sh
+	@echo "All Radxa Dragon shell scripts passed syntax checks."
 
 pi-bootstrap-check:
 	@echo "Checking deploy/pi shell scripts syntax..."
@@ -63,7 +77,7 @@ pi-bootstrap-check:
 prepare-sd:
 	@"$(BASH_BIN)" scripts/prepare_sd.sh $(SD)
 
-release-check: fmt vet test test-race build build-arm64 pi-bootstrap-check
+release-check: fmt vet test test-race build build-arm64 radxa-check pi-bootstrap-check
 	@echo "=== FamilyBoard Canonical Release Gate PASSED ==="
 
 clean:

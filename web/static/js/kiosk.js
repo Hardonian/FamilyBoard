@@ -67,6 +67,7 @@
     setInterval(updateClock, 15000);
 
     setupNetworkMonitoring();
+    setupHardwareTelemetry();
     setupNavigation();
     setupQuickAddModal();
     setupEventDetailModal();
@@ -110,6 +111,70 @@
     if (!navigator.onLine) {
       updateStatus('offline', 'Offline · cached');
     }
+  }
+
+  function escapeKioskText(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  // --- Radxa Dragon Hardware & Presence Telemetry ---
+  function setupHardwareTelemetry() {
+    const elWifiBadge = document.getElementById('wifi-badge');
+    const elWifiStatusText = document.getElementById('wifi-status-text');
+    const elPresenceBadge = document.getElementById('presence-badge');
+    const elPresenceContainer = document.getElementById('presence-members-container');
+
+    async function pollHardware() {
+      try {
+        const wifiResp = await fetch('/api/system/wifi');
+        if (wifiResp.ok) {
+          const wifi = await wifiResp.json();
+          if (elWifiBadge && elWifiStatusText) {
+            if (wifi.hotspot_active) {
+              elWifiBadge.classList.add('hotspot');
+              elWifiBadge.title = 'Setup Hotspot Active: ' + (wifi.hotspot_ssid || 'FamilyBoard-Setup');
+              elWifiStatusText.textContent = 'Setup AP';
+            } else if (wifi.connected) {
+              elWifiBadge.classList.remove('hotspot');
+              elWifiBadge.title = `Wi-Fi: ${wifi.ssid} (${wifi.signal_percent}%, IP: ${wifi.ip_address || '--'})`;
+              elWifiStatusText.textContent = wifi.ssid || 'Wi-Fi';
+            } else {
+              elWifiBadge.classList.remove('hotspot');
+              elWifiBadge.title = 'Wi-Fi Disconnected';
+              elWifiStatusText.textContent = 'Offline';
+            }
+          }
+        }
+      } catch (_) {}
+
+      try {
+        const presResp = await fetch('/api/system/presence');
+        if (presResp.ok) {
+          const beacons = await presResp.json();
+          if (elPresenceBadge && elPresenceContainer) {
+            const presentMembers = beacons.filter(b => b.is_present);
+            if (presentMembers.length > 0) {
+              elPresenceBadge.classList.remove('hidden');
+              elPresenceContainer.innerHTML = presentMembers.map(m =>
+                `<span class="presence-chip" title="${escapeKioskText(m.person_name)} (${escapeKioskText(m.device_name)}) is home"><span class="presence-chip-dot"></span>${escapeKioskText(m.person_name)}</span>`
+              ).join(' ');
+            } else {
+              elPresenceBadge.classList.add('hidden');
+              elPresenceContainer.innerHTML = '';
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    pollHardware();
+    setInterval(pollHardware, 30000);
   }
 
   // --- Navigation & View Switching ---

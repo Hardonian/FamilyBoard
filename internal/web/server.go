@@ -13,6 +13,7 @@ import (
 	"github.com/Hardonian/FamilyBoard/internal/auth"
 	"github.com/Hardonian/FamilyBoard/internal/config"
 	"github.com/Hardonian/FamilyBoard/internal/db"
+	"github.com/Hardonian/FamilyBoard/internal/hardware"
 	"github.com/Hardonian/FamilyBoard/internal/mail/parser"
 	"github.com/Hardonian/FamilyBoard/internal/oauth"
 	"github.com/Hardonian/FamilyBoard/internal/queue"
@@ -23,6 +24,7 @@ import (
 type Server struct {
 	cfg          *config.Config
 	store        *db.Store
+	hwMgr        *hardware.Manager
 	tokenStorage *oauth.TokenStorage
 	stateManager *oauth.StateManager
 	rateLimiter  *auth.LoginRateLimiter
@@ -50,6 +52,7 @@ func NewServer(
 	s := &Server{
 		cfg:          cfg,
 		store:        store,
+		hwMgr:        hardware.NewManager(),
 		tokenStorage: tokenStorage,
 		stateManager: stateManager,
 		rateLimiter:  auth.NewLoginRateLimiter(5, 10*time.Minute),
@@ -68,6 +71,11 @@ func NewServer(
 
 	s.routes()
 	return s, nil
+}
+
+// HardwareManager returns the appliance hardware controller.
+func (s *Server) HardwareManager() *hardware.Manager {
+	return s.hwMgr
 }
 
 func (s *Server) initTemplates() error {
@@ -139,6 +147,20 @@ func (s *Server) routes() {
 	// OAuth Callbacks
 	s.mux.HandleFunc("GET /oauth/callback/google", s.handleOAuthCallbackGoogle)
 	s.mux.HandleFunc("GET /oauth/callback/microsoft", s.handleOAuthCallbackMicrosoft)
+
+	// Radxa Dragon Appliance Hardware & Network Endpoints
+	s.mux.HandleFunc("GET /api/system/hardware", s.handleAPIGetHardware)
+	s.mux.HandleFunc("GET /api/system/wifi", s.handleAPIGetWifi)
+	s.mux.HandleFunc("GET /api/system/wifi/scan", s.handleAPIScanWifi)
+	s.mux.HandleFunc("POST /api/system/wifi/connect", s.requireKioskWriteAccess(s.handleAPIConnectWifi))
+	s.mux.HandleFunc("POST /api/system/wifi/hotspot", s.requireKioskWriteAccess(s.handleAPIToggleHotspot))
+	s.mux.HandleFunc("GET /api/system/bluetooth", s.handleAPIGetBluetooth)
+	s.mux.HandleFunc("POST /api/system/bluetooth/power", s.requireKioskWriteAccess(s.handleAPISetBluetoothPower))
+	s.mux.HandleFunc("GET /api/system/bluetooth/scan", s.handleAPIScanBluetooth)
+	s.mux.HandleFunc("GET /api/system/presence", s.handleAPIGetPresence)
+	s.mux.HandleFunc("POST /api/system/presence/beacon", s.requireKioskWriteAccess(s.handleAPIRegisterBeacon))
+	s.mux.HandleFunc("DELETE /api/system/presence/beacon/{id}", s.requireKioskWriteAccess(s.handleAPIDeleteBeacon))
+	s.mux.HandleFunc("POST /api/system/power", s.requireAuth(s.handleAPISystemPower))
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
