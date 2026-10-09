@@ -555,6 +555,59 @@
       </details>
     </div>
 
+    <!-- Storage & NVMe SSD Migration -->
+    <div class="admin-card">
+      <div class="admin-card-header-flex">
+        <div>
+          <h2 class="admin-section-heading">Storage Media &amp; High-Speed NVMe SSD</h2>
+          <p class="admin-section-sub">PCIe M.2 storage acceleration and one-click live system migration from MicroSD to NVMe SSD.</p>
+        </div>
+        <span class="status-badge {{if eq .HardwareInfo.BootMedia "NVMe SSD"}}status-badge-home{{end}}">
+          Current Boot: {{.HardwareInfo.BootMedia}}
+        </span>
+      </div>
+
+      <div class="admin-diagnostics-grid">
+        <div class="admin-diag-card">
+          <div class="admin-diag-label">Active Boot Medium</div>
+          <div class="admin-diag-val">{{.HardwareInfo.BootMedia}}</div>
+          <small class="admin-diag-sub">Root filesystem mount source</small>
+        </div>
+        <div class="admin-diag-card">
+          <div class="admin-diag-label">M.2 NVMe Slot Status</div>
+          <div class="admin-diag-val {{if .HardwareInfo.NVMeDetected}}success{{else}}admin-text-muted{{end}}">
+            {{if .HardwareInfo.NVMeDetected}}SSD Detected{{else}}No NVMe Drive{{end}}
+          </div>
+          <small class="admin-diag-sub">{{if .HardwareInfo.NVMeDetected}}{{.HardwareInfo.NVMeModel}}{{else}}M.2 M-Key slot empty{{end}}</small>
+        </div>
+        <div class="admin-diag-card">
+          <div class="admin-diag-label">NVMe Storage Capacity</div>
+          <div class="admin-diag-val">{{if .HardwareInfo.NVMeDetected}}{{printf "%.1f" .HardwareInfo.NVMeCapacityGB}} GB{{else}}--{{end}}</div>
+          <small class="admin-diag-sub">High-endurance PCIe storage</small>
+        </div>
+      </div>
+
+      {{if .HardwareInfo.NVMeDetected}}
+        {{if ne .HardwareInfo.BootMedia "NVMe SSD"}}
+        <div class="admin-connect-box">
+          <h4 class="admin-subheading-small">One-Click Port to High-Speed NVMe SSD</h4>
+          <p class="admin-section-sub">Clone your running operating system, FamilyBoard database, calendars, and FotoCube photo library directly to the M.2 NVMe SSD. Once complete, you can remove the MicroSD card and boot directly from NVMe with up to 3,000 MB/s read speeds and zero card wear.</p>
+          <div class="admin-footer-actions">
+            <button type="button" id="btn-migrate-nvme" class="btn btn-primary" aria-label="Migrate live system to NVMe SSD">
+              🚀 Clone &amp; Port System to NVMe SSD
+            </button>
+          </div>
+        </div>
+        {{else}}
+        <div class="admin-alert-success">
+          Your Radxa Dragon is already booting natively from the high-speed NVMe SSD. Maximum PCIe performance and flash durability are active.
+        </div>
+        {{end}}
+      {{else}}
+      <p class="admin-section-sub-spaced">To upgrade from MicroSD to NVMe, power off your Radxa Dragon, insert an M.2 2280 or 2242 PCIe NVMe SSD into the M.2 slot, and return to this page to clone your system with one click.</p>
+      {{end}}
+    </div>
+
     <!-- Appliance Power & System Controls -->
     <div class="admin-card">
       <h2 class="admin-section-heading">Radxa Dragon Appliance Power &amp; Lifecycle</h2>

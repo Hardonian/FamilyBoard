@@ -31,6 +31,7 @@
       <button class="view-btn" data-view="today" id="btn-view-today" aria-pressed="false" title="Today schedule view">Day</button>
     </div>
 
+    <button type="button" id="btn-toggle-photo-frame" class="btn btn-secondary btn-frame-toggle" title="FotoCube Ambient Photo Frame" aria-label="Toggle ambient photo frame">🖼️ Frame</button>
     <a href="/admin" class="btn-admin-link" id="link-admin" title="Appliance Settings">Admin</a>
     <button id="btn-add-event" class="btn btn-create" title="Create new event">
       <svg class="google-create-icon" viewBox="0 0 36 36" width="22" height="22" aria-hidden="true">
@@ -376,6 +377,26 @@
   <div id="toast-bubble" class="toast-bubble">
     <span id="toast-message">Added ✓</span>
     <button type="button" id="toast-undo-btn" class="toast-undo-btn">Undo</button>
+  </div>
+</div>
+
+<!-- Ambient Digital Photo Frame Screensaver (FotoCube Mode) -->
+<div id="photo-frame-screensaver" class="photo-frame-screensaver hidden" aria-hidden="true">
+  <div id="photo-frame-bg" class="photo-frame-bg"></div>
+  <div class="photo-frame-overlay-shade"></div>
+  <div class="photo-frame-hud">
+    <div class="photo-frame-clock-box">
+      <div id="photo-frame-time" class="photo-frame-time">--:--</div>
+      <div id="photo-frame-date" class="photo-frame-date">Loading...</div>
+    </div>
+    <div id="photo-frame-event-card" class="photo-frame-event-card hidden">
+      <div class="photo-frame-event-label">NEXT UP</div>
+      <div id="photo-frame-event-title" class="photo-frame-event-title"></div>
+      <div id="photo-frame-event-time" class="photo-frame-event-time"></div>
+    </div>
+  </div>
+  <div class="photo-frame-footer">
+    <span class="photo-frame-touch-hint">Tap anywhere to return to Calendar</span>
   </div>
 </div>
 {{end}}

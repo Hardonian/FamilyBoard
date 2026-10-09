@@ -3,6 +3,8 @@ package web
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Hardonian/FamilyBoard/internal/hardware"
@@ -209,4 +211,51 @@ func (s *Server) handleAPISystemPower(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, `{"error":"action must be reboot or shutdown"}`, http.StatusBadRequest)
 	}
+}
+
+// handleAPIGetPhotos returns available photo slideshow items for the FotoCube ambient screensaver.
+func (s *Server) handleAPIGetPhotos(w http.ResponseWriter, r *http.Request) {
+	photosDir := filepath.Join(filepath.Dir(s.cfg.Database.Path), "photos")
+	if _, err := os.Stat(photosDir); os.IsNotExist(err) {
+		photosDir = "photos"
+	}
+
+	var photos []string
+	if entries, err := os.ReadDir(photosDir); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				ext := strings.ToLower(filepath.Ext(e.Name()))
+				if ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".webp" {
+					photos = append(photos, "/photos/"+e.Name())
+				}
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"photos": photos,
+	})
+}
+
+// handleAPIMigrateNVMe triggers copying the system to an NVMe SSD on Radxa Dragon.
+func (s *Server) handleAPIMigrateNVMe(w http.ResponseWriter, r *http.Request) {
+	out, err := s.hwMgr.MigrateToNVMe(r.Context())
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+			"output":  out,
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Migration to NVMe initiated or completed successfully.",
+		"output":  out,
+	})
 }

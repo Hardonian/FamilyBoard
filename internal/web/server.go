@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -161,6 +163,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/system/presence/beacon", s.requireKioskWriteAccess(s.handleAPIRegisterBeacon))
 	s.mux.HandleFunc("DELETE /api/system/presence/beacon/{id}", s.requireKioskWriteAccess(s.handleAPIDeleteBeacon))
 	s.mux.HandleFunc("POST /api/system/power", s.requireAuth(s.handleAPISystemPower))
+
+	// FotoCube Ambient Photo Frame & NVMe Migration
+	s.mux.HandleFunc("GET /api/photos", s.handleAPIGetPhotos)
+	photosDir := filepath.Join(filepath.Dir(s.cfg.Database.Path), "photos")
+	_ = os.MkdirAll(photosDir, 0755)
+	s.mux.Handle("GET /photos/", http.StripPrefix("/photos/", http.FileServer(http.Dir(photosDir))))
+	s.mux.HandleFunc("POST /api/system/storage/migrate-nvme", s.requireAuth(s.handleAPIMigrateNVMe))
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {

@@ -247,7 +247,29 @@ func TestHardware_HTTPEndpoints(t *testing.T) {
 		}
 	}
 
-	// 11. Admin Dashboard with Hardware Tab
+	// 11. GET /api/photos (FotoCube Ambient Photo Frame)
+	{
+		req := httptest.NewRequest(http.MethodGet, "/api/photos", nil)
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200 for /api/photos, got %d", w.Code)
+		}
+	}
+
+	// 12. POST /api/system/storage/migrate-nvme
+	{
+		cookie := loginAdminForTest(t, srv)
+		req := httptest.NewRequest(http.MethodPost, "/api/system/storage/migrate-nvme", nil)
+		req.AddCookie(cookie)
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200 for migrate-nvme, got %d", w.Code)
+		}
+	}
+
+	// 13. Admin Dashboard with Hardware Tab
 	{
 		req := httptest.NewRequest(http.MethodGet, "/admin?tab=hardware", nil)
 		cookie := loginAdminForTest(t, srv)
@@ -266,6 +288,9 @@ func TestHardware_HTTPEndpoints(t *testing.T) {
 		}
 		if !bytes.Contains([]byte(body), []byte("Bluetooth 5.2")) {
 			t.Errorf("expected admin page to contain 'Bluetooth 5.2'")
+		}
+		if !bytes.Contains([]byte(body), []byte("NVMe")) {
+			t.Errorf("expected admin page to contain 'NVMe'")
 		}
 	}
 }

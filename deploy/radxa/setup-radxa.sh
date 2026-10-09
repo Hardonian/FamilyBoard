@@ -120,10 +120,14 @@ if [ -n "$CTL_BIN" ] && [ -f "$CTL_BIN" ]; then
   log_ok "Installed /usr/local/bin/familyboardctl"
 fi
 
-# 6. Install Kiosk Script
+# 6. Install Kiosk Script & NVMe Migration Engine
 cp "$SCRIPT_DIR/familyboard-kiosk.sh" /usr/local/bin/familyboard-kiosk.sh
 chmod 755 /usr/local/bin/familyboard-kiosk.sh
 log_ok "Installed /usr/local/bin/familyboard-kiosk.sh"
+
+cp "$SCRIPT_DIR/migrate-to-nvme.sh" /usr/local/bin/familyboard-migrate-nvme
+chmod 755 /usr/local/bin/familyboard-migrate-nvme
+log_ok "Installed /usr/local/bin/familyboard-migrate-nvme"
 
 # 7. Polkit Rules for NetworkManager & Bluetooth
 log_info "Installing Polkit rules for non-root hardware management..."

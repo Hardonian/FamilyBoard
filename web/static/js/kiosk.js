@@ -74,6 +74,7 @@
     setupDayDrawer();
     setupVirtualKeyboard();
     setupInactivityAutoReset();
+    setupFotoCubePhotoFrame();
     setupSSE();
 
     loadCalendarsAndTemplates().then(() => {
@@ -1983,6 +1984,12 @@
   function handleUserActivity() {
     lastTouchTime = Date.now();
 
+    // If currently in FotoCube photo frame screensaver, wake up immediately into calendar
+    if (isPhotoFrameOpen) {
+      closeFotoCubePhotoFrame();
+      return;
+    }
+
     // If currently dimmed/ambient, wake up instantly into 30-day view
     if (document.body.classList.contains('kiosk-ambient-dim')) {
       document.body.classList.remove('kiosk-ambient-dim');
@@ -2029,14 +2036,140 @@
       // Return to default 30-day view
       resetToDefault30DayView();
 
-      // Apply gentle ambient dimming if plugged in and untouched for 15+ minutes
-      if (isPluggedIn) {
-        document.body.classList.add('kiosk-ambient-dim');
-      }
+      // Launch FotoCube ambient digital photo frame screensaver
+      openFotoCubePhotoFrame();
     } else {
       // Reschedule for remaining time
       inactivityTimer = setTimeout(onInactivityElapsed, INACTIVITY_TIMEOUT_MS - elapsed);
     }
+  }
+
+  // --- FotoCube Ambient Photo Frame Mode ---
+  let photoUrls = [];
+  let currentPhotoIndex = 0;
+  let photoCycleTimer = null;
+  let isPhotoFrameOpen = false;
+
+  const DEFAULT_AMBIENT_BACKGROUNDS = [
+    'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #312e81 100%)',
+    'linear-gradient(135deg, #064e3b 0%, #065f46 50%, #047857 100%)',
+    'linear-gradient(135deg, #1e293b 0%, #334155 50%, #1e3a8a 100%)',
+    'linear-gradient(135deg, #451a03 0%, #78350f 50%, #b45309 100%)'
+  ];
+
+  function setupFotoCubePhotoFrame() {
+    const btnToggle = document.getElementById('btn-toggle-photo-frame');
+    const elScreensaver = document.getElementById('photo-frame-screensaver');
+
+    if (btnToggle) {
+      btnToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openFotoCubePhotoFrame();
+      });
+    }
+
+    if (elScreensaver) {
+      elScreensaver.addEventListener('click', () => {
+        closeFotoCubePhotoFrame();
+      });
+    }
+
+    loadPhotosList();
+  }
+
+  async function loadPhotosList() {
+    try {
+      const resp = await fetch('/api/photos');
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.photos && data.photos.length > 0) {
+          photoUrls = data.photos;
+        }
+      }
+    } catch (_) {}
+  }
+
+  function openFotoCubePhotoFrame() {
+    const elScreensaver = document.getElementById('photo-frame-screensaver');
+    if (!elScreensaver) return;
+
+    isPhotoFrameOpen = true;
+    elScreensaver.classList.remove('hidden');
+    elScreensaver.setAttribute('aria-hidden', 'false');
+
+    updatePhotoFrameHUD();
+    renderNextPhoto();
+
+    if (photoCycleTimer) clearInterval(photoCycleTimer);
+    photoCycleTimer = setInterval(renderNextPhoto, 15000);
+  }
+
+  function closeFotoCubePhotoFrame() {
+    const elScreensaver = document.getElementById('photo-frame-screensaver');
+    if (!elScreensaver) return;
+
+    isPhotoFrameOpen = false;
+    elScreensaver.classList.add('hidden');
+    elScreensaver.setAttribute('aria-hidden', 'true');
+
+    if (photoCycleTimer) {
+      clearInterval(photoCycleTimer);
+      photoCycleTimer = null;
+    }
+
+    resetInactivityTimer();
+  }
+
+  function updatePhotoFrameHUD() {
+    const now = new Date();
+    const elTime = document.getElementById('photo-frame-time');
+    const elDate = document.getElementById('photo-frame-date');
+
+    if (elTime) {
+      elTime.textContent = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+    if (elDate) {
+      elDate.textContent = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+    }
+
+    // Next upcoming event card
+    const elEventCard = document.getElementById('photo-frame-event-card');
+    const elEventTitle = document.getElementById('photo-frame-event-title');
+    const elEventTime = document.getElementById('photo-frame-event-time');
+
+    if (elEventCard && elEventTitle && elEventTime) {
+      const upcoming = (allEvents || [])
+        .filter(ev => new Date(ev.start_time) >= now)
+        .sort((a, b) => new Date(a.start_time) - new Date(b.start_time))[0];
+
+      if (upcoming) {
+        elEventCard.classList.remove('hidden');
+        elEventTitle.textContent = upcoming.title;
+        const evStart = new Date(upcoming.start_time);
+        elEventTime.textContent = evStart.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + ' · ' + evStart.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+      } else {
+        elEventCard.classList.add('hidden');
+      }
+    }
+  }
+
+  function renderNextPhoto() {
+    const elBg = document.getElementById('photo-frame-bg');
+    if (!elBg) return;
+
+    updatePhotoFrameHUD();
+
+    if (photoUrls.length > 0) {
+      const url = photoUrls[currentPhotoIndex % photoUrls.length];
+      elBg.style.backgroundImage = `url("${url}")`;
+      currentPhotoIndex++;
+    } else {
+      const grad = DEFAULT_AMBIENT_BACKGROUNDS[currentPhotoIndex % DEFAULT_AMBIENT_BACKGROUNDS.length];
+      elBg.style.backgroundImage = grad;
+      currentPhotoIndex++;
+    }
+
+    elBg.classList.toggle('zoom');
   }
 
   document.addEventListener('DOMContentLoaded', init);

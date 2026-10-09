@@ -2842,3 +2842,147 @@ body.kiosk-ambient-dim {
   background-color: #22c55e;
 }
 
+/* ==========================================================================
+   FotoCube Ambient Photo Frame Mode
+   ========================================================================== */
+
+.photo-frame-screensaver {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background-color: #000;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 36px 44px;
+  overflow: hidden;
+  animation: photo-fade-in 0.8s ease-in-out;
+}
+
+.photo-frame-screensaver.hidden {
+  display: none !important;
+}
+
+.photo-frame-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center center;
+  transition: opacity 1.2s ease-in-out, transform 12s ease-out;
+  transform: scale(1.04);
+  z-index: 1;
+}
+
+.photo-frame-bg.zoom {
+  transform: scale(1.0);
+}
+
+.photo-frame-overlay-shade {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.65) 100%),
+              linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 40%),
+              linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, transparent 35%);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.photo-frame-hud {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.photo-frame-clock-box {
+  text-shadow: 0 4px 16px rgba(0, 0, 0, 0.8);
+}
+
+.photo-frame-time {
+  font-size: 5rem;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -2px;
+  line-height: 1;
+}
+
+.photo-frame-date {
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin-top: 8px;
+}
+
+.photo-frame-event-card {
+  background: rgba(15, 23, 42, 0.75);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-lg);
+  padding: 16px 22px;
+  max-width: 380px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.photo-frame-event-label {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: #38bdf8;
+  margin-bottom: 4px;
+}
+
+.photo-frame-event-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.photo-frame-event-time {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.photo-frame-footer {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.photo-frame-touch-hint {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+  letter-spacing: 0.5px;
+  animation: pulse-hint 3s infinite ease-in-out;
+}
+
+@keyframes pulse-hint {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.85; }
+}
+
+@keyframes photo-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.btn-frame-toggle {
+  min-height: 40px;
+  padding: 6px 14px;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+

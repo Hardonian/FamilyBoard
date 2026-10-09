@@ -258,6 +258,31 @@
         }
       });
     }
+
+    // 10. NVMe SSD Migration
+    const btnMigrateNVMe = document.getElementById('btn-migrate-nvme');
+    if (btnMigrateNVMe) {
+      btnMigrateNVMe.addEventListener('click', async function() {
+        if (!confirm('Start cloning the entire operating system and FamilyBoard to the M.2 NVMe SSD? This will format the NVMe SSD and take 1-3 minutes.')) return;
+        btnMigrateNVMe.disabled = true;
+        btnMigrateNVMe.textContent = '⏳ Porting System to NVMe... (Please Wait)';
+        try {
+          const resp = await fetch('/api/system/storage/migrate-nvme', {
+            method: 'POST'
+          });
+          const res = await resp.json();
+          if (!resp.ok || !res.success) {
+            throw new Error(res.error || 'NVMe migration failed');
+          }
+          alert('NVMe migration completed successfully! When ready, shut down the appliance, remove the MicroSD card, and power on to boot directly from NVMe.');
+          window.location.reload();
+        } catch (err) {
+          alert('Migration error: ' + err.message);
+          btnMigrateNVMe.disabled = false;
+          btnMigrateNVMe.textContent = '🚀 Clone & Port System to NVMe SSD';
+        }
+      });
+    }
   }
 
   function openWifiConnectBox(ssid) {

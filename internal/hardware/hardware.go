@@ -30,6 +30,10 @@ type SystemInfo struct {
 	WifiConnected   bool    `json:"wifi_connected"`
 	WifiSSID        string  `json:"wifi_ssid"`
 	BluetoothActive bool    `json:"bluetooth_active"`
+	BootMedia       string  `json:"boot_media"`
+	NVMeDetected    bool    `json:"nvme_detected"`
+	NVMeModel       string  `json:"nvme_model,omitempty"`
+	NVMeCapacityGB  float64 `json:"nvme_capacity_gb,omitempty"`
 }
 
 // Manager coordinates hardware interactions including Wi-Fi, Bluetooth, and device power.
@@ -88,6 +92,7 @@ func (m *Manager) GetSystemInfo(ctx context.Context) SystemInfo {
 
 	wifiStatus := m.wifi.GetStatus(ctx)
 	btStatus := m.bluetooth.GetStatus(ctx)
+	bootMedia, nvmeDetected, nvmeModel, nvmeCap := m.inspectStorageMedia()
 
 	return SystemInfo{
 		HardwareModel:   hwModel,
@@ -106,6 +111,10 @@ func (m *Manager) GetSystemInfo(ctx context.Context) SystemInfo {
 		WifiConnected:   wifiStatus.Connected,
 		WifiSSID:        wifiStatus.SSID,
 		BluetoothActive: btStatus.Powered,
+		BootMedia:       bootMedia,
+		NVMeDetected:    nvmeDetected,
+		NVMeModel:       nvmeModel,
+		NVMeCapacityGB:  nvmeCap,
 	}
 }
 
@@ -151,9 +160,10 @@ func (m *Manager) readMemory() (totalMB uint64, usedMB uint64, pct float64) {
 	for _, line := range lines {
 		fields := strings.Fields(line)
 		if len(fields) >= 2 {
-			if fields[0] == "MemTotal:" {
+			switch fields[0] {
+			case "MemTotal:":
 				memTotalKB, _ = strconv.ParseUint(fields[1], 10, 64)
-			} else if fields[0] == "MemAvailable:" {
+			case "MemAvailable:":
 				memAvailableKB, _ = strconv.ParseUint(fields[1], 10, 64)
 			}
 		}
@@ -229,4 +239,80 @@ func (m *Manager) PowerOff(ctx context.Context) error {
 		return exec.CommandContext(ctx, "poweroff").Run()
 	}
 	return nil
+}
+
+// inspectStorageMedia determines whether the system is running from MicroSD, eMMC, or NVMe SSD.
+func (m *Manager) inspectStorageMedia() (bootMedia string, nvmeDetected bool, nvmeModel string, nvmeCapacityGB float64) {
+	if runtime.GOOS != "linux" {
+		return "MicroSD (Simulated)", true, "Samsung 980 NVMe SSD (M.2)", 500.0
+	}
+
+	bootMedia = "Local Disk"
+	// Check root mount source from /proc/mounts
+	if mounts, err := os.ReadFile("/proc/mounts"); err == nil {
+		for _, line := range strings.Split(string(mounts), "\n") {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 && parts[1] == "/" {
+				dev := parts[0]
+				if strings.Contains(dev, "nvme") {
+					bootMedia = "NVMe SSD"
+				} else if strings.Contains(dev, "mmcblk0") {
+					bootMedia = "MicroSD Card"
+				} else if strings.Contains(dev, "mmcblk1") {
+					bootMedia = "eMMC Storage"
+				}
+				break
+			}
+		}
+	}
+
+	// Check if NVMe block device is present in the M.2 slot
+	if _, err := os.Stat("/sys/block/nvme0n1"); err == nil {
+		nvmeDetected = true
+		nvmeModel = "M.2 NVMe SSD"
+		if modelBytes, err := os.ReadFile("/sys/block/nvme0n1/device/model"); err == nil {
+			nvmeModel = strings.TrimSpace(string(modelBytes))
+		}
+		if sizeBytes, err := os.ReadFile("/sys/block/nvme0n1/size"); err == nil {
+			if sectors, err := strconv.ParseFloat(strings.TrimSpace(string(sizeBytes)), 64); err == nil && sectors > 0 {
+				// Standard Linux block sectors are 512 bytes
+				nvmeCapacityGB = (sectors * 512.0) / (1024 * 1024 * 1024)
+			}
+		}
+	}
+
+	return bootMedia, nvmeDetected, nvmeModel, nvmeCapacityGB
+}
+
+// MigrateToNVMe triggers the background migration script to clone the live system to an NVMe drive.
+func (m *Manager) MigrateToNVMe(ctx context.Context) (string, error) {
+	if runtime.GOOS != "linux" {
+		return "Simulated migration to NVMe completed successfully.", nil
+	}
+
+	scriptPaths := []string{
+		"/usr/local/bin/familyboard-migrate-nvme.sh",
+		"/usr/local/bin/familyboard-migrate-nvme",
+		"deploy/radxa/migrate-to-nvme.sh",
+	}
+
+	var targetScript string
+	for _, p := range scriptPaths {
+		if _, err := os.Stat(p); err == nil {
+			targetScript = p
+			break
+		}
+	}
+
+	if targetScript == "" {
+		return "", fmt.Errorf("NVMe migration script not found in standard system paths")
+	}
+
+	cmd := exec.CommandContext(ctx, "bash", targetScript, "--non-interactive")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(out), fmt.Errorf("NVMe migration failed: %s (%w)", string(out), err)
+	}
+
+	return string(out), nil
 }
