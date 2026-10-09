@@ -287,3 +287,190 @@ func TestWeb_AdminLoginAndSessionAuth(t *testing.T) {
 		t.Errorf("expected admin dashboard HTML")
 	}
 }
+
+func TestWeb_AdminCalendarAndPersonActions(t *testing.T) {
+	srv, store, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now()
+
+	// Setup account and calendars
+	_ = store.UpsertPerson(ctx, &models.Person{
+		ID:          "person-1",
+		DisplayName: "Parent 1",
+		Email:       "parent1@familydomain.org",
+		Enabled:     true,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	})
+
+	_ = store.UpsertOAuthAccount(ctx, &models.OAuthAccount{
+		ID:                  "acc-1",
+		PersonID:            "person-1",
+		Provider:            "google",
+		ProviderAccountID:   "sub-1",
+		VerifiedEmail:       "parent1@familydomain.org",
+		Scopes:              "https://www.googleapis.com/auth/calendar",
+		CredentialReference: "acc-1",
+		ExpiresAt:           now.Add(time.Hour),
+		Status:              "active",
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	})
+
+	cal1 := &models.Calendar{
+		ID:                 "cal-1",
+		OAuthAccountID:     "acc-1",
+		Provider:           "google",
+		ProviderCalendarID: "cal1@domain.com",
+		Name:               "Work",
+		DisplayColor:       "#3b82f6",
+		EnabledForDisplay:  true,
+		Writable:           true,
+		DefaultWriteTarget: true,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	}
+	cal2 := &models.Calendar{
+		ID:                 "cal-2",
+		OAuthAccountID:     "acc-1",
+		Provider:           "google",
+		ProviderCalendarID: "c_home@group.calendar.google.com",
+		Name:               "HOME",
+		DisplayColor:       "#10b981",
+		EnabledForDisplay:  true,
+		Writable:           true,
+		DefaultWriteTarget: false,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	}
+	_ = store.UpsertCalendar(ctx, cal1)
+	_ = store.UpsertCalendar(ctx, cal2)
+
+	// Log in to get session cookie
+	loginForm := url.Values{
+		"username": {"admin"},
+		"password": {"correct-horse-battery"},
+	}
+	loginReq := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(loginForm.Encode()))
+	loginReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginRec := httptest.NewRecorder()
+	srv.ServeHTTP(loginRec, loginReq)
+
+	var sessionCookie *http.Cookie
+	for _, c := range loginRec.Result().Cookies() {
+		if c.Name == "fb_session" {
+			sessionCookie = c
+			break
+		}
+	}
+	if sessionCookie == nil {
+		t.Fatalf("session cookie not found")
+	}
+
+	// 1. POST /admin/calendars/cal-2/set-default
+	req := httptest.NewRequest(http.MethodPost, "/admin/calendars/cal-2/set-default", nil)
+	req.AddCookie(sessionCookie)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("expected 303 SeeOther, got %d", w.Code)
+	}
+
+	defCal, _ := store.GetDefaultWriteCalendar(ctx)
+	if defCal == nil || defCal.ID != "cal-2" {
+		t.Errorf("expected cal-2 to be default write target, got %+v", defCal)
+	}
+
+	// 2. POST /admin/calendars/cal-2/preferences (update color to #059669)
+	prefForm := url.Values{
+		"display_color":       {"#059669"},
+		"enabled_for_display": {"1"},
+		"writable":            {"1"},
+	}
+	req = httptest.NewRequest(http.MethodPost, "/admin/calendars/cal-2/preferences", strings.NewReader(prefForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(sessionCookie)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("expected 303 SeeOther, got %d", w.Code)
+	}
+
+	c2, _ := store.GetCalendar(ctx, "cal-2")
+	if c2 == nil || c2.DisplayColor != "#059669" {
+		t.Errorf("expected updated color #059669, got %+v", c2)
+	}
+
+	// 3. POST /admin/people/person-1/update (update name and Google Workspace email)
+	personForm := url.Values{
+		"display_name": {"Scott H."},
+		"email":        {"scott@familydomain.org"},
+	}
+	req = httptest.NewRequest(http.MethodPost, "/admin/people/person-1/update", strings.NewReader(personForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(sessionCookie)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("expected 303 SeeOther, got %d", w.Code)
+	}
+
+	p1, _ := store.GetPerson(ctx, "person-1")
+	if p1 == nil || p1.DisplayName != "Scott H." || p1.Email != "scott@familydomain.org" {
+		t.Errorf("expected updated person profile, got %+v", p1)
+	}
+
+	// 4. POST /admin/calendars/refresh
+	req = httptest.NewRequest(http.MethodPost, "/admin/calendars/refresh", nil)
+	req.AddCookie(sessionCookie)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("expected 303 SeeOther, got %d", w.Code)
+	}
+}
+
+func TestWeb_KioskGoogleCalendarPolishAndViews(t *testing.T) {
+	srv, store, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	_ = store.SetDeviceMetadata(ctx, &models.DeviceMetadata{
+		DeviceName:    "Kitchen Appliance",
+		Timezone:      "America/Toronto",
+		InitializedAt: time.Now(),
+		Version:       "v0.9.0",
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for kiosk, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	expectedTokens := []string{
+		"btn-view-schedule",
+		"Schedule",
+		"schedule-view-container",
+		"btn-create",
+		"btn-today",
+		"stepper-time-container",
+		"stepper-time-readout",
+		"time-summary-banner",
+		"week-allday-row",
+		"btn-clear-title",
+		"detail-accent-strip",
+	}
+
+	for _, token := range expectedTokens {
+		if !strings.Contains(body, token) {
+			t.Errorf("kiosk HTML missing expected Google Calendar polish token: %q", token)
+		}
+	}
+}
+
+

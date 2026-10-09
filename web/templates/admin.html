@@ -49,7 +49,20 @@
         <tbody>
           {{range .People}}
           <tr>
-            <td><strong>{{.DisplayName}}</strong></td>
+            <td class="admin-member-cell">
+              <strong>{{.DisplayName}}</strong>
+              <details class="admin-inline-details">
+                <summary>Edit name or email</summary>
+                <form method="POST" action="/admin/people/{{.ID}}/update" class="admin-inline-form">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                  <label for="person-display-name-{{.ID}}" class="sr-only">Display name</label>
+                  <input type="text" id="person-display-name-{{.ID}}" name="display_name" value="{{.DisplayName}}" class="form-input form-input-compact" aria-label="Display name" title="Display name" placeholder="Display name">
+                  <label for="person-email-{{.ID}}" class="sr-only">Provider email</label>
+                  <input type="email" id="person-email-{{.ID}}" name="email" value="{{.Email}}" class="form-input form-input-compact" aria-label="Provider email" title="Provider email" placeholder="Google or Microsoft email">
+                  <button type="submit" class="btn btn-secondary btn-sm admin-inline-submit">Update profile</button>
+                </form>
+              </details>
+            </td>
             <td><code>{{.Email}}</code></td>
             <td>
               {{$acc := index $.AccountsMap .ID}}
@@ -92,37 +105,97 @@
 
     {{if eq .ActiveTab "calendars"}}
     <div class="admin-card">
-      <div class="admin-card-header">
-        <h2>Synced Calendars</h2>
-        <form method="POST" action="/admin/sync-now">
-          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-          <button type="submit" class="btn btn-primary">Sync All Now</button>
-        </form>
+      <div class="admin-card-header admin-card-header-wrap">
+        <div>
+          <h2>Synced Calendars</h2>
+          <p class="admin-section-sub">Google Workspace, shared household calendars, and personal family calendars.</p>
+        </div>
+        <div class="admin-header-actions">
+          <form method="POST" action="/admin/calendars/refresh">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <button type="submit" class="btn btn-secondary" title="Scan connected accounts for shared or newly added calendars">Discover calendars</button>
+          </form>
+          <form method="POST" action="/admin/sync-now">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <button type="submit" class="btn btn-primary" title="Trigger immediate bidirectional event synchronization">Sync all events</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="admin-callout">
+        <strong>Shared calendars are supported.</strong> Calendars available to connected accounts are discovered automatically. Set the household calendar as the default target so new kiosk events sync to everyone’s devices.
       </div>
 
       <table class="admin-table">
         <thead>
           <tr>
             <th>Calendar Name</th>
-            <th>Provider</th>
+            <th>Provider / ID</th>
             <th>Display Color</th>
-            <th>Enabled on Display</th>
-            <th>Default Write</th>
-            <th>Last Synced</th>
+            <th>Display on Kiosk</th>
+            <th>Writable</th>
+            <th>Default Target</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {{range .Calendars}}
           <tr>
-            <td><strong>{{.Name}}</strong></td>
-            <td>{{.Provider}}</td>
-            <td><span class="admin-color-swatch" data-color="{{.DisplayColor}}"></span> {{.DisplayColor}}</td>
-            <td>{{if .EnabledForDisplay}}✅ Yes{{else}}❌ No{{end}}</td>
-            <td>{{if .DefaultWriteTarget}}⭐ Default{{else}}—{{end}}</td>
-            <td>{{if .LastSyncedAt}}{{.LastSyncedAt.Format "Jan 02 15:04"}}{{else}}Pending{{end}}</td>
+            <td>
+              <strong>{{.Name}}</strong>
+              {{if or (eq .Name "HOME") (eq .Name "Home")}}
+                <br><span class="status-badge status-badge-home">HOME calendar</span>
+              {{end}}
+              {{if .DefaultWriteTarget}}
+                <br><span class="status-badge status-badge-default">Default write target</span>
+              {{end}}
+            </td>
+            <td>
+              <span class="status-badge status-badge-compact">{{.Provider}}</span>
+              <br><small class="admin-provider-id">{{.ProviderCalendarID}}</small>
+            </td>
+            <td>
+                <label for="cal-color-{{.ID}}" class="sr-only">Display color for {{.Name}}</label>
+                <input type="color" id="cal-color-{{.ID}}" name="display_color" value="{{.DisplayColor}}" form="form-pref-{{.ID}}" class="admin-color-input" aria-label="Display color for {{.Name}}" title="Display color for {{.Name}}">
+                <code class="admin-color-code">{{.DisplayColor}}</code>
+            </td>
+            <td>
+                <label class="admin-check-label" for="cal-display-{{.ID}}">
+                  <input type="checkbox" id="cal-display-{{.ID}}" name="enabled_for_display" value="1" form="form-pref-{{.ID}}" title="Display {{.Name}} on kiosk" {{if .EnabledForDisplay}}checked{{end}}>
+                  <span>{{if .EnabledForDisplay}}Visible{{else}}Hidden{{end}}</span>
+                </label>
+            </td>
+            <td>
+                <label class="admin-check-label" for="cal-writable-{{.ID}}">
+                  <input type="checkbox" id="cal-writable-{{.ID}}" name="writable" value="1" form="form-pref-{{.ID}}" title="Writable access for {{.Name}}" {{if .Writable}}checked{{end}}>
+                  <span>{{if .Writable}}Yes{{else}}Read-Only{{end}}</span>
+                </label>
+            </td>
+            <td>
+              {{if .DefaultWriteTarget}}
+                <span class="status-badge status-badge-default">Default</span>
+              {{else if .Writable}}
+                <button type="submit" form="form-setdef-{{.ID}}" class="btn btn-secondary btn-sm" title="Set as the default calendar for kiosk additions">Make default</button>
+              {{else}}
+                <span class="admin-muted">—</span>
+              {{end}}
+            </td>
+            <td>
+              <div class="admin-row-actions">
+                <form method="POST" action="/admin/calendars/{{.ID}}/preferences" id="form-pref-{{.ID}}">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                  <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                </form>
+              </div>
+              {{if and (not .DefaultWriteTarget) .Writable}}
+              <form method="POST" action="/admin/calendars/{{.ID}}/set-default" id="form-setdef-{{.ID}}" class="is-hidden">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+              </form>
+              {{end}}
+            </td>
           </tr>
           {{else}}
-          <tr><td colspan="6" class="admin-empty-cell">No calendars synced yet. Connect an account first.</td></tr>
+          <tr><td colspan="7" class="admin-empty-cell">No calendars synced yet. Connect a Google Workspace or Microsoft account first, then click Discover Calendars.</td></tr>
           {{end}}
         </tbody>
       </table>
@@ -230,32 +303,15 @@
 
       <div class="admin-footer-actions">
         <a href="/admin/backup/download" class="btn btn-primary">Download SQLite Backup</a>
-        <a href="/health/ready" target="_blank" class="btn btn-secondary">Check Health Endpoint</a>
+        <a href="/health/ready" target="_blank" rel="noopener" class="btn btn-secondary">Check health endpoint</a>
       </div>
     </div>
     {{end}}
   </main>
 </div>
 
-<script>
-  // Automatic 15-minute inactivity return to physical kiosk
-  (function() {
-    let idleTimer;
-    function resetIdle() {
-      clearTimeout(idleTimer);
-      idleTimer = setTimeout(function() {
-        window.location.href = '/admin/lock';
-      }, 15 * 60 * 1000);
-    }
-    window.onload = resetIdle;
-    document.onmousemove = resetIdle;
-    document.onkeypress = resetIdle;
-    document.ontouchstart = resetIdle;
+{{end}}
 
-    // Apply color swatch styles dynamically from data-color
-    document.querySelectorAll('.admin-color-swatch[data-color]').forEach(function(el) {
-      el.style.backgroundColor = el.dataset.color;
-    });
-  })();
-</script>
+{{define "scripts"}}
+<script src="/static/js/admin.js"></script>
 {{end}}

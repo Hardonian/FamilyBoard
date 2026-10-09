@@ -114,6 +114,7 @@ func main() {
 	// (server implements queue.TokenProvider)
 	queueEngine.SetTokenProvider(server)
 	syncEngine.SetTokenProvider(server)
+	syncEngine.SetOnSyncCompleted(server.BroadcastReload)
 
 	// 8. Start Background Workers
 	appCtx, cancelApp := context.WithCancel(context.Background())

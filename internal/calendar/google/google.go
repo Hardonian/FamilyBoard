@@ -153,10 +153,17 @@ func (c *GoogleCalendarClient) ListCalendars(ctx context.Context, accessToken st
 		}
 		writable := item.AccessRole == "owner" || item.AccessRole == "writer"
 
+		name := item.Summary
+		if name == "" {
+			name = item.ID
+		}
+		calID := fmt.Sprintf("cal-g-%s", item.ID)
+
 		calendars = append(calendars, models.Calendar{
+			ID:                 calID,
 			Provider:           "google",
 			ProviderCalendarID: item.ID,
-			Name:               item.Summary,
+			Name:               name,
 			Timezone:           tz,
 			DisplayColor:       color,
 			EnabledForDisplay:  true,
@@ -350,8 +357,13 @@ func convertGoogleEventToModel(calendarID string, item googleEvent) (models.Even
 	}
 
 	now := time.Now()
+	eventID := fmt.Sprintf("evt-g-%s", item.ID)
+	if calendarID != "" {
+		eventID = fmt.Sprintf("evt-g-%s-%s", calendarID, item.ID)
+	}
+
 	return models.Event{
-		ID:               fmt.Sprintf("evt-g-%s", item.ID),
+		ID:               eventID,
 		Provider:         "google",
 		ProviderEventID:  item.ID,
 		ProviderUID:      item.ICalUID,

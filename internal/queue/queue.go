@@ -146,6 +146,19 @@ func (e *Engine) ProcessItem(ctx context.Context, item *models.MutationQueueItem
 			break
 		}
 	}
+
+	// Fallback healing: if OAuthAccountID unlinked or empty, match active provider account
+	if targetAccount == nil {
+		for _, acc := range accounts {
+			if acc.Provider == cal.Provider && acc.Status == "active" {
+				targetAccount = &acc
+				cal.OAuthAccountID = acc.ID
+				_ = e.store.UpsertCalendar(ctx, cal)
+				break
+			}
+		}
+	}
+
 	if targetAccount == nil {
 		return fmt.Errorf("oauth account %s not found for calendar", cal.OAuthAccountID)
 	}

@@ -1,28 +1,38 @@
 {{define "content"}}
 <!-- Top Glanceable Header -->
-<header class="kiosk-header">
+<header class="kiosk-header" aria-label="FamilyBoard header">
   <div class="header-clock-section" id="brand-header" title="FamilyBoard Appliance">
     <div id="clock-time" class="header-time">--:--</div>
     <div class="header-date-weather">
       <div id="clock-date" class="header-date">Loading...</div>
-      <div id="weather-slot" class="header-weather-slot">☀️ 22°C · Toronto</div>
+      <div id="weather-slot" class="header-weather-slot">{{.DeviceName}} · Private &amp; local</div>
     </div>
   </div>
 
   <div class="header-controls">
-    <div id="status-badge" class="status-badge" title="Appliance Sync Status">
+    <div id="status-badge" class="status-badge" title="Appliance sync status" role="status" aria-live="polite">
       <span class="status-dot"></span>
       <span id="status-text">Synced</span>
     </div>
 
-    <div class="view-selector">
-      <button class="view-btn active" data-view="hybrid" id="btn-view-month" title="30-Day Calendar View">Month</button>
-      <button class="view-btn" data-view="week" id="btn-view-week" title="7-Day Week View">Week</button>
-      <button class="view-btn" data-view="today" id="btn-view-today" title="Today Schedule View">Today</button>
+    <div class="view-selector" role="group" aria-label="Calendar view">
+      <button class="view-btn active" data-view="hybrid" id="btn-view-month" aria-pressed="true" title="Month calendar view">Month</button>
+      <button class="view-btn" data-view="week" id="btn-view-week" aria-pressed="false" title="7-day week view">Week</button>
+      <button class="view-btn" data-view="schedule" id="btn-view-schedule" aria-pressed="false" title="Schedule agenda view">Schedule</button>
+      <button class="view-btn" data-view="today" id="btn-view-today" aria-pressed="false" title="Today schedule view">Day</button>
     </div>
 
     <a href="/admin" class="btn-admin-link" id="link-admin" title="Appliance Settings">Admin</a>
-    <button id="btn-add-event" class="btn btn-primary">+ Add Event</button>
+    <button id="btn-add-event" class="btn btn-create" title="Create new event">
+      <svg class="google-create-icon" viewBox="0 0 36 36" width="22" height="22" aria-hidden="true">
+        <path fill="#4285F4" d="M16 16v14h4V16h14v-4H20V-2h-4v14H2v4z"/>
+        <path fill="#34A853" d="M30 16H20v-4h10z"/>
+        <path fill="#4285F4" d="M16 30h4v-14h-4z"/>
+        <path fill="#FBBC05" d="M6 16h10v4H6z"/>
+        <path fill="#EA4335" d="M16 6h4v10h-4z"/>
+      </svg>
+      <span>+ Create</span>
+    </button>
   </div>
 </header>
 
@@ -35,9 +45,9 @@
         <h2 id="nav-title" class="nav-title">Loading Calendar...</h2>
       </div>
       <div class="nav-arrows">
-        <button id="btn-today" class="btn btn-secondary">Today</button>
-        <button id="btn-prev" class="arrow-btn" aria-label="Previous">‹</button>
-        <button id="btn-next" class="arrow-btn" aria-label="Next">›</button>
+        <button id="btn-today" class="btn btn-today">Today</button>
+        <button id="btn-prev" class="arrow-btn" aria-label="Previous period">‹</button>
+        <button id="btn-next" class="arrow-btn" aria-label="Next period">›</button>
       </div>
     </div>
 
@@ -49,9 +59,23 @@
       <div id="days-grid" class="days-grid"></div>
     </div>
 
-    <!-- Week View Container -->
+    <!-- Week View Container (Google Calendar Style) -->
     <div id="week-view-container" class="week-view-container">
+      <!-- Pinned All-Day Header Strip -->
+      <div id="week-allday-row" class="week-allday-row"></div>
       <div class="week-columns-grid" id="week-columns-grid"></div>
+    </div>
+
+    <!-- Google-Style Schedule (Agenda) View Container -->
+    <div id="schedule-view-container" class="schedule-view-container">
+      <div class="schedule-hero-banner">
+        <div>
+          <h2 class="schedule-banner-title">Family Agenda &amp; Schedule</h2>
+          <p class="schedule-banner-sub">Upcoming activities, lessons, and appointments in chronological view</p>
+        </div>
+        <button id="btn-schedule-hero-add" class="btn btn-primary">+ Add Event</button>
+      </div>
+      <div id="schedule-timeline-feed" class="schedule-timeline-feed"></div>
     </div>
 
     <!-- Full Today View Container -->
@@ -91,8 +115,8 @@
 </main>
 
 <!-- Slide-Over Day Drawer (Tapping any day in Month view) -->
-<div id="day-drawer-overlay" class="day-drawer-overlay">
-  <div class="day-drawer">
+<div id="day-drawer-overlay" class="day-drawer-overlay" aria-hidden="true">
+  <div class="day-drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-date-title">
     <div class="drawer-header">
       <div id="drawer-date-title" class="drawer-date-title">Day Agenda</div>
       <button id="btn-close-drawer" class="drawer-close-btn" aria-label="Close">✕</button>
@@ -105,11 +129,12 @@
 </div>
 
 <!-- Touch-First Quick Add Modal -->
-<div id="event-modal" class="modal-overlay">
-  <div class="modal-dialog">
-    <div class="modal-header-tabs">
-      <button type="button" class="modal-tab-btn active" id="tab-quick-tap">Quick Tap Entry</button>
-      <button type="button" class="modal-tab-btn" id="tab-natural-lang">Natural Language</button>
+<div id="event-modal" class="modal-overlay" aria-hidden="true">
+  <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="event-modal-title">
+    <h2 id="event-modal-title" class="sr-only">Add or edit an event</h2>
+    <div class="modal-header-tabs" role="tablist" aria-label="Event entry method">
+      <button type="button" class="modal-tab-btn active" id="tab-quick-tap" role="tab" aria-selected="true" aria-controls="mode-quick-tap">Quick Tap Entry</button>
+      <button type="button" class="modal-tab-btn" id="tab-natural-lang" role="tab" aria-selected="false" aria-controls="mode-natural-lang">Natural Language</button>
     </div>
 
     <form id="event-form">
@@ -118,28 +143,38 @@
 
       <div class="modal-scrollable-body">
         <!-- Tab 1: Quick Tap Mode -->
-        <div id="mode-quick-tap">
-          <!-- Step 1: Destination Calendar -->
+        <div id="mode-quick-tap" role="tabpanel" aria-labelledby="tab-quick-tap">
+          <!-- Step 1: Activity Title & 1-Tap Smart Chips -->
           <div>
-            <label class="modal-section-title">1. Whose calendar?</label>
-            <div class="dest-tiles-grid" id="dest-tiles-grid">
-              <!-- Dynamically populated from /api/calendars -->
+            <label class="modal-section-title" for="event-title">1. What is happening?</label>
+            <div class="kiosk-input-wrap">
+              <input type="text" id="event-title" class="form-input-lg event-title-input" placeholder="Add title or tap activity below..." required autofocus autocomplete="off">
+              <button type="button" id="btn-clear-title" class="btn-clear-input" aria-label="Clear title" title="Clear title">✕</button>
+            </div>
+            <div class="suggestions-cloud" id="suggestions-cloud">
+              <button type="button" class="suggestion-chip" data-title="⚽ Soccer Practice" data-dur="60">⚽ Soccer Practice</button>
+              <button type="button" class="suggestion-chip" data-title="🏒 Hockey Game" data-dur="60">🏒 Hockey Game</button>
+              <button type="button" class="suggestion-chip" data-title="🏊 Swimming Lesson" data-dur="45">🏊 Swimming</button>
+              <button type="button" class="suggestion-chip" data-title="🥋 Karate Class" data-dur="45">🥋 Karate</button>
+              <button type="button" class="suggestion-chip" data-title="🏀 Basketball Game" data-dur="60">🏀 Basketball</button>
+              <button type="button" class="suggestion-chip" data-title="🩺 Doctor Appointment" data-dur="45">🩺 Doctor</button>
+              <button type="button" class="suggestion-chip" data-title="🦷 Dentist Visit" data-dur="45">🦷 Dentist</button>
+              <button type="button" class="suggestion-chip" data-title="💇 Haircut" data-dur="30">💇 Haircut</button>
+              <button type="button" class="suggestion-chip" data-title="🏫 School Event" data-dur="60">🏫 School</button>
+              <button type="button" class="suggestion-chip" data-title="🎹 Piano Lesson" data-dur="45">🎹 Piano</button>
+              <button type="button" class="suggestion-chip" data-title="🎂 Birthday Party" data-dur="120">🎂 Birthday Party</button>
+              <button type="button" class="suggestion-chip" data-title="🍕 Family Dinner" data-dur="90">🍕 Family Dinner</button>
+              <button type="button" class="suggestion-chip" data-title="🎬 Movie Night" data-dur="120">🎬 Movie Night</button>
+              <button type="button" class="suggestion-chip" data-title="🛒 Grocery Run" data-dur="45">🛒 Groceries</button>
+              <button type="button" class="suggestion-chip" data-title="🚗 Family Trip" data-allday="true">🚗 Family Trip</button>
             </div>
           </div>
 
-          <!-- Step 2: What is the activity? -->
+          <!-- Step 2: Destination Calendar -->
           <div>
-            <label class="modal-section-title" for="event-title">2. What is happening?</label>
-            <input type="text" id="event-title" class="form-input-lg" placeholder="Tap suggestion or type activity..." required autofocus autocomplete="off">
-            <div class="suggestions-cloud" id="suggestions-cloud">
-              <button type="button" class="suggestion-chip" data-title="⚽ Soccer Practice">⚽ Soccer Practice</button>
-              <button type="button" class="suggestion-chip" data-title="🏒 Hockey Game">🏒 Hockey Game</button>
-              <button type="button" class="suggestion-chip" data-title="🏊 Swimming Lesson">🏊 Swimming</button>
-              <button type="button" class="suggestion-chip" data-title="🎹 Piano Lesson">🎹 Piano</button>
-              <button type="button" class="suggestion-chip" data-title="🩺 Doctor Appointment">🩺 Doctor</button>
-              <button type="button" class="suggestion-chip" data-title="🦷 Dentist Visit">🦷 Dentist</button>
-              <button type="button" class="suggestion-chip" data-title="🎂 Birthday Party">🎂 Birthday Party</button>
-              <button type="button" class="suggestion-chip" data-title="🍕 Family Dinner">🍕 Family Dinner</button>
+            <label class="modal-section-title">2. Whose calendar?</label>
+            <div class="dest-tiles-grid" id="dest-tiles-grid">
+              <!-- Dynamically populated from /api/calendars with HOME as default -->
             </div>
           </div>
 
@@ -159,7 +194,7 @@
             </div>
           </div>
 
-          <!-- Step 4: Time & Duration -->
+          <!-- Step 4: Time & Duration with Zero-Typing Stepper -->
           <div>
             <div class="kiosk-time-section-header">
               <label class="modal-section-title">4. What time?</label>
@@ -169,20 +204,31 @@
             </div>
 
             <div id="time-controls-container" class="kiosk-time-controls">
+              <!-- One-Tap Stepper for instantaneous touch adjustment -->
+              <div class="stepper-time-container">
+                <button type="button" class="stepper-btn" id="btn-time-minus-15" aria-label="Subtract 15 minutes">− 15m</button>
+                <div class="stepper-time-readout" id="stepper-time-readout">5:00 PM</div>
+                <button type="button" class="stepper-btn" id="btn-time-plus-15" aria-label="Add 15 minutes">+ 15m</button>
+              </div>
+
+              <!-- Popular Start Times -->
               <div class="time-chips-grid" id="time-chips-grid">
                 <button type="button" class="time-chip" data-time="08:00">8:00 AM</button>
                 <button type="button" class="time-chip" data-time="09:00">9:00 AM</button>
+                <button type="button" class="time-chip" data-time="10:00">10:00 AM</button>
                 <button type="button" class="time-chip" data-time="12:00">12:00 PM</button>
-                <button type="button" class="time-chip" data-time="15:00">3:00 PM</button>
-                <button type="button" class="time-chip" data-time="16:00">4:00 PM</button>
+                <button type="button" class="time-chip" data-time="14:00">2:00 PM</button>
+                <button type="button" class="time-chip" data-time="15:30">3:30 PM</button>
                 <button type="button" class="time-chip selected" data-time="17:00">5:00 PM</button>
                 <button type="button" class="time-chip" data-time="18:00">6:00 PM</button>
                 <button type="button" class="time-chip" data-time="19:00">7:00 PM</button>
               </div>
 
+              <!-- Duration Chips -->
               <div>
                 <label class="modal-section-title kiosk-duration-title">Duration</label>
                 <div class="durations-row" id="durations-row">
+                  <button type="button" class="dur-chip" data-dur="15">15 min</button>
                   <button type="button" class="dur-chip" data-dur="30">30 min</button>
                   <button type="button" class="dur-chip" data-dur="45">45 min</button>
                   <button type="button" class="dur-chip selected" data-dur="60">1 hr</button>
@@ -190,7 +236,13 @@
                   <button type="button" class="dur-chip" data-dur="120">2 hr</button>
                 </div>
               </div>
+
+              <!-- Live Time Summary Readout -->
+              <div class="time-summary-banner" id="time-summary-banner">
+                🕒 5:00 PM – 6:00 PM (1 hr)
+              </div>
             </div>
+
             <input type="hidden" id="event-start-time" value="17:00">
             <input type="hidden" id="event-duration-min" value="60">
             <input type="hidden" id="event-end-date">
@@ -205,11 +257,11 @@
             <div id="more-options-container" class="kiosk-more-options">
               <div>
                 <label class="modal-section-title" for="event-location">Location</label>
-                <input type="text" id="event-location" class="form-input-lg" placeholder="e.g. Community Centre">
+                <input type="text" id="event-location" class="form-input-lg" placeholder="e.g. Community Centre, Field 2">
               </div>
               <div>
                 <label class="modal-section-title" for="event-description">Notes</label>
-                <textarea id="event-description" class="form-input-lg kiosk-textarea-notes" placeholder="Optional notes"></textarea>
+                <textarea id="event-description" class="form-input-lg kiosk-textarea-notes" placeholder="Optional notes or details..."></textarea>
               </div>
               <div>
                 <label class="modal-section-title">Does this repeat?</label>
@@ -226,7 +278,7 @@
         </div>
 
         <!-- Tab 2: Natural Language Mode -->
-        <div id="mode-natural-lang" class="kiosk-nl-mode-container">
+        <div id="mode-natural-lang" class="kiosk-nl-mode-container" role="tabpanel" aria-labelledby="tab-natural-lang">
           <div>
             <label class="modal-section-title">Describe the event in natural language:</label>
             <input type="text" id="nl-input" class="form-input-lg" placeholder="e.g. Soccer Thursday 6pm for 1 hour at Sports Complex">
@@ -251,13 +303,17 @@
   </div>
 </div>
 
-<!-- Event Detail & Delete Sheet -->
-<div id="event-detail-modal" class="modal-overlay">
-  <div class="modal-dialog kiosk-detail-dialog">
+<!-- Event Detail & Delete Sheet (Google Calendar Style) -->
+<div id="event-detail-modal" class="modal-overlay" aria-hidden="true">
+  <div class="modal-dialog kiosk-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+    <div id="detail-accent-strip" class="detail-accent-strip"></div>
     <div class="kiosk-detail-body">
       <div class="kiosk-detail-header-row">
         <h2 id="detail-title" class="kiosk-detail-title">Event Title</h2>
-        <button type="button" id="btn-close-detail" class="drawer-close-btn">✕</button>
+        <div class="kiosk-detail-top-actions">
+          <button type="button" id="btn-detail-quick-edit" class="detail-icon-btn" aria-label="Edit event" title="Edit">✏️</button>
+          <button type="button" id="btn-close-detail" class="drawer-close-btn" aria-label="Close event details">✕</button>
+        </div>
       </div>
 
       <div class="kiosk-detail-badge-row">
@@ -307,7 +363,7 @@
 </div>
 
 <!-- Toast Container for "Added ✓" and "Undo" -->
-<div id="toast-container" class="toast-container">
+<div id="toast-container" class="toast-container" role="status" aria-live="polite" aria-atomic="true">
   <div id="toast-bubble" class="toast-bubble">
     <span id="toast-message">Added ✓</span>
     <button type="button" id="toast-undo-btn" class="toast-undo-btn">Undo</button>

@@ -249,12 +249,31 @@ func (s *Store) GetDefaultWriteCalendar(ctx context.Context) (*models.Calendar, 
 	return &c, nil
 }
 
+func (s *Store) GetCalendarByProviderID(ctx context.Context, provider, providerCalendarID string) (*models.Calendar, error) {
+	var c models.Calendar
+	var enabled, writable, defaultTarget int
+	row := s.db.QueryRowContext(ctx, `SELECT id, oauth_account_id, provider, provider_calendar_id, name, timezone, display_color, enabled_for_display, writable, default_write_target, sync_cursor, last_synced_at, created_at, updated_at
+		FROM calendars WHERE provider = ? AND provider_calendar_id = ? LIMIT 1;`, provider, providerCalendarID)
+	if err := row.Scan(&c.ID, &c.OAuthAccountID, &c.Provider, &c.ProviderCalendarID, &c.Name, &c.Timezone, &c.DisplayColor, &enabled, &writable, &defaultTarget, &c.SyncCursor, &c.LastSyncedAt, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get calendar by provider id: %w", err)
+	}
+	c.EnabledForDisplay = (enabled == 1)
+	c.Writable = (writable == 1)
+	c.DefaultWriteTarget = (defaultTarget == 1)
+	return &c, nil
+}
+
 func (s *Store) UpsertCalendar(ctx context.Context, c *models.Calendar) error {
 	query := `INSERT INTO calendars (id, oauth_account_id, provider, provider_calendar_id, name, timezone, display_color, enabled_for_display, writable, default_write_target, sync_cursor, last_synced_at, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(provider, provider_calendar_id) DO UPDATE SET
+			oauth_account_id = CASE WHEN excluded.oauth_account_id != '' THEN excluded.oauth_account_id ELSE calendars.oauth_account_id END,
 			name = excluded.name,
 			timezone = excluded.timezone,
+			writable = excluded.writable,
 			updated_at = excluded.updated_at;`
 	now := time.Now()
 	if c.CreatedAt.IsZero() {

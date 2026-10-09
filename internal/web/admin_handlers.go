@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -394,6 +395,81 @@ func (s *Server) handleAdminSyncNow(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin?tab=calendars&msg=Sync+initiated+in+background", http.StatusSeeOther)
 }
 
+func (s *Server) handleAdminCalendarsRefresh(w http.ResponseWriter, r *http.Request) {
+	go func() {
+		bgCtx := context.Background()
+		_ = s.syncEngine.DiscoverCalendars(bgCtx)
+		_ = s.syncEngine.SyncAll(bgCtx)
+		s.BroadcastReload()
+	}()
+
+	http.Redirect(w, r, "/admin?tab=calendars&msg=Calendar+discovery+and+synchronization+initiated+in+background", http.StatusSeeOther)
+}
+
+func (s *Server) handleAdminCalendarUpdatePreferences(w http.ResponseWriter, r *http.Request) {
+	calendarID := r.PathValue("id")
+	if calendarID == "" {
+		http.Redirect(w, r, "/admin?tab=calendars&err=Calendar+ID+required", http.StatusSeeOther)
+		return
+	}
+
+	color := strings.TrimSpace(r.FormValue("display_color"))
+	if color == "" {
+		color = "#3b82f6"
+	}
+	enabled := r.FormValue("enabled_for_display") == "1" || r.FormValue("enabled_for_display") == "true" || r.FormValue("enabled_for_display") == "on"
+	writable := r.FormValue("writable") == "1" || r.FormValue("writable") == "true" || r.FormValue("writable") == "on"
+
+	if err := s.store.UpdateCalendarPreferences(r.Context(), calendarID, enabled, writable, color); err != nil {
+		http.Redirect(w, r, "/admin?tab=calendars&err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+
+	s.BroadcastReload()
+	http.Redirect(w, r, "/admin?tab=calendars&msg=Calendar+preferences+updated", http.StatusSeeOther)
+}
+
+func (s *Server) handleAdminCalendarSetDefault(w http.ResponseWriter, r *http.Request) {
+	calendarID := r.PathValue("id")
+	if calendarID == "" {
+		http.Redirect(w, r, "/admin?tab=calendars&err=Calendar+ID+required", http.StatusSeeOther)
+		return
+	}
+
+	if err := s.store.SetDefaultWriteCalendar(r.Context(), calendarID); err != nil {
+		http.Redirect(w, r, "/admin?tab=calendars&err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+
+	s.BroadcastReload()
+	http.Redirect(w, r, "/admin?tab=calendars&msg=Default+write+calendar+updated", http.StatusSeeOther)
+}
+
+func (s *Server) handleAdminPersonUpdate(w http.ResponseWriter, r *http.Request) {
+	personID := r.PathValue("id")
+	person, err := s.store.GetPerson(r.Context(), personID)
+	if err != nil || person == nil {
+		http.Redirect(w, r, "/admin?tab=accounts&err=Family+member+not+found", http.StatusSeeOther)
+		return
+	}
+
+	newName := strings.TrimSpace(r.FormValue("display_name"))
+	newEmail := strings.TrimSpace(r.FormValue("email"))
+	if newName != "" {
+		person.DisplayName = newName
+	}
+	if newEmail != "" {
+		person.Email = newEmail
+	}
+
+	if err := s.store.UpsertPerson(r.Context(), person); err != nil {
+		http.Redirect(w, r, "/admin?tab=accounts&err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+
+	http.Redirect(w, r, "/admin?tab=accounts&msg=Family+member+profile+updated", http.StatusSeeOther)
+}
+
 func (s *Server) handleAdminCandidateApprove(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	cand, err := s.store.GetCandidate(r.Context(), id)
@@ -535,9 +611,25 @@ func (s *Server) handleOAuthCallbackGoogle(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := oauth.VerifyAccountIsolation(expectedEmail, userInfo.Email); err != nil {
-		slog.Error("OAuth cross-assignment attempted and prevented", "expected", expectedEmail, "authenticated", userInfo.Email)
-		http.Redirect(w, r, fmt.Sprintf("/admin?tab=accounts&err=Account+mismatch:+Authenticated+as+%s+but+expected+%s.+Cross-assignment+prevented.", userInfo.Email, expectedEmail), http.StatusSeeOther)
-		return
+		if strings.HasSuffix(strings.ToLower(expectedEmail), "@example.com") {
+			// Gracefully adopt verified Google Workspace or Gmail email from setup placeholder
+			for _, p := range people {
+				if p.ID == parsedState.PersonID {
+					p.Email = userInfo.Email
+					if strings.Contains(p.DisplayName, "Member") || p.DisplayName == "Alex" || p.DisplayName == "Jordan" {
+						if userInfo.Name != "" {
+							p.DisplayName = userInfo.Name
+						}
+					}
+					_ = s.store.UpsertPerson(r.Context(), &p)
+					break
+				}
+			}
+		} else {
+			slog.Error("OAuth cross-assignment attempted and prevented", "expected", expectedEmail, "authenticated", userInfo.Email)
+			http.Redirect(w, r, fmt.Sprintf("/admin?tab=accounts&err=Account+mismatch:+Authenticated+as+%s+but+expected+%s.+Cross-assignment+prevented.", userInfo.Email, expectedEmail), http.StatusSeeOther)
+			return
+		}
 	}
 
 	accountID := fmt.Sprintf("acc-g-%s", userInfo.Sub)
@@ -564,7 +656,7 @@ func (s *Server) handleOAuthCallbackGoogle(w http.ResponseWriter, r *http.Reques
 
 	_ = s.store.UpsertOAuthAccount(r.Context(), oauthAccount)
 
-	// Register primary calendar if flow was calendar
+	// Discover and register all calendars if flow was calendar
 	if parsedState.Flow == "calendar" {
 		name := userInfo.Name
 		if name == "" {
@@ -590,7 +682,9 @@ func (s *Server) handleOAuthCallbackGoogle(w http.ResponseWriter, r *http.Reques
 		_ = s.store.UpsertCalendar(r.Context(), primaryCal)
 
 		go func() {
-			_ = s.syncEngine.SyncAll(context.Background())
+			bgCtx := context.Background()
+			_ = s.syncEngine.DiscoverCalendars(bgCtx)
+			_ = s.syncEngine.SyncAll(bgCtx)
 			s.BroadcastReload()
 		}()
 	}

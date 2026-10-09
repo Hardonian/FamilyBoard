@@ -4,7 +4,7 @@
 
   // --- State Variables ---
   let currentDate = new Date();
-  let currentView = 'hybrid'; // 'hybrid', 'week', 'today'
+  let currentView = 'hybrid'; // 'hybrid', 'week', 'schedule', 'today'
   let cachedEvents = [];
   let displayCalendars = [];
   let quickTemplates = [];
@@ -13,6 +13,9 @@
   let isSymbolActive = false;
   let lastDeletedEvent = null;
   let undoTimeout = null;
+  let renderSequence = 0;
+  let naturalLanguageSequence = 0;
+  let previouslyFocusedElement = null;
 
   // --- DOM Elements ---
   const elClockTime = document.getElementById('clock-time');
@@ -32,6 +35,9 @@
   const elWeekContainer = document.getElementById('week-view-container');
   const elTodayContainer = document.getElementById('today-view-container');
   const elTodaySideRail = document.getElementById('today-side-rail');
+  const elScheduleContainer = document.getElementById('schedule-view-container');
+  const elScheduleFeed = document.getElementById('schedule-timeline-feed');
+  const elWeekAllDayRow = document.getElementById('week-allday-row');
 
   // Modals & Drawers
   const elEventModal = document.getElementById('event-modal');
@@ -72,6 +78,8 @@
     loadCalendarsAndTemplates().then(() => {
       renderView();
     });
+
+    document.addEventListener('keydown', handleGlobalKeydown);
   }
 
   // --- Clock & Date ---
@@ -86,18 +94,21 @@
   }
 
   // --- Status & Connectivity ---
-  function setupNetworkMonitoring() {
-    function updateStatus(state, text) {
-      if (!elStatusBadge) return;
-      elStatusBadge.className = 'status-badge ' + (state || '');
-      if (elStatusText) elStatusText.textContent = text;
-    }
+  function updateStatus(state, text) {
+    if (!elStatusBadge) return;
+    elStatusBadge.className = 'status-badge ' + (state || '');
+    if (elStatusText) elStatusText.textContent = text;
+  }
 
-    window.addEventListener('online', () => updateStatus('', 'Synced'));
-    window.addEventListener('offline', () => updateStatus('offline', 'Offline (Cached)'));
+  function setupNetworkMonitoring() {
+    window.addEventListener('online', () => {
+      updateStatus('syncing', 'Reconnecting…');
+      renderView();
+    });
+    window.addEventListener('offline', () => updateStatus('offline', 'Offline · cached'));
 
     if (!navigator.onLine) {
-      updateStatus('offline', 'Offline (Cached)');
+      updateStatus('offline', 'Offline · cached');
     }
   }
 
@@ -112,9 +123,8 @@
 
     document.querySelectorAll('.view-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
-        document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
-        e.currentTarget.classList.add('active');
         currentView = e.currentTarget.dataset.view;
+        syncViewButtons();
         renderView();
       });
     });
@@ -125,6 +135,17 @@
     document.getElementById('btn-today-hero-add')?.addEventListener('click', () => {
       openQuickAddModal(new Date());
     });
+    document.getElementById('btn-schedule-hero-add')?.addEventListener('click', () => {
+      openQuickAddModal(new Date());
+    });
+  }
+
+  function syncViewButtons() {
+    document.querySelectorAll('.view-btn').forEach(btn => {
+      const isActive = btn.dataset.view === currentView;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-pressed', String(isActive));
+    });
   }
 
   function navigateCalendar(direction) {
@@ -132,6 +153,8 @@
       currentDate.setMonth(currentDate.getMonth() + direction);
     } else if (currentView === 'week') {
       currentDate.setDate(currentDate.getDate() + (direction * 7));
+    } else if (currentView === 'schedule') {
+      currentDate.setDate(currentDate.getDate() + (direction * 14));
     } else if (currentView === 'today') {
       currentDate.setDate(currentDate.getDate() + direction);
     }
@@ -146,16 +169,14 @@
         fetch('/api/kiosk/templates')
       ]);
 
-      if (calResp.ok) {
-        displayCalendars = await calResp.json();
-        populateDestinationTiles();
-      }
-      if (tmplResp.ok) {
-        quickTemplates = await tmplResp.json();
-        renderQuickTemplates();
-      }
+      if (!calResp.ok || !tmplResp.ok) throw new Error('Metadata request failed');
+      displayCalendars = await calResp.json();
+      quickTemplates = await tmplResp.json();
+      populateDestinationTiles();
+      renderQuickTemplates();
     } catch (e) {
       console.warn('Failed to load calendars/templates:', e);
+      updateStatus(navigator.onLine ? 'error' : 'offline', navigator.onLine ? 'Needs attention' : 'Offline · cached');
     }
   }
 
@@ -166,37 +187,75 @@
 
     const hiddenInput = document.getElementById('event-calendar-id');
 
-    let defaultSelected = false;
+    // Find best default: calendar marked default_write_target, or named "home", or first writable
+    const defaultCal = displayCalendars.find(c => c.writable && c.default_write_target) ||
+                       displayCalendars.find(c => c.writable && (c.name || '').toLowerCase().includes('home')) ||
+                       displayCalendars.find(c => c.writable);
+
+    if (defaultCal && hiddenInput) {
+      hiddenInput.value = defaultCal.id;
+    }
+
+    if (!defaultCal) {
+      const empty = document.createElement('p');
+      empty.className = 'destination-empty-state';
+      empty.textContent = 'No writable calendar is connected yet. Add one in Admin settings.';
+      grid.appendChild(empty);
+      return;
+    }
+
     displayCalendars.forEach((cal) => {
       if (!cal.writable) return;
 
-      const tile = document.createElement('div');
+      const tile = document.createElement('button');
+      tile.type = 'button';
       tile.className = 'dest-tile';
       tile.dataset.calId = cal.id;
 
-      // Color mapping
+      // Color and icon mapping
+      const lower = (cal.name || '').toLowerCase();
+      const isHome = lower.includes('home');
       const initial = (cal.name || 'C').charAt(0).toUpperCase();
       let colorClass = 'dest-avatar-default';
-      const lower = cal.name.toLowerCase();
-      if (lower.includes('member-1') || lower.includes('alex')) colorClass = 'dest-avatar-member-1';
+
+      if (isHome) colorClass = 'dest-avatar-home';
+      else if (lower.includes('member-1') || lower.includes('alex')) colorClass = 'dest-avatar-member-1';
       else if (lower.includes('member-2') || lower.includes('jordan')) colorClass = 'dest-avatar-member-2';
       else if (lower.includes('family')) colorClass = 'dest-avatar-family';
       else if (lower.includes('kids')) colorClass = 'dest-avatar-kids';
 
-      tile.innerHTML = `
-        <div class="dest-tile-avatar ${colorClass}" style="background-color: ${cal.display_color || 'var(--accent-primary)'}">${initial}</div>
-        <div class="dest-tile-name">${cal.name}</div>
-      `;
+      const icon = isHome ? '🏠' : initial;
+      const avatar = document.createElement('span');
+      avatar.className = `dest-tile-avatar ${colorClass}`;
+      avatar.style.backgroundColor = cal.display_color || 'var(--accent-primary)';
+      avatar.textContent = icon;
 
-      if (cal.default_write_target || !defaultSelected) {
+      const name = document.createElement('span');
+      name.className = 'dest-tile-name';
+      name.textContent = cal.name || 'Calendar';
+      if (cal.default_write_target) {
+        const defaultBadge = document.createElement('span');
+        defaultBadge.className = 'dest-default-mark';
+        defaultBadge.textContent = 'Default';
+        name.appendChild(defaultBadge);
+      }
+
+      tile.append(avatar, name);
+
+      if (defaultCal && cal.id === defaultCal.id) {
         tile.classList.add('selected');
-        if (hiddenInput) hiddenInput.value = cal.id;
-        defaultSelected = true;
+        tile.setAttribute('aria-pressed', 'true');
+      } else {
+        tile.setAttribute('aria-pressed', 'false');
       }
 
       tile.addEventListener('click', () => {
-        grid.querySelectorAll('.dest-tile').forEach(t => t.classList.remove('selected'));
+        grid.querySelectorAll('.dest-tile').forEach(t => {
+          t.classList.remove('selected');
+          t.setAttribute('aria-pressed', 'false');
+        });
         tile.classList.add('selected');
+        tile.setAttribute('aria-pressed', 'true');
         if (hiddenInput) hiddenInput.value = cal.id;
       });
 
@@ -212,7 +271,12 @@
       const chip = document.createElement('button');
       chip.type = 'button';
       chip.className = 'template-chip';
-      chip.innerHTML = `<span>${t.icon || '📅'}</span> <span>${t.title}</span>`;
+      const icon = document.createElement('span');
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = t.icon || '📅';
+      const label = document.createElement('span');
+      label.textContent = t.title || 'New event';
+      chip.append(icon, label);
       chip.addEventListener('click', () => {
         openQuickAddWithTemplate(t);
       });
@@ -256,8 +320,10 @@
     tiles.forEach(t => {
       if (t.dataset.calId === calID) {
         t.classList.add('selected');
+        t.setAttribute('aria-pressed', 'true');
       } else {
         t.classList.remove('selected');
+        t.setAttribute('aria-pressed', 'false');
       }
     });
   }
@@ -272,40 +338,62 @@
       if (resp.ok) {
         cachedEvents = await resp.json();
         localStorage.setItem('fb_cached_events', JSON.stringify(cachedEvents));
+        updateStatus('', 'Up to date');
         return cachedEvents;
       }
+      throw new Error(`Event request failed (${resp.status})`);
     } catch (e) {
       console.warn('Fetch failed, using local offline storage cache:', e);
       const offline = localStorage.getItem('fb_cached_events');
       if (offline) {
-        cachedEvents = JSON.parse(offline);
+        try {
+          cachedEvents = JSON.parse(offline);
+        } catch (_) {
+          cachedEvents = [];
+        }
+        updateStatus('offline', 'Showing cached events');
         return cachedEvents;
       }
+      updateStatus('error', 'Could not load events');
     }
     return cachedEvents || [];
   }
 
   // --- Master View Switcher ---
   async function renderView() {
+    const sequence = ++renderSequence;
     updateNavTitle();
+    syncViewButtons();
 
     if (currentView === 'hybrid') {
       if (elMonthContainer) elMonthContainer.style.display = 'flex';
       if (elWeekContainer) elWeekContainer.style.display = 'none';
+      if (elScheduleContainer) elScheduleContainer.style.display = 'none';
       if (elTodayContainer) elTodayContainer.style.display = 'none';
       if (elTodaySideRail) elTodaySideRail.style.display = 'flex';
       await renderMonthGrid();
+      if (sequence !== renderSequence) return;
       await renderTodayRail();
     } else if (currentView === 'week') {
       if (elMonthContainer) elMonthContainer.style.display = 'none';
       if (elWeekContainer) elWeekContainer.style.display = 'flex';
+      if (elScheduleContainer) elScheduleContainer.style.display = 'none';
       if (elTodayContainer) elTodayContainer.style.display = 'none';
       if (elTodaySideRail) elTodaySideRail.style.display = 'flex';
       await renderWeekGrid();
+      if (sequence !== renderSequence) return;
       await renderTodayRail();
+    } else if (currentView === 'schedule') {
+      if (elMonthContainer) elMonthContainer.style.display = 'none';
+      if (elWeekContainer) elWeekContainer.style.display = 'none';
+      if (elScheduleContainer) elScheduleContainer.style.display = 'flex';
+      if (elTodayContainer) elTodayContainer.style.display = 'none';
+      if (elTodaySideRail) elTodaySideRail.style.display = 'none';
+      await renderScheduleView();
     } else { // 'today'
       if (elMonthContainer) elMonthContainer.style.display = 'none';
       if (elWeekContainer) elWeekContainer.style.display = 'none';
+      if (elScheduleContainer) elScheduleContainer.style.display = 'none';
       if (elTodayContainer) elTodayContainer.style.display = 'flex';
       if (elTodaySideRail) elTodaySideRail.style.display = 'none';
       await renderTodayFull();
@@ -322,6 +410,10 @@
       const end = new Date(start);
       end.setDate(end.getDate() + 6);
       elNavTitle.textContent = `${start.toLocaleDateString([], { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    } else if (currentView === 'schedule') {
+      const end = new Date(currentDate);
+      end.setDate(end.getDate() + 13);
+      elNavTitle.textContent = `${currentDate.toLocaleDateString([], { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`;
     } else {
       elNavTitle.textContent = currentDate.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
     }
@@ -349,6 +441,9 @@
     for (let i = 0; i < 42; i++) {
       const cell = document.createElement('div');
       cell.className = 'day-cell';
+      cell.setAttribute('role', 'button');
+      cell.tabIndex = 0;
+      cell.setAttribute('aria-label', iterDate.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }));
 
       const isOtherMonth = iterDate.getMonth() !== month;
       if (isOtherMonth) cell.classList.add('other-month');
@@ -389,16 +484,14 @@
       dayEvents.slice(0, maxShow).forEach(ev => {
         const pill = document.createElement('div');
         pill.className = 'event-pill ' + getEventColorClass(ev);
+        makeInteractive(pill, () => openEventDetailSheet(ev), `${ev.title}, ${ev.all_day ? 'all day' : formatTimeShort(new Date(ev.start_at))}`);
 
         const isBirthday = ev.title.toLowerCase().includes('birthday');
         const icon = isBirthday ? '🎂 ' : '';
         const timeStr = ev.all_day ? '' : formatTimeShort(new Date(ev.start_at)) + ' ';
 
         pill.textContent = `${icon}${timeStr}${ev.title}`;
-        pill.addEventListener('click', (e) => {
-          e.stopPropagation();
-          openEventDetailSheet(ev);
-        });
+        pill.addEventListener('click', (e) => e.stopPropagation());
         pillsContainer.appendChild(pill);
       });
 
@@ -413,8 +506,19 @@
       cell.appendChild(pillsContainer);
 
       const cellDateCopy = new Date(iterDate);
-      cell.addEventListener('click', () => {
-        openDayDrawer(cellDateCopy, dayEvents);
+      const onDayClick = () => {
+        if (dayEvents.length === 0) {
+          openQuickAddModal(cellDateCopy);
+        } else {
+          openDayDrawer(cellDateCopy, dayEvents);
+        }
+      };
+      cell.addEventListener('click', onDayClick);
+      cell.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onDayClick();
+        }
       });
 
       elDaysGrid.appendChild(cell);
@@ -435,6 +539,7 @@
     endOfWeek.setDate(endOfWeek.getDate() + 7);
 
     const events = await fetchEvents(startOfWeek, endOfWeek);
+    renderWeekAllDayRow(startOfWeek, events);
 
     // Time Gutter (7 AM to 10 PM)
     const gutter = document.createElement('div');
@@ -493,12 +598,13 @@
       const colDateStr = iter.toDateString();
       const colEvents = events.filter(ev => {
         const evStart = new Date(ev.start_at);
-        return evStart.toDateString() === colDateStr && ev.status !== 'cancelled';
+        return evStart.toDateString() === colDateStr && ev.status !== 'cancelled' && !ev.all_day;
       });
 
       colEvents.forEach(ev => {
         const evCard = document.createElement('div');
         evCard.className = 'week-event-card ' + getEventColorClass(ev);
+        makeInteractive(evCard, () => openEventDetailSheet(ev), ev.title);
 
         const start = new Date(ev.start_at);
         const end = new Date(ev.end_at);
@@ -519,21 +625,26 @@
         evCard.style.top = `${top}px`;
         evCard.style.height = `${height}px`;
 
-        const isBirthday = ev.title.toLowerCase().includes('birthday');
+        const isBirthday = (ev.title || '').toLowerCase().includes('birthday');
         const icon = isBirthday ? '🎂 ' : '';
-        evCard.innerHTML = `<div>${icon}${formatTimeShort(start)}</div><div style="font-weight:800; font-size: 0.95rem;">${ev.title}</div>`;
-
-        evCard.addEventListener('click', (e) => {
-          e.stopPropagation();
-          openEventDetailSheet(ev);
-        });
+        const time = document.createElement('div');
+        time.textContent = `${icon}${formatTimeShort(start)}`;
+        const title = document.createElement('div');
+        title.className = 'week-event-title';
+        title.textContent = ev.title || 'Untitled event';
+        evCard.append(time, title);
+        evCard.addEventListener('click', (e) => e.stopPropagation());
 
         slots.appendChild(evCard);
       });
 
       const colDateCopy = new Date(iter);
-      slots.addEventListener('click', () => {
-        openQuickAddModal(colDateCopy);
+      slots.addEventListener('click', (e) => {
+        const rect = slots.getBoundingClientRect();
+        const clickY = e.clientY - rect.top;
+        const clickedHour = Math.min(21, Math.max(7, Math.floor(clickY / 60) + 7));
+        const clickedTimeStr = `${String(clickedHour).padStart(2, '0')}:00`;
+        openQuickAddModal(colDateCopy, clickedTimeStr);
       });
 
       col.appendChild(slots);
@@ -542,15 +653,116 @@
     }
   }
 
+  function renderWeekAllDayRow(startOfWeek, events) {
+    if (!elWeekAllDayRow) return;
+    elWeekAllDayRow.innerHTML = '';
+    const label = document.createElement('div');
+    label.className = 'week-allday-gutter-label';
+    label.textContent = 'All day';
+    elWeekAllDayRow.appendChild(label);
+
+    for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+      const day = new Date(startOfWeek);
+      day.setDate(day.getDate() + dayIndex);
+      const cell = document.createElement('div');
+      cell.className = 'week-allday-cell';
+      events.filter(event => event.all_day && event.status !== 'cancelled' && new Date(event.start_at).toDateString() === day.toDateString())
+        .forEach(event => {
+          const chip = document.createElement('div');
+          chip.className = `week-allday-chip ${getEventColorClass(event)}`;
+          chip.textContent = event.title || 'Untitled event';
+          makeInteractive(chip, () => openEventDetailSheet(event), event.title);
+          cell.appendChild(chip);
+        });
+      elWeekAllDayRow.appendChild(cell);
+    }
+  }
+
+  async function renderScheduleView() {
+    if (!elScheduleFeed) return;
+    elScheduleFeed.innerHTML = '';
+    const start = new Date(currentDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 14);
+    const events = (await fetchEvents(start, end))
+      .filter(event => event.status !== 'cancelled')
+      .sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
+
+    if (!events.length) {
+      elScheduleFeed.appendChild(createEmptyState('🗓️', 'No plans in the next two weeks', 'Add an event to get the family agenda started.'));
+      return;
+    }
+
+    const grouped = new Map();
+    events.forEach(event => {
+      const key = new Date(event.start_at).toDateString();
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(event);
+    });
+
+    grouped.forEach((dayEvents, key) => {
+      const date = new Date(dayEvents[0].start_at);
+      const group = document.createElement('section');
+      group.className = 'schedule-day-group';
+      const header = document.createElement('div');
+      header.className = 'schedule-day-header';
+      const titleWrap = document.createElement('div');
+      titleWrap.className = 'schedule-day-title-wrap';
+      const title = document.createElement('h3');
+      title.className = 'schedule-day-title';
+      title.textContent = date.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+      titleWrap.appendChild(title);
+      if (key === new Date().toDateString()) {
+        const badge = document.createElement('span');
+        badge.className = 'schedule-badge-today';
+        badge.textContent = 'Today';
+        titleWrap.appendChild(badge);
+      }
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'schedule-btn-add-day';
+      add.textContent = '+ Add';
+      add.addEventListener('click', () => openQuickAddModal(date));
+      header.append(titleWrap, add);
+
+      const stack = document.createElement('div');
+      stack.className = 'schedule-events-stack';
+      dayEvents.forEach(event => {
+        const card = document.createElement('div');
+        card.className = `schedule-event-card ${getEventCardColorClass(event)}`;
+        makeInteractive(card, () => openEventDetailSheet(event), event.title);
+        const time = document.createElement('div');
+        time.className = 'schedule-event-time';
+        time.textContent = event.all_day ? 'All day' : formatTimeShort(new Date(event.start_at));
+        const body = document.createElement('div');
+        body.className = 'schedule-event-body';
+        const eventTitle = document.createElement('strong');
+        eventTitle.textContent = event.title || 'Untitled event';
+        body.appendChild(eventTitle);
+        if (event.location) {
+          const meta = document.createElement('span');
+          meta.className = 'schedule-event-meta';
+          meta.textContent = `📍 ${event.location}`;
+          body.appendChild(meta);
+        }
+        card.append(time, body);
+        stack.appendChild(card);
+      });
+      group.append(header, stack);
+      elScheduleFeed.appendChild(group);
+    });
+  }
+
   // --- 3. Render Today Full View ---
   async function renderTodayFull() {
     if (!elTodayFullCardsGrid) return;
     elTodayFullCardsGrid.innerHTML = '';
 
-    const start = new Date();
+    const start = new Date(currentDate);
     start.setHours(0, 0, 0, 0);
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
 
     if (elTodayHeroDate) {
       elTodayHeroDate.textContent = start.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
@@ -560,13 +772,7 @@
     const todayEvents = events.filter(ev => ev.status !== 'cancelled');
 
     if (todayEvents.length === 0) {
-      elTodayFullCardsGrid.innerHTML = `
-        <div class="rail-empty-state" style="padding: 60px;">
-          <div class="rail-empty-icon">✨</div>
-          <h2>Nothing planned for today!</h2>
-          <p style="margin-top: 8px;">Tap "+ Add Event" above to schedule activities or appointments.</p>
-        </div>
-      `;
+      elTodayFullCardsGrid.appendChild(createEmptyState('✨', 'Nothing planned for today', 'Add an event whenever the family makes plans.'));
       return;
     }
 
@@ -575,25 +781,33 @@
     todayEvents.forEach(ev => {
       const card = document.createElement('div');
       card.className = 'today-full-card ' + getEventCardColorClass(ev);
+      makeInteractive(card, () => openEventDetailSheet(ev), ev.title);
 
       const start = new Date(ev.start_at);
       const timeBadgeText = ev.all_day ? 'ALL DAY' : formatTimeShort(start);
 
-      const isBirthday = ev.title.toLowerCase().includes('birthday');
+      const isBirthday = (ev.title || '').toLowerCase().includes('birthday');
       const icon = isBirthday ? '🎂 ' : '';
-
-      card.innerHTML = `
-        <div class="today-card-time-badge">${timeBadgeText}</div>
-        <div class="today-card-content">
-          <div class="today-card-title">${icon}${ev.title}</div>
-          <div class="today-card-details">
-            <span>📅 ${ev.all_day ? 'All-day' : `${formatTimeShort(start)} – ${formatTimeShort(new Date(ev.end_at))}`}</span>
-            ${ev.location ? `<span>📍 ${ev.location}</span>` : ''}
-          </div>
-        </div>
-      `;
-
-      card.addEventListener('click', () => openEventDetailSheet(ev));
+      const timeBadge = document.createElement('div');
+      timeBadge.className = 'today-card-time-badge';
+      timeBadge.textContent = timeBadgeText;
+      const content = document.createElement('div');
+      content.className = 'today-card-content';
+      const title = document.createElement('div');
+      title.className = 'today-card-title';
+      title.textContent = `${icon}${ev.title || 'Untitled event'}`;
+      const details = document.createElement('div');
+      details.className = 'today-card-details';
+      const timeDetail = document.createElement('span');
+      timeDetail.textContent = `📅 ${ev.all_day ? 'All-day' : `${formatTimeShort(start)} – ${formatTimeShort(new Date(ev.end_at))}`}`;
+      details.appendChild(timeDetail);
+      if (ev.location) {
+        const location = document.createElement('span');
+        location.textContent = `📍 ${ev.location}`;
+        details.appendChild(location);
+      }
+      content.append(title, details);
+      card.append(timeBadge, content);
       elTodayFullCardsGrid.appendChild(card);
     });
   }
@@ -620,14 +834,7 @@
     tomorrowEvents.sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
 
     if (todayEvents.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'rail-empty-state';
-      empty.innerHTML = `
-        <div class="rail-empty-icon">✨</div>
-        <p><strong>Nothing scheduled today!</strong></p>
-        <p style="font-size: 0.95rem; margin-top: 4px;">Enjoy your free family time.</p>
-      `;
-      elRailEventsList.appendChild(empty);
+      elRailEventsList.appendChild(createEmptyState('✨', 'Nothing scheduled today', 'Enjoy the breathing room.'));
     } else {
       todayEvents.forEach(ev => {
         elRailEventsList.appendChild(createRailEventCard(ev));
@@ -637,12 +844,7 @@
     // Tomorrow Preview Section
     if (tomorrowEvents.length > 0) {
       const tmrwHeader = document.createElement('div');
-      tmrwHeader.style.fontSize = '1.05rem';
-      tmrwHeader.style.fontWeight = '800';
-      tmrwHeader.style.color = 'var(--text-muted)';
-      tmrwHeader.style.textTransform = 'uppercase';
-      tmrwHeader.style.marginTop = '16px';
-      tmrwHeader.style.marginBottom = '4px';
+      tmrwHeader.className = 'rail-section-label';
       tmrwHeader.textContent = 'Tomorrow';
       elRailEventsList.appendChild(tmrwHeader);
 
@@ -655,22 +857,26 @@
   function createRailEventCard(ev) {
     const card = document.createElement('div');
     card.className = 'rail-event-card ' + getEventCardColorClass(ev);
+    makeInteractive(card, () => openEventDetailSheet(ev), ev.title);
 
     const start = new Date(ev.start_at);
     const timeText = ev.all_day ? 'All Day' : `${formatTimeShort(start)} – ${formatTimeShort(new Date(ev.end_at))}`;
 
-    const isBirthday = ev.title.toLowerCase().includes('birthday');
+    const isBirthday = (ev.title || '').toLowerCase().includes('birthday');
     const icon = isBirthday ? '🎂 ' : '';
-
-    card.innerHTML = `
-      <div class="rail-event-time-row">
-        <span>${timeText}</span>
-      </div>
-      <div class="rail-event-title">${icon}${ev.title}</div>
-      ${ev.location ? `<div class="rail-event-meta">📍 ${ev.location}</div>` : ''}
-    `;
-
-    card.addEventListener('click', () => openEventDetailSheet(ev));
+    const timeRow = document.createElement('div');
+    timeRow.className = 'rail-event-time-row';
+    timeRow.textContent = timeText;
+    const title = document.createElement('div');
+    title.className = 'rail-event-title';
+    title.textContent = `${icon}${ev.title || 'Untitled event'}`;
+    card.append(timeRow, title);
+    if (ev.location) {
+      const location = document.createElement('div');
+      location.className = 'rail-event-meta';
+      location.textContent = `📍 ${ev.location}`;
+      card.appendChild(location);
+    }
     return card;
   }
 
@@ -696,12 +902,7 @@
     if (elDrawerEventsList) {
       elDrawerEventsList.innerHTML = '';
       if (!events || events.length === 0) {
-        elDrawerEventsList.innerHTML = `
-          <div class="rail-empty-state">
-            <div class="rail-empty-icon">📅</div>
-            <p>No events scheduled for this day.</p>
-          </div>
-        `;
+        elDrawerEventsList.appendChild(createEmptyState('📅', 'No events scheduled', 'This day is wide open.'));
       } else {
         events.forEach(ev => {
           elDrawerEventsList.appendChild(createRailEventCard(ev));
@@ -709,11 +910,20 @@
       }
     }
 
-    if (elDayDrawerOverlay) elDayDrawerOverlay.style.display = 'flex';
+    if (elDayDrawerOverlay) {
+      previouslyFocusedElement = document.activeElement;
+      elDayDrawerOverlay.style.display = 'flex';
+      elDayDrawerOverlay.setAttribute('aria-hidden', 'false');
+      document.getElementById('btn-close-drawer')?.focus();
+    }
   }
 
   function closeDayDrawer() {
-    if (elDayDrawerOverlay) elDayDrawerOverlay.style.display = 'none';
+    if (elDayDrawerOverlay) {
+      elDayDrawerOverlay.style.display = 'none';
+      elDayDrawerOverlay.setAttribute('aria-hidden', 'true');
+      restorePreviousFocus();
+    }
   }
 
   // --- Event Detail Sheet & Undo Flow ---
@@ -746,14 +956,29 @@
       if (ev) openEditEventModal(ev);
     });
 
+    document.getElementById('btn-detail-quick-edit')?.addEventListener('click', () => {
+      const ev = btnDelete.eventObject;
+      closeEventDetailSheet();
+      if (ev) openEditEventModal(ev);
+    });
+
     elToastUndoBtn?.addEventListener('click', async () => {
       if (lastDeletedEvent && lastDeletedEvent.id) {
         await executeUndo(lastDeletedEvent.id);
       }
     });
+
+    elEventDetailModal?.addEventListener('click', (event) => {
+      if (event.target === elEventDetailModal) closeEventDetailSheet();
+    });
   }
 
   function openEventDetailSheet(ev) {
+    const accentStrip = document.getElementById('detail-accent-strip');
+    if (accentStrip) {
+      accentStrip.style.backgroundColor = getCalendarColor(ev.calendar_id);
+    }
+
     const titleEl = document.getElementById('detail-title');
     const calBadge = document.getElementById('detail-cal-badge');
     const datetimeEl = document.getElementById('detail-datetime');
@@ -766,7 +991,7 @@
 
     if (deleteBox) deleteBox.style.display = 'none';
 
-    const isBirthday = ev.title.toLowerCase().includes('birthday');
+    const isBirthday = (ev.title || '').toLowerCase().includes('birthday');
     if (titleEl) titleEl.textContent = (isBirthday ? '🎂 ' : '') + ev.title;
 
     const start = new Date(ev.start_at);
@@ -802,11 +1027,20 @@
       btnDelete.eventObject = ev;
     }
 
-    if (elEventDetailModal) elEventDetailModal.style.display = 'flex';
+    if (elEventDetailModal) {
+      previouslyFocusedElement = document.activeElement;
+      elEventDetailModal.style.display = 'flex';
+      elEventDetailModal.setAttribute('aria-hidden', 'false');
+      document.getElementById('btn-detail-ok')?.focus();
+    }
   }
 
   function closeEventDetailSheet() {
-    if (elEventDetailModal) elEventDetailModal.style.display = 'none';
+    if (elEventDetailModal) {
+      elEventDetailModal.style.display = 'none';
+      elEventDetailModal.setAttribute('aria-hidden', 'true');
+      restorePreviousFocus();
+    }
   }
 
   async function executeDelete(eventID) {
@@ -856,6 +1090,9 @@
   // --- Quick Add Modal Flow ---
   function setupQuickAddModal() {
     document.getElementById('btn-cancel-modal')?.addEventListener('click', closeQuickAddModal);
+    elEventModal?.addEventListener('click', (event) => {
+      if (event.target === elEventModal) closeQuickAddModal();
+    });
 
     // Tabs
     const tabQuick = document.getElementById('tab-quick-tap');
@@ -866,6 +1103,8 @@
     tabQuick?.addEventListener('click', () => {
       tabQuick.classList.add('active');
       tabNL.classList.remove('active');
+      tabQuick.setAttribute('aria-selected', 'true');
+      tabNL.setAttribute('aria-selected', 'false');
       modeQuick.style.display = 'block';
       modeNL.style.display = 'none';
     });
@@ -873,6 +1112,8 @@
     tabNL?.addEventListener('click', () => {
       tabNL.classList.add('active');
       tabQuick.classList.remove('active');
+      tabNL.setAttribute('aria-selected', 'true');
+      tabQuick.setAttribute('aria-selected', 'false');
       modeNL.style.display = 'flex';
       modeQuick.style.display = 'none';
       document.getElementById('nl-input')?.focus();
@@ -884,10 +1125,24 @@
         const titleInput = document.getElementById('event-title');
         if (titleInput) {
           titleInput.value = chip.dataset.title;
-          titleInput.focus();
+          if (chip.dataset.dur) setDuration(Number(chip.dataset.dur));
+          if (chip.dataset.allday === 'true') {
+            const allDay = document.getElementById('event-all-day');
+            allDay.checked = true;
+            toggleAllDayControls(true);
+          }
         }
       });
     });
+
+    document.getElementById('btn-clear-title')?.addEventListener('click', () => {
+      const title = document.getElementById('event-title');
+      title.value = '';
+      title.focus();
+    });
+
+    document.getElementById('btn-time-minus-15')?.addEventListener('click', () => adjustStartTime(-15));
+    document.getElementById('btn-time-plus-15')?.addEventListener('click', () => adjustStartTime(15));
 
     // Relative dates
     setupRelativeDates();
@@ -909,6 +1164,7 @@
         const isHidden = !moreContainer.style.display || moreContainer.style.display === 'none';
         moreContainer.style.display = isHidden ? 'flex' : 'none';
         btnMore.innerHTML = isHidden ? '<span>− Less Options</span>' : '<span>+ More Options (Location, Notes, Repeat)</span>';
+        btnMore.setAttribute('aria-expanded', String(isHidden));
       }
     });
 
@@ -1035,6 +1291,39 @@
 
     const endTimeStr = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
     document.getElementById('event-end-time').value = endTimeStr;
+    updateTimeSummary();
+  }
+
+  function adjustStartTime(minutes) {
+    const input = document.getElementById('event-start-time');
+    const [hours, mins] = (input.value || '17:00').split(':').map(Number);
+    const total = ((hours * 60) + mins + minutes + (24 * 60)) % (24 * 60);
+    input.value = `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+    document.querySelectorAll('#time-chips-grid .time-chip').forEach(button => button.classList.toggle('selected', button.dataset.time === input.value));
+    recalculateEndTime();
+  }
+
+  function updateTimeSummary() {
+    const startValue = document.getElementById('event-start-time')?.value || '17:00';
+    const endValue = document.getElementById('event-end-time')?.value || '18:00';
+    const duration = Number(document.getElementById('event-duration-min')?.value || 60);
+    const summary = document.getElementById('time-summary-banner');
+    const readout = document.getElementById('stepper-time-readout');
+    const startLabel = formatClockValue(startValue);
+    const endLabel = formatClockValue(endValue);
+    if (readout) readout.textContent = startLabel;
+    if (summary) summary.textContent = `🕒 ${startLabel} – ${endLabel} (${formatDuration(duration)})`;
+  }
+
+  function formatClockValue(value) {
+    const [hours, minutes] = value.split(':').map(Number);
+    return formatTimeShort(new Date(2000, 0, 1, hours, minutes));
+  }
+
+  function formatDuration(minutes) {
+    if (minutes < 60) return `${minutes} min`;
+    const hours = minutes / 60;
+    return Number.isInteger(hours) ? `${hours} hr${hours === 1 ? '' : 's'}` : `${hours.toFixed(1)} hrs`;
   }
 
   function toggleAllDayControls(isAllDay) {
@@ -1042,10 +1331,12 @@
     if (container) {
       container.style.opacity = isAllDay ? '0.4' : '1';
       container.style.pointerEvents = isAllDay ? 'none' : 'auto';
+      container.setAttribute('aria-disabled', String(isAllDay));
     }
   }
 
-  function openQuickAddModal(date) {
+  function openQuickAddModal(date, initialTimeStr) {
+    previouslyFocusedElement = document.activeElement;
     document.getElementById('event-id').value = '';
     document.getElementById('event-title').value = '';
     document.getElementById('event-location').value = '';
@@ -1061,6 +1352,18 @@
     const previewCard = document.getElementById('nl-preview-card');
     if (previewCard) previewCard.style.display = 'none';
 
+    const moreContainer = document.getElementById('more-options-container');
+    const moreButton = document.getElementById('btn-toggle-more');
+    if (moreContainer) moreContainer.style.display = 'none';
+    if (moreButton) {
+      moreButton.innerHTML = '<span>+ More Options (Location, Notes, Repeat)</span>';
+      moreButton.setAttribute('aria-expanded', 'false');
+    }
+    document.getElementById('event-rrule').value = '';
+    document.querySelectorAll('#recurrence-row .dur-chip').forEach(button => {
+      button.classList.toggle('selected', button.dataset.recur === '');
+    });
+
     // Set date
     const d = date || new Date();
     document.getElementById('event-start-date').value = formatDateForInput(d);
@@ -1069,6 +1372,7 @@
     document.querySelectorAll('#relative-dates-row .date-btn').forEach(b => b.classList.remove('selected'));
     const todayStr = formatDateForInput(new Date());
     const targetStr = formatDateForInput(d);
+    document.getElementById('custom-date-container').style.display = 'none';
     if (targetStr === todayStr) {
       document.querySelector('#relative-dates-row [data-rel="today"]')?.classList.add('selected');
     } else {
@@ -1076,9 +1380,12 @@
       document.getElementById('custom-date-container').style.display = 'block';
     }
 
-    // Default time 5:00 PM, 1 hour
-    document.getElementById('event-start-time').value = '17:00';
+    // Default time (or initialTimeStr passed from clicked hour slot)
+    const timeToUse = initialTimeStr || '17:00';
+    document.getElementById('event-start-time').value = timeToUse;
     document.getElementById('event-duration-min').value = '60';
+    document.querySelectorAll('#time-chips-grid .time-chip').forEach(button => button.classList.toggle('selected', button.dataset.time === timeToUse));
+    document.querySelectorAll('#durations-row .dur-chip').forEach(button => button.classList.toggle('selected', button.dataset.dur === '60'));
     document.getElementById('event-all-day').checked = false;
     toggleAllDayControls(false);
     recalculateEndTime();
@@ -1086,7 +1393,11 @@
     // Reset tabs
     document.getElementById('tab-quick-tap')?.click();
 
-    if (elEventModal) elEventModal.style.display = 'flex';
+    if (elEventModal) {
+      elEventModal.style.display = 'flex';
+      elEventModal.setAttribute('aria-hidden', 'false');
+      window.setTimeout(() => document.getElementById('event-title')?.focus(), 0);
+    }
   }
 
   function openEditEventModal(ev) {
@@ -1103,6 +1414,19 @@
     document.getElementById('event-start-date').value = formatDateForInput(start);
     document.getElementById('event-start-time').value = start.toTimeString().substring(0, 5);
     document.getElementById('event-end-time').value = end.toTimeString().substring(0, 5);
+    const durationMinutes = Math.max(30, Math.round((end - start) / 60000));
+    document.getElementById('event-duration-min').value = durationMinutes;
+    document.querySelectorAll('#time-chips-grid .time-chip').forEach(button => button.classList.toggle('selected', button.dataset.time === start.toTimeString().substring(0, 5)));
+    document.querySelectorAll('#durations-row .dur-chip').forEach(button => button.classList.toggle('selected', Number(button.dataset.dur) === durationMinutes));
+
+    const recurrenceRule = ev.recurrence_rule || '';
+    document.getElementById('event-rrule').value = recurrenceRule;
+    document.querySelectorAll('#recurrence-row .dur-chip').forEach(button => button.classList.toggle('selected', button.dataset.recur === recurrenceRule));
+    if (ev.location || ev.description || recurrenceRule) {
+      document.getElementById('more-options-container').style.display = 'flex';
+      document.getElementById('btn-toggle-more').innerHTML = '<span>− Less Options</span>';
+      document.getElementById('btn-toggle-more').setAttribute('aria-expanded', 'true');
+    }
 
     if (ev.all_day) {
       document.getElementById('event-all-day').checked = true;
@@ -1116,8 +1440,12 @@
   }
 
   function closeQuickAddModal() {
-    if (elEventModal) elEventModal.style.display = 'none';
+    if (elEventModal) {
+      elEventModal.style.display = 'none';
+      elEventModal.setAttribute('aria-hidden', 'true');
+    }
     hideVirtualKeyboard();
+    restorePreviousFocus();
   }
 
   async function handleNaturalLanguageParse() {
@@ -1128,6 +1456,14 @@
       return;
     }
 
+    const sequence = ++naturalLanguageSequence;
+    if (card) {
+      card.style.display = 'flex';
+      document.getElementById('nl-parsed-title').textContent = 'Understanding your event…';
+      document.getElementById('nl-parsed-datetime').textContent = '';
+      document.getElementById('nl-parsed-location').style.display = 'none';
+    }
+
     try {
       const resp = await fetch('/api/kiosk/parse-natural', {
         method: 'POST',
@@ -1135,6 +1471,7 @@
         body: JSON.stringify({ text: text })
       });
 
+      if (sequence !== naturalLanguageSequence) return;
       if (resp.ok) {
         const data = await resp.json();
         if (data.title && card) {
@@ -1154,9 +1491,15 @@
 
           card.style.display = 'flex';
         }
+      } else {
+        throw new Error(`Parse request failed (${resp.status})`);
       }
     } catch (e) {
       console.warn('NL parse error:', e);
+      if (sequence === naturalLanguageSequence && card) {
+        document.getElementById('nl-parsed-title').textContent = 'Could not understand that yet';
+        document.getElementById('nl-parsed-datetime').textContent = 'Try including a day and time.';
+      }
     }
   }
 
@@ -1191,6 +1534,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: text })
         });
+        if (!parseResp.ok) throw new Error('Could not parse event description');
         const parsed = await parseResp.json();
 
         const start = new Date(parsed.start_at);
@@ -1225,8 +1569,22 @@
         return;
       }
 
-      const startAt = new Date(`${startDateStr}T${startTimeStr}:00`);
-      const endAt = new Date(`${startDateStr}T${endTimeStr}:00`);
+      let startAt;
+      let endAt;
+      if (allDay) {
+        startAt = new Date(`${startDateStr}T00:00:00`);
+        endAt = new Date(startAt);
+        endAt.setDate(endAt.getDate() + 1);
+      } else {
+        startAt = new Date(`${startDateStr}T${startTimeStr}:00`);
+        endAt = new Date(`${startDateStr}T${endTimeStr}:00`);
+        if (endAt <= startAt) endAt.setDate(endAt.getDate() + 1);
+      }
+
+      if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
+        showToast('Choose a valid date and time', false);
+        return;
+      }
 
       const id = document.getElementById('event-id').value;
       const payload = {
@@ -1255,21 +1613,17 @@
         renderView();
         showToast(id ? 'Saved ✓' : 'Added ✓', false);
       } else {
-        const err = await resp.json();
-        alert(err.error || 'Failed to save event. Saved to local offline queue.');
-        closeQuickAddModal();
-        renderView();
+        const err = await resp.json().catch(() => ({}));
+        showToast(err.error || 'Could not save the event', false);
       }
     } catch (e) {
       console.warn('Network save exception:', e);
-      closeQuickAddModal();
-      renderView();
-      showToast('Saved locally (Offline)', false);
+      showToast('Could not reach FamilyBoard', false);
     } finally {
       isSavingEvent = false;
       if (btnSave) {
         btnSave.disabled = false;
-        btnSave.textContent = 'Add Event';
+        btnSave.textContent = document.getElementById('event-id').value ? 'Save Changes' : 'Add Event';
       }
     }
   }
@@ -1295,15 +1649,16 @@
     elKeyboardRows.innerHTML = '';
 
     const normalRows = [
+      ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
       ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
       ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
       ['Shift', 'z', 'x', 'c', 'v', 'b', 'n', 'm', '⌫'],
-      ['?123', 'Space', 'Clear', 'Done']
+      ['?123', '.', '-', 'Space', 'Clear', 'Done']
     ];
 
     const symbolRows = [
       ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
-      ['@', '#', '$', '%', '&', '-', '+', '(', ')', '/'],
+      ['@', '#', '$', '%', '&', '*', '+', '(', ')', '/'],
       ['ABC', ':', ';', '!', '?', '\'', '"', '⌫'],
       ['Space', 'Clear', 'Done']
     ];
@@ -1326,6 +1681,7 @@
 
         keyBtn.textContent = displayKey;
 
+        if (/^[0-9]$/.test(k)) keyBtn.classList.add('number-key');
         if (k === 'Space') keyBtn.classList.add('space-key');
         else if (k === 'Done') keyBtn.classList.add('done-key');
         else if (['Shift', '⌫', '?123', 'ABC', 'Clear'].includes(k)) keyBtn.classList.add('special-key');
@@ -1433,6 +1789,9 @@
 
   function getEventColorClass(ev) {
     const title = (ev.title || '').toLowerCase();
+    const cal = displayCalendars.find(c => c.id === ev.calendar_id);
+    const calName = (cal ? cal.name : '').toLowerCase();
+    if (calName.includes('home')) return 'pill-home';
     if (title.includes('birthday')) return 'pill-birthday';
     if (ev.calendar_id === 'cal-member-1' || title.includes('member-1') || title.includes('alex')) return 'pill-member-1';
     if (ev.calendar_id === 'cal-member-2' || title.includes('member-2') || title.includes('jordan')) return 'pill-member-2';
@@ -1442,11 +1801,85 @@
 
   function getEventCardColorClass(ev) {
     const title = (ev.title || '').toLowerCase();
+    const cal = displayCalendars.find(c => c.id === ev.calendar_id);
+    const calName = (cal ? cal.name : '').toLowerCase();
+    if (calName.includes('home')) return 'card-home';
     if (title.includes('birthday')) return 'card-birthday';
     if (ev.calendar_id === 'cal-member-1' || title.includes('member-1') || title.includes('alex')) return 'card-member-1';
     if (ev.calendar_id === 'cal-member-2' || title.includes('member-2') || title.includes('jordan')) return 'card-member-2';
     if (title.includes('kids') || title.includes('soccer') || title.includes('swimming')) return 'card-kids';
     return 'card-family';
+  }
+
+  function makeInteractive(element, action, label) {
+    element.setAttribute('role', 'button');
+    element.tabIndex = 0;
+    if (label) element.setAttribute('aria-label', label);
+    element.addEventListener('click', action);
+    element.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        event.stopPropagation();
+        action();
+      }
+    });
+  }
+
+  function createEmptyState(iconText, titleText, detailText) {
+    const empty = document.createElement('div');
+    empty.className = 'rail-empty-state';
+    const icon = document.createElement('div');
+    icon.className = 'rail-empty-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = iconText;
+    const title = document.createElement('strong');
+    title.textContent = titleText;
+    const detail = document.createElement('p');
+    detail.className = 'empty-state-detail';
+    detail.textContent = detailText;
+    empty.append(icon, title, detail);
+    return empty;
+  }
+
+  function restorePreviousFocus() {
+    if (previouslyFocusedElement && document.contains(previouslyFocusedElement)) {
+      previouslyFocusedElement.focus();
+    }
+    previouslyFocusedElement = null;
+  }
+
+  function getVisibleOverlay() {
+    return [elEventDetailModal, elEventModal, elDayDrawerOverlay].find(overlay =>
+      overlay && overlay.getAttribute('aria-hidden') === 'false'
+    );
+  }
+
+  function handleGlobalKeydown(event) {
+    const overlay = getVisibleOverlay();
+    if (!overlay) return;
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (overlay === elEventDetailModal) closeEventDetailSheet();
+      else if (overlay === elEventModal) closeQuickAddModal();
+      else closeDayDrawer();
+      return;
+    }
+
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(overlay.querySelectorAll(
+      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+    )).filter(element => element.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 
   // --- 15-Minute Inactivity Auto-Reset & 30-Day Default Mode ---
@@ -1516,7 +1949,9 @@
     // 3. Reset view to 30-day (hybrid Month) view
     currentView = 'hybrid';
     document.querySelectorAll('.view-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.view === 'hybrid');
+      const isActive = btn.dataset.view === 'hybrid';
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-pressed', String(isActive));
     });
 
     // 4. Render fresh view
