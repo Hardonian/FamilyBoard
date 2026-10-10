@@ -28,6 +28,9 @@ jobs:
           go-version: '1.26.9'
           cache: true
 
+      - name: Validate release version metadata
+        run: bash scripts/check_version.sh
+
       - name: Verify Formatting
         run: |
           UNFORMATTED=$(gofmt -l .)
@@ -63,12 +66,8 @@ jobs:
       - name: Run Race Detector Tests
         run: go test -race -v ./...
 
-      - name: Cross-Compile Linux ARM64 Binaries
-        run: |
-          mkdir -p dist
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/familyboard-linux-arm64 ./cmd/familyboard
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/familyboardctl-linux-arm64 ./cmd/familyboardctl
-          ls -la dist/
+      - name: Build and verify supported platform archives
+        run: bash scripts/package_portable.sh "$(tr -d '\r\n' < VERSION)"
 
       - name: Validate Pi Deployment Shell Scripts
         run: |
