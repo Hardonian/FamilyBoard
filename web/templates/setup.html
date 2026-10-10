@@ -3,6 +3,7 @@
   <div class="setup-header">
     <h1 class="setup-title">Welcome to FamilyBoard</h1>
     <p class="setup-sub">First-Run Appliance Setup & Initialization Wizard</p>
+    <p class="setup-mobile-hint">📱 Setting up from your iPhone or Android phone? Complete these 4 steps to launch your board!</p>
   </div>
 
   {{if .Error}}
@@ -20,11 +21,11 @@
       <div class="form-row">
         <div class="form-group">
           <label class="form-label" for="device_name">Device Name</label>
-          <input type="text" id="device_name" name="device_name" class="form-input" value="{{.DeviceName}}" required>
+          <input type="text" id="device_name" name="device_name" class="form-input" value="{{.DeviceName}}" required autocapitalize="words">
         </div>
         <div class="form-group">
           <label class="form-label" for="timezone">Appliance Timezone</label>
-          <input type="text" id="timezone" name="timezone" class="form-input" value="{{.Timezone}}" required>
+          <input type="text" id="timezone" name="timezone" class="form-input" value="{{.Timezone}}" required autocapitalize="none" autocorrect="off" spellcheck="false">
         </div>
       </div>
     </div>
@@ -51,11 +52,11 @@
       <p class="setup-section-desc">From your Google Cloud Console OAuth 2.0 Web Application client.</p>
       <div class="form-group">
         <label class="form-label" for="google_client_id">Google Client ID</label>
-        <input type="text" id="google_client_id" name="google_client_id" class="form-input" value="{{.GoogleClientID}}" placeholder="apps.googleusercontent.com">
+        <input type="text" id="google_client_id" name="google_client_id" class="form-input" value="{{.GoogleClientID}}" placeholder="apps.googleusercontent.com" autocapitalize="none" autocorrect="off" spellcheck="false">
       </div>
       <div class="form-group form-group-spaced">
         <label class="form-label" for="google_client_secret">Google Client Secret</label>
-        <input type="password" id="google_client_secret" name="google_client_secret" class="form-input" autocomplete="off">
+        <input type="password" id="google_client_secret" name="google_client_secret" class="form-input" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
       </div>
     </div>
 
@@ -66,21 +67,21 @@
       <div class="form-row">
         <div class="form-group">
           <label class="form-label" for="member1_name">Family Member 1 Name</label>
-          <input type="text" id="member1_name" name="member1_name" class="form-input" value="{{if .Member1Name}}{{.Member1Name}}{{else}}Family Member 1{{end}}" placeholder="e.g. Alex" required>
+          <input type="text" id="member1_name" name="member1_name" class="form-input" value="{{if .Member1Name}}{{.Member1Name}}{{else}}Family Member 1{{end}}" placeholder="e.g. Alex" required autocapitalize="words" inputmode="text">
         </div>
         <div class="form-group">
           <label class="form-label" for="member1_email">Email Address</label>
-          <input type="email" id="member1_email" name="member1_email" class="form-input" value="{{.Member1Email}}" placeholder="e.g. member1@gmail.com or member1@outlook.com" required>
+          <input type="email" id="member1_email" name="member1_email" class="form-input" value="{{.Member1Email}}" placeholder="e.g. member1@gmail.com or member1@outlook.com" required autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="email">
         </div>
       </div>
       <div class="form-row form-group-spaced">
         <div class="form-group">
           <label class="form-label" for="member2_name">Family Member 2 Name</label>
-          <input type="text" id="member2_name" name="member2_name" class="form-input" value="{{if .Member2Name}}{{.Member2Name}}{{else}}Family Member 2{{end}}" placeholder="e.g. Jordan" required>
+          <input type="text" id="member2_name" name="member2_name" class="form-input" value="{{if .Member2Name}}{{.Member2Name}}{{else}}Family Member 2{{end}}" placeholder="e.g. Jordan" required autocapitalize="words" inputmode="text">
         </div>
         <div class="form-group">
           <label class="form-label" for="member2_email">Email Address</label>
-          <input type="email" id="member2_email" name="member2_email" class="form-input" value="{{.Member2Email}}" placeholder="e.g. member2@gmail.com or member2@outlook.com" required>
+          <input type="email" id="member2_email" name="member2_email" class="form-input" value="{{.Member2Email}}" placeholder="e.g. member2@gmail.com or member2@outlook.com" required autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="email">
         </div>
       </div>
       <p class="setup-member-note">Supports Google Workspace / G Suite (custom domains), personal Gmail, and Microsoft Outlook. Any shared family calendars (like your shared <strong>"HOME"</strong> calendar) will automatically sync once authorized in the Admin dashboard.</p>

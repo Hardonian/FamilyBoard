@@ -31,6 +31,7 @@ verify-mod:
 check-js:
 	node --check web/static/js/kiosk.js
 	node --check web/static/js/admin.js
+	node --check web/static/sw.js
 
 test:
 	go test -v ./...

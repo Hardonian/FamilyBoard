@@ -623,3 +623,165 @@ func TestWeb_KioskGoogleCalendarPolishAndViews(t *testing.T) {
 		}
 	}
 }
+
+func TestWeb_ManifestAndServiceWorker(t *testing.T) {
+	srv, _, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	// 1. Verify Web App Manifest
+	reqManifest := httptest.NewRequest(http.MethodGet, "/manifest.webmanifest", nil)
+	wManifest := httptest.NewRecorder()
+	srv.ServeHTTP(wManifest, reqManifest)
+	if wManifest.Code != http.StatusOK {
+		t.Fatalf("expected 200 for manifest.webmanifest, got %d", wManifest.Code)
+	}
+	if ct := wManifest.Header().Get("Content-Type"); !strings.Contains(ct, "application/manifest+json") {
+		t.Errorf("expected application/manifest+json, got %q", ct)
+	}
+	var manifestData map[string]interface{}
+	if err := json.Unmarshal(wManifest.Body.Bytes(), &manifestData); err != nil {
+		t.Fatalf("failed to parse manifest JSON: %v", err)
+	}
+	if manifestData["name"] != "FamilyBoard" || manifestData["display"] != "standalone" {
+		t.Errorf("unexpected manifest content: %+v", manifestData)
+	}
+
+	// 2. Verify Service Worker
+	reqSW := httptest.NewRequest(http.MethodGet, "/sw.js", nil)
+	wSW := httptest.NewRecorder()
+	srv.ServeHTTP(wSW, reqSW)
+	if wSW.Code != http.StatusOK {
+		t.Fatalf("expected 200 for sw.js, got %d", wSW.Code)
+	}
+	if swAllowed := wSW.Header().Get("Service-Worker-Allowed"); swAllowed != "/" {
+		t.Errorf("expected Service-Worker-Allowed: /, got %q", swAllowed)
+	}
+	if !strings.Contains(wSW.Body.String(), "familyboard-shell") {
+		t.Errorf("sw.js content missing cache shell identifier")
+	}
+}
+
+func TestWeb_MobilePairingAndCapabilityIssuance(t *testing.T) {
+	srv, store, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	_ = store.SetDeviceMetadata(ctx, &models.DeviceMetadata{
+		DeviceName:    "Kitchen Appliance",
+		Timezone:      "America/Toronto",
+		InitializedAt: time.Now(),
+		Version:       "v1.2.0",
+	})
+
+	// 1. Physical kiosk requests pairing payload (localhost)
+	reqPair := httptest.NewRequest(http.MethodGet, "/api/system/mobile-pair", nil)
+	reqPair.RemoteAddr = "127.0.0.1:8080"
+	wPair := httptest.NewRecorder()
+	srv.ServeHTTP(wPair, reqPair)
+	if wPair.Code != http.StatusOK {
+		t.Fatalf("expected 200 for mobile-pair endpoint, got %d", wPair.Code)
+	}
+
+	var pairData map[string]interface{}
+	if err := json.Unmarshal(wPair.Body.Bytes(), &pairData); err != nil {
+		t.Fatalf("failed to decode pairing data: %v", err)
+	}
+	pairURL, ok := pairData["pair_url"].(string)
+	token, tokOk := pairData["token"].(string)
+	if !ok || pairURL == "" || !tokOk || token == "" {
+		t.Fatalf("expected valid pair_url and token, got %+v", pairData)
+	}
+
+	// 2. Verify QR Code generation
+	reqQR := httptest.NewRequest(http.MethodGet, "/api/system/mobile-pair/qrcode", nil)
+	reqQR.RemoteAddr = "127.0.0.1:8080"
+	wQR := httptest.NewRecorder()
+	srv.ServeHTTP(wQR, reqQR)
+	if wQR.Code != http.StatusOK {
+		t.Fatalf("expected 200 for mobile-pair/qrcode endpoint, got %d", wQR.Code)
+	}
+	if ct := wQR.Header().Get("Content-Type"); ct != "image/png" {
+		t.Errorf("expected image/png for QR code, got %q", ct)
+	}
+
+	// 3. Remote smartphone (iPhone / Poco F7) scans QR code and hits /?pair=<token>
+	reqPhone := httptest.NewRequest(http.MethodGet, "/?pair="+token, nil)
+	reqPhone.RemoteAddr = "192.168.1.150:54321" // Remote LAN IP
+	wPhone := httptest.NewRecorder()
+	srv.ServeHTTP(wPhone, reqPhone)
+
+	if wPhone.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 redirect after valid pairing token, got %d", wPhone.Code)
+	}
+
+	var kioskCookie *http.Cookie
+	for _, c := range wPhone.Result().Cookies() {
+		if c.Name == "fb_kiosk_cap" {
+			kioskCookie = c
+			break
+		}
+	}
+	if kioskCookie == nil || kioskCookie.Value == "" {
+		t.Fatalf("expected fb_kiosk_cap cookie to be issued to paired phone")
+	}
+
+	// 4. Remote smartphone now uses the issued cookie to perform a write mutation (create event)
+	eventPayload := map[string]interface{}{
+		"calendar_id": "cal-home",
+		"title":       "Soccer Practice from Mobile Phone",
+		"start_at":    time.Now().Add(2 * time.Hour).Format(time.RFC3339),
+		"end_at":      time.Now().Add(3 * time.Hour).Format(time.RFC3339),
+		"all_day":     false,
+	}
+	pBytes, _ := json.Marshal(eventPayload)
+	reqEvent := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewReader(pBytes))
+	reqEvent.RemoteAddr = "192.168.1.150:54321" // Remote LAN client
+	reqEvent.Header.Set("Content-Type", "application/json")
+	reqEvent.AddCookie(kioskCookie)
+
+	wEvent := httptest.NewRecorder()
+	srv.ServeHTTP(wEvent, reqEvent)
+	if wEvent.Code != http.StatusCreated {
+		t.Fatalf("expected 201 Created from paired mobile phone, got %d (body: %s)", wEvent.Code, wEvent.Body.String())
+	}
+}
+
+func TestWeb_MobilePWAAndLayoutElements(t *testing.T) {
+	srv, store, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	_ = store.SetDeviceMetadata(ctx, &models.DeviceMetadata{
+		DeviceName:    "Kitchen Appliance",
+		Timezone:      "America/Toronto",
+		InitializedAt: time.Now(),
+		Version:       "v1.2.0",
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for kiosk, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	expectedMobileTokens := []string{
+		"apple-mobile-web-app-capable",
+		"apple-mobile-web-app-status-bar-style",
+		"viewport-fit=cover",
+		"/manifest.webmanifest",
+		"/static/icons/apple-touch-icon.png",
+		"mobile-bottom-nav",
+		"btn-mobile-fab-add",
+		"modal-mobile-pair",
+		"mobile-pwa-banner",
+		"btn-pair-phone",
+	}
+
+	for _, token := range expectedMobileTokens {
+		if !strings.Contains(body, token) {
+			t.Errorf("kiosk HTML missing mobile token: %q", token)
+		}
+	}
+}
