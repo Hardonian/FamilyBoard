@@ -19,7 +19,7 @@ func (s *Server) handleKiosk(w http.ResponseWriter, r *http.Request) {
 	// Issue mobile capability cookie if a valid physical pairing token was scanned
 	if pairToken := r.URL.Query().Get("pair"); pairToken != "" {
 		if s.verifyPairingToken(pairToken) {
-			s.issueMobileKioskCapabilityCookie(w, r)
+			s.issueMobileKioskCapabilityCookie(w)
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}

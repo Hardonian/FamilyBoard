@@ -77,11 +77,12 @@ func (mc *MicrosoftClient) AuthURL(state string) string {
 
 func (mc *MicrosoftClient) AuthURLWithFlow(state, flow, loginHint string) string {
 	scopes := []string{ScopeMSOfflineAccess, ScopeMSUserRead}
-	if flow == "mail" {
+	switch flow {
+	case "mail":
 		scopes = append(scopes, ScopeMSMailRead)
-	} else if flow == "all" {
+	case "all":
 		scopes = append(scopes, ScopeMSCalendarsReadWrite, ScopeMSMailRead)
-	} else {
+	default:
 		// Default to calendar (+ optional mail for unified login)
 		scopes = append(scopes, ScopeMSCalendarsReadWrite, ScopeMSMailRead)
 	}

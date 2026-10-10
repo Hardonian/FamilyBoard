@@ -4023,7 +4023,7 @@ body.kiosk-ambient-dim {
    Universal Meeting Action Links (Google Meet, Teams, FaceTime, Zoom)
    ========================================================================== */
 .kiosk-detail-meeting-row {
-  display: flex;
+  display: none;
   margin: 12px 0 6px 0;
 }
 
@@ -4084,5 +4084,114 @@ body.kiosk-ambient-dim {
 .btn-meeting-link.btn-meet-zoom:hover {
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.4), rgba(37, 99, 235, 0.4));
   box-shadow: 0 4px 18px rgba(59, 130, 246, 0.35);
+}
+
+/* ==========================================================================
+   Admin Dashboard: Provider Switcher, Ecosystem Guide & Apple Modal
+   ========================================================================== */
+.admin-inline-details {
+  margin-top: 6px;
+}
+.admin-provider-dropdown {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+}
+.admin-provider-dropdown .btn-provider-choice {
+  font-size: 0.75rem;
+  padding: 4px 8px;
+}
+.status-badge-muted {
+  opacity: 0.7;
+}
+
+.admin-ecosystem-card {
+  margin-top: 20px;
+}
+.admin-ecosystem-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  padding: 20px;
+}
+.admin-ecosystem-col {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  padding: 16px;
+}
+.admin-ecosystem-google {
+  border: 1px solid rgba(56, 189, 248, 0.25);
+}
+.admin-ecosystem-google h4 {
+  margin: 0 0 6px 0;
+  font-size: 0.95rem;
+  color: #38bdf8;
+}
+.admin-ecosystem-ms {
+  border: 1px solid rgba(129, 140, 248, 0.25);
+}
+.admin-ecosystem-ms h4 {
+  margin: 0 0 6px 0;
+  font-size: 0.95rem;
+  color: #818cf8;
+}
+.admin-ecosystem-apple {
+  border: 1px solid rgba(52, 211, 153, 0.25);
+}
+.admin-ecosystem-apple h4 {
+  margin: 0 0 6px 0;
+  font-size: 0.95rem;
+  color: #34d399;
+}
+.admin-ecosystem-desc {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0 0 8px 0;
+  line-height: 1.45;
+}
+.admin-ecosystem-tip {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  display: block;
+}
+.admin-ecosystem-apple a {
+  color: #34d399;
+}
+
+.modal-apple-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #fff;
+}
+.modal-apple-body {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.modal-apple-sub {
+  margin: 0;
+}
+.modal-apple-help {
+  font-size: 0.8rem;
+  margin: 4px 0 0 0;
+  color: var(--text-muted);
+}
+.modal-apple-help a {
+  color: var(--accent);
+}
+.modal-apple-caldav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.modal-apple-footer {
+  padding: 12px 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 

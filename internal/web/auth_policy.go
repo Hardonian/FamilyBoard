@@ -121,7 +121,7 @@ func (s *Server) verifyPairingToken(token string) bool {
 }
 
 // issueMobileKioskCapabilityCookie grants trusted household write capability to a paired smartphone.
-func (s *Server) issueMobileKioskCapabilityCookie(w http.ResponseWriter, r *http.Request) {
+func (s *Server) issueMobileKioskCapabilityCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     kioskCapabilityCookieName,
 		Value:    s.generateKioskToken(),

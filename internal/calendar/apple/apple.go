@@ -414,7 +414,7 @@ func (c *AppleCalendarClient) SyncEvents(ctx context.Context, accessToken string
 	for _, item := range parsedCal.Events {
 		uid := item.UID
 		if uid == "" {
-			h := sha256.Sum256([]byte(fmt.Sprintf("%s-%s", item.Summary, item.StartAt)))
+			h := sha256.Sum256(fmt.Appendf(nil, "%s-%s", item.Summary, item.StartAt))
 			uid = fmt.Sprintf("apple-%x", h[:8])
 		}
 
