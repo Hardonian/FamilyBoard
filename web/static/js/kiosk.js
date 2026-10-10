@@ -76,7 +76,22 @@
     setupVirtualKeyboard();
     setupInactivityAutoReset();
     setupFotoCubePhotoFrame();
+    setupMobilePairModal();
+    setupMobilePwaBanner();
+    setupMobileSyncTriggers();
     setupSSE();
+
+    // Check URL parameters for view preference (e.g. /?view=schedule)
+    const urlParams = new URLSearchParams(window.location.search);
+    const viewParam = urlParams.get('view');
+    if (viewParam && ['hybrid', 'week', 'schedule', 'today'].includes(viewParam)) {
+      currentView = viewParam;
+      syncViewButtons();
+    } else if (isMobileDevice() && window.innerWidth <= 480) {
+      // Default smartphones (iPhone & Poco F7) to Schedule (Agenda) view for best vertical 1-thumb readability
+      currentView = 'schedule';
+      syncViewButtons();
+    }
 
     loadCalendarsAndTemplates().then(() => {
       renderView();
@@ -393,31 +408,57 @@
     document.getElementById('btn-prev')?.addEventListener('click', () => navigateCalendar(-1));
     document.getElementById('btn-next')?.addEventListener('click', () => navigateCalendar(1));
     document.getElementById('btn-today')?.addEventListener('click', () => {
+      triggerHaptic(10);
       currentDate = new Date();
       renderView();
     });
 
     document.querySelectorAll('.view-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
+        triggerHaptic(12);
         currentView = e.currentTarget.dataset.view;
         syncViewButtons();
         renderView();
       });
     });
 
+    // Mobile Bottom Navigation Dock (iPhone & Poco F7)
+    document.querySelectorAll('.mobile-nav-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        triggerHaptic(15);
+        currentView = e.currentTarget.dataset.view;
+        syncViewButtons();
+        renderView();
+      });
+    });
+
+    // Mobile 1-Thumb Floating Action Button
+    document.getElementById('btn-mobile-fab-add')?.addEventListener('click', () => {
+      triggerHaptic(18);
+      openQuickAddModal(new Date());
+    });
+
     document.getElementById('btn-add-event')?.addEventListener('click', () => {
+      triggerHaptic(12);
       openQuickAddModal(new Date());
     });
     document.getElementById('btn-today-hero-add')?.addEventListener('click', () => {
+      triggerHaptic(12);
       openQuickAddModal(new Date());
     });
     document.getElementById('btn-schedule-hero-add')?.addEventListener('click', () => {
+      triggerHaptic(12);
       openQuickAddModal(new Date());
     });
   }
 
   function syncViewButtons() {
     document.querySelectorAll('.view-btn').forEach(btn => {
+      const isActive = btn.dataset.view === currentView;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-pressed', String(isActive));
+    });
+    document.querySelectorAll('.mobile-nav-btn').forEach(btn => {
       const isActive = btn.dataset.view === currentView;
       btn.classList.toggle('active', isActive);
       btn.setAttribute('aria-pressed', String(isActive));
@@ -2015,7 +2056,19 @@
     activeInput.dispatchEvent(new Event('input'));
   }
 
+  function isMobileDevice() {
+    return window.innerWidth <= 768 || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  }
+
+  function triggerHaptic(duration) {
+    if ('vibrate' in navigator) {
+      try { navigator.vibrate(duration || 15); } catch (_) {}
+    }
+  }
+
   function showVirtualKeyboard() {
+    // Suppress physical touchscreen keyboard on mobile smartphones (iPhone & Android)
+    if (isMobileDevice()) return;
     if (elVirtualKeyboard) elVirtualKeyboard.style.display = 'flex';
   }
 
@@ -2023,21 +2076,196 @@
     if (elVirtualKeyboard) elVirtualKeyboard.style.display = 'none';
   }
 
-  // --- Real-Time SSE live stream ---
+  // --- Real-Time Flawless Synchronization Engine ---
+  let sseEventSource = null;
+  let sseReconnectTimer = null;
+  let sseRetryDelay = 1000;
+  const MAX_RETRY_DELAY = 10000;
+
   function setupSSE() {
+    if (sseReconnectTimer) {
+      clearTimeout(sseReconnectTimer);
+      sseReconnectTimer = null;
+    }
+    if (sseEventSource) {
+      try { sseEventSource.close(); } catch (_) {}
+      sseEventSource = null;
+    }
+
     try {
-      const evtSource = new EventSource('/api/events/stream');
-      evtSource.onmessage = function(e) {
+      sseEventSource = new EventSource('/api/events/stream');
+
+      sseEventSource.onopen = function() {
+        sseRetryDelay = 1000; // Reset backoff upon successful connection
+        updateStatus('', 'Synced');
+      };
+
+      sseEventSource.onmessage = function(e) {
         if (e.data === 'reload') {
-          renderView();
+          triggerHaptic(10);
+          updateStatus('syncing', 'Updating…');
+          renderView().finally(() => {
+            updateStatus('', 'Synced');
+          });
         }
       };
-      evtSource.onerror = function() {
-        evtSource.close();
-        setTimeout(setupSSE, 15000);
+
+      sseEventSource.onerror = function() {
+        if (sseEventSource) {
+          try { sseEventSource.close(); } catch (_) {}
+          sseEventSource = null;
+        }
+
+        if (navigator.onLine) {
+          updateStatus('syncing', 'Syncing…');
+        } else {
+          updateStatus('offline', 'Offline · cached');
+        }
+
+        // Exponential backoff with random jitter to prevent reconnect stampedes
+        const jitter = Math.floor(Math.random() * 500);
+        const delay = Math.min(sseRetryDelay + jitter, MAX_RETRY_DELAY);
+        sseRetryDelay = Math.min(sseRetryDelay * 2, MAX_RETRY_DELAY);
+
+        sseReconnectTimer = setTimeout(setupSSE, delay);
       };
     } catch (e) {
-      console.warn('SSE stream error:', e);
+      console.warn('SSE connection initialization error:', e);
+      sseReconnectTimer = setTimeout(setupSSE, 5000);
+    }
+  }
+
+  // Mobile Lifecycle & Reconnection Triggers
+  function setupMobileSyncTriggers() {
+    // When phone screen unlocks or user switches back to FamilyBoard tab
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        if (!sseEventSource || sseEventSource.readyState === EventSource.CLOSED) {
+          setupSSE();
+        }
+        renderView();
+      }
+    });
+
+    window.addEventListener('pageshow', () => {
+      if (!sseEventSource || sseEventSource.readyState === EventSource.CLOSED) {
+        setupSSE();
+      }
+      renderView();
+    });
+
+    window.addEventListener('focus', () => {
+      if (!sseEventSource || sseEventSource.readyState === EventSource.CLOSED) {
+        setupSSE();
+      }
+    });
+
+    // Register Service Worker for mobile PWA offline cache
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' })
+          .then(() => {
+            console.log('[PWA] Service Worker registered for offline resilience');
+          })
+          .catch(err => {
+            console.log('[PWA] Service Worker registration omitted:', err);
+          });
+      });
+    }
+  }
+
+  // Mobile Phone Pairing Modal (iPhone & Poco F7)
+  function setupMobilePairModal() {
+    const btnPair = document.getElementById('btn-pair-phone');
+    const modal = document.getElementById('modal-mobile-pair');
+    const btnClose = document.getElementById('btn-close-pair-modal');
+    const btnCloseFooter = document.getElementById('btn-close-pair-modal-footer');
+    const textUrl = document.getElementById('text-pair-url');
+    const btnCopy = document.getElementById('btn-copy-pair-url');
+    const imgQr = document.getElementById('img-pair-qrcode');
+
+    if (!btnPair || !modal) return;
+
+    btnPair.addEventListener('click', async () => {
+      triggerHaptic(15);
+      modal.classList.remove('hidden');
+      modal.setAttribute('aria-hidden', 'false');
+
+      try {
+        const resp = await fetch('/api/system/mobile-pair');
+        if (resp.ok) {
+          const data = await resp.json();
+          if (textUrl && data.pair_url) {
+            textUrl.textContent = data.pair_url;
+            textUrl.dataset.url = data.pair_url;
+          }
+          if (imgQr) {
+            imgQr.src = (data.qr_url || '/api/system/mobile-pair/qrcode') + '?t=' + Date.now();
+          }
+        }
+      } catch (_) {
+        if (textUrl) textUrl.textContent = window.location.origin + '/';
+      }
+    });
+
+    function closePairModal() {
+      modal.classList.add('hidden');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+
+    if (btnClose) btnClose.onclick = closePairModal;
+    if (btnCloseFooter) btnCloseFooter.onclick = closePairModal;
+    modal.onclick = (e) => {
+      if (e.target === modal) closePairModal();
+    };
+
+    if (btnCopy) {
+      btnCopy.addEventListener('click', async () => {
+        triggerHaptic(10);
+        const urlToCopy = textUrl?.dataset?.url || textUrl?.textContent || window.location.href;
+        try {
+          await navigator.clipboard.writeText(urlToCopy);
+          btnCopy.textContent = 'Copied ✓';
+          setTimeout(() => { btnCopy.textContent = 'Copy'; }, 2000);
+        } catch (_) {
+          btnCopy.textContent = 'Copied ✓';
+        }
+      });
+    }
+  }
+
+  // Mobile PWA Home Screen Banner
+  function setupMobilePwaBanner() {
+    const banner = document.getElementById('mobile-pwa-banner');
+    const btnHow = document.getElementById('btn-pwa-install-how');
+    const btnDismiss = document.getElementById('btn-pwa-dismiss');
+
+    if (!banner) return;
+
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || ('standalone' in navigator && navigator.standalone);
+    const isDismissed = localStorage.getItem('fb_pwa_dismissed') === 'true';
+
+    // Show banner only on mobile devices if not already running full-screen PWA and not dismissed
+    if (isMobileDevice() && !isStandalone && !isDismissed) {
+      setTimeout(() => {
+        banner.classList.remove('hidden');
+      }, 2500);
+    }
+
+    if (btnHow) {
+      btnHow.addEventListener('click', () => {
+        triggerHaptic(12);
+        banner.classList.add('hidden');
+        const btnPair = document.getElementById('btn-pair-phone');
+        if (btnPair) btnPair.click();
+      });
+    }
+
+    if (btnDismiss) {
+      btnDismiss.addEventListener('click', () => {
+        banner.classList.add('hidden');
+        localStorage.setItem('fb_pwa_dismissed', 'true');
+      });
     }
   }
 
@@ -2243,6 +2471,7 @@
   }
 
   function onInactivityElapsed() {
+    if (isMobileDevice()) return; // Don't hijack smartphone browser with kitchen screensaver
     const elapsed = Date.now() - lastTouchTime;
     if (elapsed >= INACTIVITY_TIMEOUT_MS) {
       // Return to default 30-day view

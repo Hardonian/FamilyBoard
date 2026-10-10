@@ -470,6 +470,64 @@
   </div>
 </div>
 
+<!-- Mobile Phone Pairing Modal -->
+<div id="modal-mobile-pair" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="pair-modal-title" aria-hidden="true">
+  <div class="modal-card modal-card-wide modal-pair-dialog">
+    <div class="modal-header">
+      <div class="modal-title-group">
+        <h3 id="pair-modal-title" class="modal-title">📱 Connect Smartphone (iPhone &amp; Poco F7 Android)</h3>
+        <p class="modal-sub">Scan the QR code below with your phone camera to pair with full kitchen board access.</p>
+      </div>
+      <button type="button" class="btn-close-modal" id="btn-close-pair-modal" aria-label="Close Mobile Pairing">✕</button>
+    </div>
+
+    <div class="pair-modal-content-grid">
+      <!-- QR Code Panel -->
+      <div class="pair-qr-panel">
+        <div class="pair-qr-container">
+          <img id="img-pair-qrcode" src="/api/system/mobile-pair/qrcode" alt="Mobile Pairing QR Code" class="pair-qr-img" width="220" height="220">
+        </div>
+        <div class="pair-url-box">
+          <div class="pair-url-label">Direct Browser Link:</div>
+          <div class="pair-url-copy-row">
+            <code id="text-pair-url" class="pair-url-code">Loading pairing link…</code>
+            <button type="button" id="btn-copy-pair-url" class="btn btn-secondary btn-sm">Copy</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Instructions Panel for iPhone & Poco F7 / Android -->
+      <div class="pair-guide-panel">
+        <div class="pair-step-box">
+          <div class="pair-platform-badge apple-badge">🍏 Apple iPhone (iOS Safari)</div>
+          <ol class="pair-step-list">
+            <li>Open the built-in <strong>Camera</strong> app.</li>
+            <li>Point at the QR code and tap the <strong>Safari</strong> prompt.</li>
+            <li>Tap the Share icon <span class="ios-glyph">⎋</span> at the bottom.</li>
+            <li>Select <strong>"Add to Home Screen"</strong> <span class="ios-glyph">⊞</span>.</li>
+            <li>Launch from your Home Screen for the full sovereign app!</li>
+          </ol>
+        </div>
+
+        <div class="pair-step-box">
+          <div class="pair-platform-badge android-badge">🤖 Poco F7 &amp; Android (Chrome)</div>
+          <ol class="pair-step-list">
+            <li>Point your <strong>Camera</strong> or Google Lens at the code.</li>
+            <li>Tap the link banner to open in <strong>Chrome</strong>.</li>
+            <li>Tap the <strong>"Install App"</strong> prompt or menu <strong>⋮</strong> &rarr; <strong>"Add to Home screen"</strong>.</li>
+            <li>Enjoy high-refresh smooth 120Hz scrolling &amp; instant realtime sync!</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer modal-footer-between">
+      <div class="pair-footer-hint">🔒 Paired phones stay authenticated with trusted household capability.</div>
+      <button type="button" id="btn-close-pair-modal-footer" class="btn btn-primary btn-sm">Done</button>
+    </div>
+  </div>
+</div>
+
 <!-- Built-In Touch Virtual Keyboard -->
 <div id="virtual-keyboard" class="virtual-keyboard">
   <div class="kiosk-keyboard-header">
