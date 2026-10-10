@@ -26,6 +26,7 @@ type Engine struct {
 	stopCh          chan struct{}
 	wg              sync.WaitGroup
 	mu              sync.Mutex
+	syncRunMu       sync.Mutex
 	running         bool
 	onSyncCompleted func()
 }
@@ -112,10 +113,14 @@ func (e *Engine) DiscoverCalendars(ctx context.Context) error {
 		return fmt.Errorf("list oauth accounts for discovery: %w", err)
 	}
 
-	if e.tokenProvider == nil {
+	e.mu.Lock()
+	tokenProvider := e.tokenProvider
+	e.mu.Unlock()
+	if tokenProvider == nil {
 		return nil
 	}
 
+	var discoveryErrors []error
 	for _, acc := range accounts {
 		if acc.Status != "active" {
 			continue
@@ -128,15 +133,17 @@ func (e *Engine) DiscoverCalendars(ctx context.Context) error {
 			continue
 		}
 
-		token, err := e.tokenProvider.GetValidAccessToken(ctx, acc.PersonID, acc.Provider)
+		token, err := tokenProvider.GetValidAccessToken(ctx, acc.PersonID, acc.Provider)
 		if err != nil {
 			slog.Warn("Could not get access token for discovery", "account", acc.VerifiedEmail, "err", err)
+			discoveryErrors = append(discoveryErrors, fmt.Errorf("discover %s account %s: %w", acc.Provider, acc.ID, err))
 			continue
 		}
 
 		remoteCals, err := prov.ListCalendars(ctx, token)
 		if err != nil {
 			slog.Warn("Failed to list calendars from provider", "provider", acc.Provider, "account", acc.VerifiedEmail, "err", err)
+			discoveryErrors = append(discoveryErrors, fmt.Errorf("list %s calendars for account %s: %w", acc.Provider, acc.ID, err))
 			continue
 		}
 
@@ -144,9 +151,28 @@ func (e *Engine) DiscoverCalendars(ctx context.Context) error {
 		hasDefault := (defaultCal != nil)
 
 		for _, rc := range remoteCals {
-			existing, err := e.store.GetCalendarByProviderID(ctx, rc.Provider, rc.ProviderCalendarID)
+			providerName := strings.TrimSpace(rc.Provider)
+			if providerName == "" {
+				providerName = acc.Provider
+			}
+			if providerName != acc.Provider {
+				err := fmt.Errorf("provider returned calendar for %q while discovering %q account", providerName, acc.Provider)
+				discoveryErrors = append(discoveryErrors, err)
+				slog.Warn("Ignoring cross-provider calendar discovery result", "account", acc.ID, "err", err)
+				continue
+			}
+
+			existing, err := e.store.GetCalendarByProviderID(ctx, providerName, rc.ProviderCalendarID)
 			if err != nil {
 				slog.Warn("Failed to check existing calendar", "id", rc.ProviderCalendarID, "err", err)
+				discoveryErrors = append(discoveryErrors, fmt.Errorf("look up discovered calendar %s: %w", rc.ProviderCalendarID, err))
+				continue
+			}
+			if existing != nil && existing.OAuthAccountID != acc.ID {
+				// A shared provider calendar can be visible to several household
+				// accounts. Preserve its established owner instead of silently
+				// flipping credentials on every discovery pass.
+				slog.Info("Calendar already linked to another household account; preserving existing owner", "calendar", existing.ID, "owner_account", existing.OAuthAccountID, "discovered_account", acc.ID)
 				continue
 			}
 
@@ -155,7 +181,7 @@ func (e *Engine) DiscoverCalendars(ctx context.Context) error {
 				calID = existing.ID
 			} else if calID == "" {
 				h := sha256.Sum256([]byte(rc.ProviderCalendarID))
-				calID = fmt.Sprintf("cal-%s-%x", rc.Provider[:1], h[:6])
+				calID = fmt.Sprintf("cal-%s-%x", providerName[:1], h[:6])
 			}
 
 			nameLower := strings.ToLower(rc.Name)
@@ -186,7 +212,7 @@ func (e *Engine) DiscoverCalendars(ctx context.Context) error {
 			calToSave := &models.Calendar{
 				ID:                 calID,
 				OAuthAccountID:     acc.ID,
-				Provider:           rc.Provider,
+				Provider:           providerName,
 				ProviderCalendarID: rc.ProviderCalendarID,
 				Name:               rc.Name,
 				Timezone:           rc.Timezone,
@@ -198,6 +224,7 @@ func (e *Engine) DiscoverCalendars(ctx context.Context) error {
 
 			if err := e.store.UpsertCalendar(ctx, calToSave); err != nil {
 				slog.Warn("Failed to upsert discovered calendar", "name", rc.Name, "err", err)
+				discoveryErrors = append(discoveryErrors, fmt.Errorf("save discovered calendar %s: %w", rc.ProviderCalendarID, err))
 			} else {
 				if isHomeCal {
 					_ = e.store.SetDefaultWriteCalendar(ctx, calID)
@@ -207,14 +234,22 @@ func (e *Engine) DiscoverCalendars(ctx context.Context) error {
 		}
 	}
 
-	return nil
+	return errors.Join(discoveryErrors...)
 }
 
 // SyncAll syncs all active calendars across all accounts.
 func (e *Engine) SyncAll(ctx context.Context) error {
+	// Startup, the periodic ticker, admin UI, and local control endpoint may all
+	// request a run. Provider cursors are single-writer state, so serialize full
+	// runs and avoid racing the same incremental cursor.
+	e.syncRunMu.Lock()
+	defer e.syncRunMu.Unlock()
+
+	var syncErrors []error
 	// 1. Auto-discover any new/shared calendars from Google/Microsoft
 	if err := e.DiscoverCalendars(ctx); err != nil {
 		slog.Warn("Calendar discovery encountered an issue", "err", err)
+		syncErrors = append(syncErrors, err)
 	}
 
 	// 2. Fetch and synchronize events
@@ -230,6 +265,7 @@ func (e *Engine) SyncAll(ctx context.Context) error {
 		}
 		if err := e.SyncCalendar(ctx, &cal); err != nil {
 			slog.Warn("Calendar sync failed", "calendar", cal.Name, "id", cal.ID, "err", err)
+			syncErrors = append(syncErrors, fmt.Errorf("sync calendar %s: %w", cal.ID, err))
 		} else {
 			syncedAny = true
 		}
@@ -244,7 +280,7 @@ func (e *Engine) SyncAll(ctx context.Context) error {
 		}
 	}
 
-	return nil
+	return errors.Join(syncErrors...)
 }
 
 // SyncCalendar performs full or incremental sync for a single calendar.
@@ -256,39 +292,28 @@ func (e *Engine) SyncCalendar(ctx context.Context, cal *models.Calendar) error {
 		return fmt.Errorf("provider %s not registered", cal.Provider)
 	}
 
-	accounts, err := e.store.ListOAuthAccounts(ctx)
+	targetAccount, err := e.store.GetOAuthAccountByID(ctx, cal.OAuthAccountID)
 	if err != nil {
-		return fmt.Errorf("list oauth accounts: %w", err)
+		return fmt.Errorf("get oauth account %s: %w", cal.OAuthAccountID, err)
 	}
-	var targetAccount *models.OAuthAccount
-	for _, acc := range accounts {
-		if acc.ID == cal.OAuthAccountID {
-			targetAccount = &acc
-			break
-		}
-	}
-
-	// Fallback healing: if OAuthAccountID unlinked or empty, match active provider account
-	if targetAccount == nil {
-		for _, acc := range accounts {
-			if acc.Provider == cal.Provider && acc.Status == "active" {
-				targetAccount = &acc
-				cal.OAuthAccountID = acc.ID
-				_ = e.store.UpsertCalendar(ctx, cal)
-				break
-			}
-		}
-	}
-
 	if targetAccount == nil {
 		return fmt.Errorf("oauth account %s not found", cal.OAuthAccountID)
 	}
+	if targetAccount.Provider != cal.Provider {
+		return fmt.Errorf("oauth account provider %q does not match calendar provider %q", targetAccount.Provider, cal.Provider)
+	}
+	if targetAccount.Status != "active" {
+		return fmt.Errorf("oauth account %s is %s", targetAccount.ID, targetAccount.Status)
+	}
 
-	if e.tokenProvider == nil {
+	e.mu.Lock()
+	tokenProvider := e.tokenProvider
+	e.mu.Unlock()
+	if tokenProvider == nil {
 		return fmt.Errorf("token provider not configured")
 	}
 
-	token, err := e.tokenProvider.GetValidAccessToken(ctx, targetAccount.PersonID, cal.Provider)
+	token, err := tokenProvider.GetValidAccessToken(ctx, targetAccount.PersonID, cal.Provider)
 	if err != nil {
 		return fmt.Errorf("get access token: %w", err)
 	}
@@ -297,7 +322,9 @@ func (e *Engine) SyncCalendar(ctx context.Context, cal *models.Calendar) error {
 	if err != nil {
 		if errors.Is(err, google.ErrCursorInvalid) {
 			slog.Info("Sync cursor invalid (410 Gone); resetting cursor and re-syncing", "calendar", cal.Name)
-			_ = e.store.UpdateCalendarSyncCursor(ctx, cal.ID, "", time.Now())
+			if err := e.store.UpdateCalendarSyncCursor(ctx, cal.ID, "", time.Now()); err != nil {
+				return fmt.Errorf("reset invalid sync cursor: %w", err)
+			}
 			cal.SyncCursor = ""
 			result, err = prov.SyncEvents(ctx, token, *cal, "")
 			if err != nil {
@@ -309,17 +336,26 @@ func (e *Engine) SyncCalendar(ctx context.Context, cal *models.Calendar) error {
 	}
 
 	// Reconcile each event into SQLite
+	var reconcileErrors []error
 	for _, remoteEv := range result.Events {
 		if err := e.reconcileEvent(ctx, cal, &remoteEv); err != nil {
 			slog.Warn("Failed to reconcile event", "title", remoteEv.Title, "err", err)
+			reconcileErrors = append(reconcileErrors, fmt.Errorf("reconcile provider event %s: %w", remoteEv.ProviderEventID, err))
 		}
+	}
+	if err := errors.Join(reconcileErrors...); err != nil {
+		// Do not advance the provider cursor after a partial local write. The
+		// next run must replay this page rather than losing failed events.
+		return err
 	}
 
 	// Update cursor and timestamp
+	nextCursor := cal.SyncCursor
 	if result.SyncCursor != "" {
-		if err := e.store.UpdateCalendarSyncCursor(ctx, cal.ID, result.SyncCursor, time.Now()); err != nil {
-			return fmt.Errorf("update calendar sync cursor: %w", err)
-		}
+		nextCursor = result.SyncCursor
+	}
+	if err := e.store.UpdateCalendarSyncCursor(ctx, cal.ID, nextCursor, time.Now()); err != nil {
+		return fmt.Errorf("update calendar sync cursor: %w", err)
 	}
 
 	return nil

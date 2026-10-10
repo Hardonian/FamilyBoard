@@ -3,9 +3,13 @@ package config
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -207,15 +211,28 @@ func Load(explicitPath string) (*Config, string, error) {
 
 	var foundPath string
 	for _, p := range candidatePaths {
-		if _, err := os.Stat(p); err == nil {
+		info, err := os.Stat(p)
+		if err == nil {
+			if info.IsDir() {
+				return nil, p, fmt.Errorf("config path is a directory: %s", p)
+			}
 			foundPath = p
 			break
+		}
+		if explicitPath != "" {
+			if os.IsNotExist(err) {
+				return nil, p, fmt.Errorf("explicit config file does not exist: %s", p)
+			}
+			return nil, p, fmt.Errorf("inspect config file %s: %w", p, err)
+		}
+		if !os.IsNotExist(err) {
+			return nil, p, fmt.Errorf("inspect config file %s: %w", p, err)
 		}
 	}
 
 	if foundPath == "" {
-		if explicitPath != "" {
-			cfg.sourcePath = explicitPath
+		if err := cfg.Validate(); err != nil {
+			return nil, "", err
 		}
 		return cfg, "", nil // Return defaults if no config file found
 	}
@@ -229,8 +246,160 @@ func Load(explicitPath string) (*Config, string, error) {
 		return nil, foundPath, fmt.Errorf("unmarshal config TOML: %w", err)
 	}
 	cfg.sourcePath = foundPath
+	if err := cfg.Validate(); err != nil {
+		return nil, foundPath, fmt.Errorf("validate config: %w", err)
+	}
 
 	return cfg, foundPath, nil
+}
+
+// Validate checks cross-field and operational constraints before the daemon
+// opens files, starts listeners, or launches background workers.
+func (c *Config) Validate() error {
+	if c == nil {
+		return errors.New("config is nil")
+	}
+
+	var errs []error
+	add := func(format string, args ...any) {
+		errs = append(errs, fmt.Errorf(format, args...))
+	}
+	validURL := func(name, raw string, required bool) {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			if required {
+				add("%s is required", name)
+			}
+			return
+		}
+		u, err := url.Parse(raw)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
+			add("%s must be an absolute http(s) URL without credentials", name)
+		}
+	}
+	validClock := func(name, value string) {
+		if _, err := time.Parse("15:04", value); err != nil {
+			add("%s must use 24-hour HH:MM format", name)
+		}
+	}
+
+	host := strings.TrimSpace(c.Server.Host)
+	if host == "" || strings.ContainsAny(host, " /\\\t\r\n") {
+		add("server.host must be a host name or IP address")
+	}
+	if c.Server.Port < 1 || c.Server.Port > 65535 {
+		add("server.port must be between 1 and 65535")
+	}
+	validURL("server.base_url", c.Server.BaseURL, true)
+	if _, err := time.LoadLocation(c.Server.Timezone); err != nil {
+		add("server.timezone %q is invalid", c.Server.Timezone)
+	}
+	if strings.TrimSpace(c.Server.DeviceName) == "" || len(c.Server.DeviceName) > 100 {
+		add("server.device_name must be between 1 and 100 characters")
+	}
+
+	if strings.TrimSpace(c.Database.Path) == "" || strings.ContainsRune(c.Database.Path, '\x00') {
+		add("database.path is required")
+	}
+	if c.Database.BusyTimeoutMs < 1 || c.Database.BusyTimeoutMs > 600000 {
+		add("database.busy_timeout_ms must be between 1 and 600000")
+	}
+	if c.Database.MaxOpenConns < 1 || c.Database.MaxOpenConns > 64 {
+		add("database.max_open_conns must be between 1 and 64")
+	}
+	if c.Database.MaxIdleConns < 0 || c.Database.MaxIdleConns > c.Database.MaxOpenConns {
+		add("database.max_idle_conns must be between 0 and max_open_conns")
+	}
+
+	switch c.Kiosk.Theme {
+	case "light", "dark", "auto":
+	default:
+		add("kiosk.theme must be light, dark, or auto")
+	}
+	switch c.Kiosk.DefaultView {
+	case "month", "hybrid", "week", "schedule", "today":
+	default:
+		add("kiosk.default_view must be month, hybrid, week, schedule, or today")
+	}
+	validClock("kiosk.day_starts_at", c.Kiosk.DayStartsAt)
+	validClock("kiosk.night_starts_at", c.Kiosk.NightStartsAt)
+	if parts := strings.Split(c.Kiosk.ScreenBlankSchedule, "-"); len(parts) != 2 {
+		add("kiosk.screen_blank_schedule must use HH:MM-HH:MM format")
+	} else {
+		validClock("kiosk.screen_blank_schedule start", parts[0])
+		validClock("kiosk.screen_blank_schedule end", parts[1])
+	}
+
+	if strings.TrimSpace(c.Security.CredentialsDir) == "" || strings.ContainsRune(c.Security.CredentialsDir, '\x00') {
+		add("security.credentials_dir is required")
+	}
+	if password := c.Security.HotspotPassword; password != "" && !validHotspotPassword(password) {
+		add("security.hotspot_password must be 8-63 characters or a 64-digit hexadecimal key")
+	}
+	if strings.TrimSpace(c.Auth.AdminUsername) == "" || len(c.Auth.AdminUsername) > 100 {
+		add("auth.admin_username must be between 1 and 100 characters")
+	}
+
+	googleConfigured := strings.TrimSpace(c.Google.ClientID) != "" || strings.TrimSpace(c.Google.ClientSecret) != ""
+	if googleConfigured && (strings.TrimSpace(c.Google.ClientID) == "" || strings.TrimSpace(c.Google.ClientSecret) == "") {
+		add("google.client_id and google.client_secret must be configured together")
+	}
+	validURL("google.redirect_url", c.Google.RedirectURL, googleConfigured)
+	if c.Microsoft.Enabled {
+		if strings.TrimSpace(c.Microsoft.ClientID) == "" || strings.TrimSpace(c.Microsoft.ClientSecret) == "" {
+			add("microsoft.client_id and microsoft.client_secret are required when Microsoft is enabled")
+		}
+		validURL("microsoft.redirect_url", c.Microsoft.RedirectURL, true)
+	}
+
+	if c.Sync.CalendarIntervalSeconds < 5 || c.Sync.CalendarIntervalSeconds > 86400 {
+		add("sync.calendar_interval_seconds must be between 5 and 86400")
+	}
+	if c.Sync.MailIntervalSeconds < 5 || c.Sync.MailIntervalSeconds > 86400 {
+		add("sync.mail_interval_seconds must be between 5 and 86400")
+	}
+	if c.Sync.MutationRetryIntervalSeconds < 1 || c.Sync.MutationRetryIntervalSeconds > 3600 {
+		add("sync.mutation_retry_interval_seconds must be between 1 and 3600")
+	}
+	if c.Sync.MaxMutationAttempts < 1 || c.Sync.MaxMutationAttempts > 100 {
+		add("sync.max_mutation_attempts must be between 1 and 100")
+	}
+
+	if c.Mail.MaxMessageSizeBytes < 1024 || c.Mail.MaxMessageSizeBytes > 100<<20 {
+		add("mail.max_message_size_bytes must be between 1 KiB and 100 MiB")
+	}
+	if c.Mail.MaxBodyParseBytes < 1024 || c.Mail.MaxBodyParseBytes > c.Mail.MaxMessageSizeBytes {
+		add("mail.max_body_parse_bytes must be between 1 KiB and max_message_size_bytes")
+	}
+	if c.Mail.AutoApproveConfidenceThreshold < 0 || c.Mail.AutoApproveConfidenceThreshold > 1 {
+		add("mail.auto_approve_confidence_threshold must be between 0 and 1")
+	}
+	if c.AI.Enabled {
+		validURL("ai.endpoint", c.AI.Endpoint, true)
+		if strings.TrimSpace(c.AI.Model) == "" {
+			add("ai.model is required when AI is enabled")
+		}
+		if c.AI.TimeoutSeconds < 1 || c.AI.TimeoutSeconds > 300 {
+			add("ai.timeout_seconds must be between 1 and 300")
+		}
+	}
+
+	return errors.Join(errs...)
+}
+
+func validHotspotPassword(password string) bool {
+	if len(password) >= 8 && len(password) <= 63 {
+		return true
+	}
+	if len(password) != 64 {
+		return false
+	}
+	for _, char := range password {
+		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f') || (char >= 'A' && char <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 // SourcePath returns the file this configuration was loaded from, or fallback
@@ -265,6 +434,12 @@ func (c *Config) Redacted() Config {
 
 // Save writes the configuration to a file atomically.
 func (c *Config) Save(targetPath string) error {
+	if err := c.Validate(); err != nil {
+		return fmt.Errorf("validate config: %w", err)
+	}
+	if strings.TrimSpace(targetPath) == "" {
+		return errors.New("config target path is required")
+	}
 	dir := filepath.Dir(targetPath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("create config directory: %w", err)

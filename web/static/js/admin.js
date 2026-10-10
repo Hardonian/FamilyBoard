@@ -42,7 +42,63 @@
       alert.setAttribute('aria-live', 'polite');
     });
 
+    setupAppleCalendarModal();
     setupHardwareTab();
+  }
+
+  function setupAppleCalendarModal() {
+    const modal = document.getElementById('modal-apple-connect');
+    const authType = document.getElementById('apple_auth_type');
+    if (!modal || !authType) return;
+
+    const personSelect = document.getElementById('apple_person_id');
+    const webcalGroup = document.getElementById('apple-webcal-fields');
+    const caldavGroup = document.getElementById('apple-caldav-fields');
+    const webcalInput = document.getElementById('apple_webcal_url');
+    const caldavInputs = [
+      document.getElementById('apple_email'),
+      document.getElementById('apple_app_password')
+    ].filter(Boolean);
+
+    function toggleFields() {
+      const useCalDAV = authType.value === 'caldav';
+      if (webcalGroup) webcalGroup.classList.toggle('hidden', useCalDAV);
+      if (caldavGroup) caldavGroup.classList.toggle('hidden', !useCalDAV);
+      if (webcalInput) {
+        webcalInput.disabled = useCalDAV;
+        webcalInput.required = !useCalDAV;
+      }
+      caldavInputs.forEach(function(input) {
+        input.disabled = !useCalDAV;
+        input.required = useCalDAV;
+      });
+    }
+
+    function closeModal() {
+      if (typeof modal.close === 'function') modal.close();
+      else modal.removeAttribute('open');
+    }
+
+    document.querySelectorAll('.js-open-apple-modal').forEach(function(button) {
+      button.addEventListener('click', function() {
+        if (personSelect) personSelect.value = button.dataset.personId || '';
+        toggleFields();
+        if (typeof modal.showModal === 'function') modal.showModal();
+        else modal.setAttribute('open', '');
+        window.setTimeout(function() { authType.focus(); }, 0);
+      });
+    });
+    document.querySelectorAll('.js-close-apple-modal').forEach(function(button) {
+      button.addEventListener('click', closeModal);
+    });
+    modal.addEventListener('click', function(event) {
+      const rect = modal.getBoundingClientRect();
+      const outside = event.clientX < rect.left || event.clientX > rect.right ||
+        event.clientY < rect.top || event.clientY > rect.bottom;
+      if (outside) closeModal();
+    });
+    authType.addEventListener('change', toggleFields);
+    toggleFields();
   }
 
   function setupHardwareTab() {
@@ -393,7 +449,9 @@
         const resp = await apiFetch('/api/photos');
         if (!resp.ok) throw new Error('Failed to fetch photos');
         const data = await resp.json();
-        const photos = data.photos || [];
+        const photos = Array.isArray(data.photos)
+          ? data.photos.map(normalizePhotoURL).filter(Boolean)
+          : [];
 
         if (countBadge) {
           countBadge.textContent = photos.length + (photos.length === 1 ? ' Photo' : ' Photos');
@@ -500,6 +558,7 @@
 
     let html = '';
     aps.forEach(ap => {
+      const signalPercent = Math.max(0, Math.min(100, Number(ap.signal_percent) || 0));
       const activeBadge = ap.is_current ? '<span class="status-badge status-badge-home">Active</span>' : '<span class="admin-text-muted">Available</span>';
       const actionBtn = ap.is_current
         ? '<span class="admin-text-muted">Connected</span>'
@@ -507,7 +566,7 @@
 
       html += `<tr>
         <td><strong>${escapeHtml(ap.ssid)}</strong></td>
-        <td>${ap.signal_percent}%</td>
+        <td>${signalPercent}%</td>
         <td><span class="badge-subtle">${escapeHtml(ap.security)}</span></td>
         <td>${activeBadge}</td>
         <td>${actionBtn}</td>
@@ -528,10 +587,11 @@
     let html = '';
     devices.forEach(dev => {
       const name = dev.name || 'Unknown BLE Device';
+      const rssi = Number.isFinite(Number(dev.rssi)) ? Math.round(Number(dev.rssi)) : '—';
       html += `<tr>
         <td><strong>${escapeHtml(name)}</strong></td>
         <td><code>${escapeHtml(dev.mac_address)}</code></td>
-        <td>${dev.rssi} dBm</td>
+        <td>${rssi}${rssi === '—' ? '' : ' dBm'}</td>
         <td>
           <button type="button" class="btn btn-secondary btn-sm btn-quick-add-beacon" data-mac="${escapeHtml(dev.mac_address)}" data-name="${escapeHtml(name)}" aria-label="Use ${escapeHtml(dev.mac_address)} as beacon">
             Use for Presence
@@ -552,29 +612,15 @@
       .replace(/'/g, '&#039;');
   }
 
-  window.openAppleModal = function(personID) {
-    const modal = document.getElementById('modal-apple-connect');
-    if (!modal) return;
-    if (personID) {
-      const sel = document.getElementById('apple_person_id');
-      if (sel) sel.value = personID;
+  function normalizePhotoURL(value) {
+    try {
+      const url = new URL(String(value), window.location.origin);
+      if (url.origin !== window.location.origin || !url.pathname.startsWith('/api/photos/')) return '';
+      return url.pathname + url.search;
+    } catch (_) {
+      return '';
     }
-    if (typeof modal.showModal === 'function') {
-      modal.showModal();
-    }
-  };
-
-  window.toggleAppleAuthFields = function(val) {
-    const webcal = document.getElementById('apple-webcal-fields');
-    const caldav = document.getElementById('apple-caldav-fields');
-    if (val === 'caldav') {
-      if (webcal) webcal.classList.add('hidden');
-      if (caldav) caldav.classList.remove('hidden');
-    } else {
-      if (webcal) webcal.classList.remove('hidden');
-      if (caldav) caldav.classList.add('hidden');
-    }
-  };
+  }
 
   document.addEventListener('DOMContentLoaded', init);
 })();

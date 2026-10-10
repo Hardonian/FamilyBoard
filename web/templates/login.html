@@ -1,11 +1,11 @@
 {{define "content"}}
-<div class="login-wrapper">
-  <div class="modal-dialog login-dialog">
-    <h2 class="modal-title login-title">FamilyBoard Admin</h2>
+<main class="login-wrapper">
+  <div class="modal-dialog login-dialog" aria-labelledby="login-title">
+    <h1 id="login-title" class="modal-title login-title">FamilyBoard Admin</h1>
     <p class="login-sub">Please authenticate to access appliance settings</p>
 
     {{if .Error}}
-    <div class="login-error">
+    <div id="login-error" class="login-error" role="alert" aria-live="assertive">
       {{.Error}}
     </div>
     {{end}}
@@ -16,12 +16,12 @@
 
       <div class="form-group">
         <label class="form-label" for="username">Username</label>
-        <input type="text" id="username" name="username" class="form-input" required autofocus autocomplete="username" value="{{.Username}}">
+        <input type="text" id="username" name="username" class="form-input" required autofocus autocomplete="username" enterkeyhint="next" value="{{.Username}}"{{if .Error}} aria-describedby="login-error"{{end}}>
       </div>
 
       <div class="form-group">
         <label class="form-label" for="password">Password</label>
-        <input type="password" id="password" name="password" class="form-input" required autocomplete="current-password">
+        <input type="password" id="password" name="password" class="form-input" required autocomplete="current-password" enterkeyhint="go"{{if .Error}} aria-describedby="login-error"{{end}}>
       </div>
 
       <button type="submit" class="btn btn-primary login-submit-btn">Sign In</button>
@@ -31,5 +31,5 @@
       <a href="/" class="login-return-link">← Return to Calendar Kiosk</a>
     </div>
   </div>
-</div>
+</main>
 {{end}}

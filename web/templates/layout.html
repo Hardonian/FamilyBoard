@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="description" content="FamilyBoard — your private, sovereign, local-first family calendar.">
   <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="robots" content="noindex, nofollow, noarchive">
   <!-- Apple iPhone / iOS Safari PWA tags -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -21,6 +23,7 @@
   <link rel="stylesheet" href="{{asset "/static/css/app.css"}}">
 </head>
 <body>
+  <noscript><div class="noscript-banner" role="alert">FamilyBoard needs JavaScript for the interactive calendar. Admin sign-in and setup forms remain available.</div></noscript>
   {{template "content" .}}
   {{block "scripts" .}}{{end}}
 </body>

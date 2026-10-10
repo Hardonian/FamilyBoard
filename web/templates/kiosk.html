@@ -48,7 +48,7 @@
 </header>
 
 <!-- Main Kiosk Layout -->
-<main class="kiosk-main-layout">
+<main class="kiosk-main-layout" data-default-view="{{.DefaultView}}" data-time-format="{{.TimeFormat}}" data-birthday-highlight="{{.BirthdayHighlight}}">
   <!-- Calendar Main Pane -->
   <div class="calendar-main-pane">
     <div class="calendar-nav-bar">
@@ -223,16 +223,16 @@
 
           <!-- Step 2: Destination Calendar -->
           <div>
-            <label class="modal-section-title">2. Whose calendar?</label>
-            <div class="dest-tiles-grid" id="dest-tiles-grid">
+            <div class="modal-section-title" id="calendar-choice-label">2. Whose calendar?</div>
+            <div class="dest-tiles-grid" id="dest-tiles-grid" role="group" aria-labelledby="calendar-choice-label">
               <!-- Dynamically populated from /api/calendars with HOME as default -->
             </div>
           </div>
 
           <!-- Step 3: Which day? -->
           <div>
-            <label class="modal-section-title">3. Which day?</label>
-            <div class="relative-dates-row" id="relative-dates-row">
+            <div class="modal-section-title" id="date-choice-label">3. Which day?</div>
+            <div class="relative-dates-row" id="relative-dates-row" role="group" aria-labelledby="date-choice-label">
               <button type="button" class="date-btn selected" data-rel="today">Today</button>
               <button type="button" class="date-btn" data-rel="tomorrow">Tomorrow</button>
               <button type="button" class="date-btn" data-rel="sat" id="btn-rel-sat">Saturday</button>
@@ -258,7 +258,7 @@
               <!-- One-Tap Stepper for instantaneous touch adjustment -->
               <div class="stepper-time-container">
                 <button type="button" class="stepper-btn" id="btn-time-minus-15" aria-label="Subtract 15 minutes">− 15m</button>
-                <div class="stepper-time-readout" id="stepper-time-readout">5:00 PM</div>
+                <div class="stepper-time-readout" id="stepper-time-readout" role="status" aria-live="polite">5:00 PM</div>
                 <button type="button" class="stepper-btn" id="btn-time-plus-15" aria-label="Add 15 minutes">+ 15m</button>
               </div>
 
@@ -289,7 +289,7 @@
               </div>
 
               <!-- Live Time Summary Readout -->
-              <div class="time-summary-banner" id="time-summary-banner">
+              <div class="time-summary-banner" id="time-summary-banner" role="status" aria-live="polite">
                 🕒 5:00 PM – 6:00 PM (1 hr)
               </div>
             </div>
@@ -302,7 +302,7 @@
 
           <!-- Collapsible More Options -->
           <div>
-            <button type="button" id="btn-toggle-more" class="kiosk-btn-toggle-more">
+            <button type="button" id="btn-toggle-more" class="kiosk-btn-toggle-more" aria-expanded="false" aria-controls="more-options-container">
               <span>+ More Options (Location, Notes, Repeat)</span>
             </button>
             <div id="more-options-container" class="kiosk-more-options">
@@ -331,12 +331,12 @@
         <!-- Tab 2: Natural Language Mode -->
         <div id="mode-natural-lang" class="kiosk-nl-mode-container" role="tabpanel" aria-labelledby="tab-natural-lang">
           <div>
-            <label class="modal-section-title">Describe the event in natural language:</label>
-            <input type="text" id="nl-input" class="form-input-lg" placeholder="e.g. Soccer Thursday 6pm for 1 hour at Sports Complex">
+            <label class="modal-section-title" for="nl-input">Describe the event in natural language:</label>
+            <input type="text" id="nl-input" class="form-input-lg" placeholder="e.g. Soccer Thursday 6pm for 1 hour at Sports Complex" autocomplete="off">
             <p class="kiosk-nl-help-text">Type freely. FamilyBoard understands days, times, and locations automatically.</p>
           </div>
 
-          <div class="nl-preview-card" id="nl-preview-card">
+          <div class="nl-preview-card" id="nl-preview-card" role="status" aria-live="polite">
             <div class="nl-preview-title" id="nl-parsed-title">--</div>
             <div class="nl-preview-item" id="nl-parsed-datetime">📅 --</div>
             <div class="nl-preview-item" id="nl-parsed-location">📍 --</div>
@@ -391,7 +391,7 @@
       </div>
 
       <!-- Delete Confirmation Box (Hidden initially) -->
-      <div id="detail-delete-confirm-box" class="kiosk-delete-confirm-box">
+      <div id="detail-delete-confirm-box" class="kiosk-delete-confirm-box" role="group" aria-label="Confirm event deletion">
         <p class="kiosk-delete-confirm-title">Delete this event from FamilyBoard?</p>
         <div class="kiosk-delete-confirm-actions">
           <button type="button" id="btn-cancel-delete" class="btn btn-secondary kiosk-btn-compact">Cancel</button>
@@ -496,7 +496,7 @@
         <div class="pair-url-box">
           <div class="pair-url-label">Direct Browser Link:</div>
           <div class="pair-url-copy-row">
-            <code id="text-pair-url" class="pair-url-code">Loading pairing link…</code>
+            <code id="text-pair-url" class="pair-url-code" role="status" aria-live="polite">Loading pairing link…</code>
             <button type="button" id="btn-copy-pair-url" class="btn btn-secondary btn-sm">Copy</button>
           </div>
         </div>

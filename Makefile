@@ -8,7 +8,7 @@ else
     BASH_BIN := bash
 endif
 
-.PHONY: all fmt vet lint verify-mod check-js test test-race build build-arm64 pi-bootstrap-check release-check clean
+.PHONY: all fmt vet lint staticcheck vuln security-check tools-check verify-mod check-js test test-race build build-arm64 pi-bootstrap-check release-check clean
 
 VERSION ?= 1.0.0-rc.1
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
@@ -24,6 +24,18 @@ vet:
 	go vet ./...
 
 lint: vet
+
+tools-check:
+	@command -v staticcheck >/dev/null 2>&1 || { echo "Missing staticcheck. Install the pinned release with: go install honnef.co/go/tools/cmd/staticcheck@v0.8.1"; exit 1; }
+	@command -v govulncheck >/dev/null 2>&1 || { echo "Missing govulncheck. Install the pinned release with: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0"; exit 1; }
+
+staticcheck: tools-check
+	staticcheck ./...
+
+vuln: tools-check
+	govulncheck ./...
+
+security-check: staticcheck vuln
 
 verify-mod:
 	go mod verify
@@ -86,12 +98,13 @@ pi-bootstrap-check:
 	@"$(BASH_BIN)" -n deploy/pi/familyboard-setup.sh
 	@"$(BASH_BIN)" -n familyboard-setup.sh
 	@"$(BASH_BIN)" -n scripts/prepare_sd.sh
+	@"$(BASH_BIN)" -n scripts/package_release.sh
 	@echo "All shell scripts passed syntax checks."
 
 prepare-sd:
 	@"$(BASH_BIN)" scripts/prepare_sd.sh $(SD)
 
-release-check: fmt vet verify-mod check-js test test-race build build-arm64 radxa-check pi-bootstrap-check
+release-check: fmt vet security-check verify-mod check-js test test-race build build-arm64 radxa-check pi-bootstrap-check
 	@echo "=== FamilyBoard Canonical Release Gate PASSED ==="
 
 clean:

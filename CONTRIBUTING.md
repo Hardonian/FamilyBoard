@@ -6,7 +6,7 @@ Thank you for contributing to `FamilyBoard`! This document outlines development 
 
 ## 1. Development Prerequisites
 
-- **Go:** Version 1.26.3 or higher.
+- **Go:** Version 1.26.9 or higher. Earlier 1.26 patch releases contain reachable standard-library vulnerabilities and are not supported for release builds.
 - **Git:** Modern git client.
 - **Make:** GNU Make (or `mingw32-make` on Windows).
 - **Bash:** Required for testing deployment scripts (`bash -n`).
@@ -55,6 +55,10 @@ make fmt
 
 # Static analysis
 make vet
+
+# Reachable-vulnerability and advanced static analysis gates
+# (install the pinned tools printed by `make tools-check` first)
+make security-check
 
 # Run all unit and integration tests
 make test

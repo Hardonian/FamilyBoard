@@ -103,7 +103,7 @@ else
 fi
 
 /usr/local/bin/familyboard --version >/dev/null 2>&1 || die "Installed familyboard binary cannot execute on $(uname -m)."
-/usr/local/bin/familyboardctl --version >/dev/null 2>&1 || die "Installed familyboardctl binary cannot execute on $(uname -m)."
+/usr/local/bin/familyboardctl version >/dev/null 2>&1 || die "Installed familyboardctl binary cannot execute on $(uname -m)."
 
 # 5. Install default configuration if none exists
 if [ ! -f /etc/familyboard/config.toml ]; then

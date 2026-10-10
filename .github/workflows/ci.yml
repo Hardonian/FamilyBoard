@@ -1,5 +1,12 @@
 name: CI
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [ main, master ]
@@ -10,6 +17,7 @@ jobs:
   test:
     name: Test & Build
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -17,7 +25,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26.3'
+          go-version: '1.26.9'
           cache: true
 
       - name: Verify Formatting
@@ -31,6 +39,12 @@ jobs:
 
       - name: Go Vet
         run: go vet ./...
+
+      - name: Staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
+
+      - name: Reachable Vulnerability Scan
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
       - name: Verify Dependencies
         run: go mod verify
@@ -58,7 +72,7 @@ jobs:
 
       - name: Validate Pi Deployment Shell Scripts
         run: |
-          for script in deploy/pi/*.sh deploy/pi/kiosk/*.sh; do
+          for script in familyboard-setup.sh deploy/pi/*.sh deploy/pi/kiosk/*.sh scripts/*.sh; do
             if [ -f "$script" ]; then
               bash -n "$script"
               echo "Syntax OK: $script"
@@ -73,3 +87,17 @@ jobs:
               echo "Syntax OK: $script"
             fi
           done
+
+      - name: Validate PowerShell Preparation Scripts
+        shell: pwsh
+        run: |
+          Get-ChildItem scripts -Filter '*.ps1' | ForEach-Object {
+            $tokens = $null
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors) { throw ($parseErrors | Out-String) }
+            Write-Host "Syntax OK: $($_.FullName)"
+          }
+
+      - name: Validate Systemd Units
+        run: systemd-analyze verify deploy/pi/systemd/*.service deploy/pi/systemd/*.timer deploy/radxa/*.service

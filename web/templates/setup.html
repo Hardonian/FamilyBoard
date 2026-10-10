@@ -1,13 +1,13 @@
 {{define "content"}}
-<div class="setup-wrapper">
+<main class="setup-wrapper" aria-labelledby="setup-title">
   <div class="setup-header">
-    <h1 class="setup-title">Welcome to FamilyBoard</h1>
+    <h1 id="setup-title" class="setup-title">Welcome to FamilyBoard</h1>
     <p class="setup-sub">First-Run Appliance Setup & Initialization Wizard</p>
     <p class="setup-mobile-hint">📱 Setting up from your iPhone or Android phone? Complete these 4 steps to launch your board!</p>
   </div>
 
   {{if .Error}}
-  <div class="setup-error">
+  <div id="setup-error" class="setup-error" role="alert" aria-live="assertive">
     {{.Error}}
   </div>
   {{end}}
@@ -21,11 +21,24 @@
       <div class="form-row">
         <div class="form-group">
           <label class="form-label" for="device_name">Device Name</label>
-          <input type="text" id="device_name" name="device_name" class="form-input" value="{{.DeviceName}}" required>
+          <input type="text" id="device_name" name="device_name" class="form-input" value="{{.DeviceName}}" required autocomplete="organization"{{if .Error}} aria-describedby="setup-error"{{end}}>
         </div>
         <div class="form-group">
           <label class="form-label" for="timezone">Appliance Timezone</label>
-          <input type="text" id="timezone" name="timezone" class="form-input" value="{{.Timezone}}" required autocorrect="off" spellcheck="false">
+          <input type="text" id="timezone" name="timezone" class="form-input" value="{{.Timezone}}" list="timezone-options" required autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"{{if .Error}} aria-describedby="timezone-help setup-error"{{else}} aria-describedby="timezone-help"{{end}}>
+          <small id="timezone-help" class="form-help">Use an IANA timezone such as America/Toronto.</small>
+          <datalist id="timezone-options">
+            <option value="America/Toronto"></option>
+            <option value="America/New_York"></option>
+            <option value="America/Chicago"></option>
+            <option value="America/Denver"></option>
+            <option value="America/Edmonton"></option>
+            <option value="America/Vancouver"></option>
+            <option value="America/Los_Angeles"></option>
+            <option value="America/Halifax"></option>
+            <option value="America/St_Johns"></option>
+            <option value="UTC"></option>
+          </datalist>
         </div>
       </div>
     </div>
@@ -37,11 +50,12 @@
       <div class="form-row">
         <div class="form-group">
           <label class="form-label" for="admin_password">Password</label>
-          <input type="password" id="admin_password" name="admin_password" class="form-input" required minlength="8" autocomplete="new-password">
+          <input type="password" id="admin_password" name="admin_password" class="form-input" required minlength="8" autocomplete="new-password" aria-describedby="password-help{{if .Error}} setup-error{{end}}">
+          <small id="password-help" class="form-help">Use at least 8 characters; a longer passphrase is easiest to remember.</small>
         </div>
         <div class="form-group">
           <label class="form-label" for="admin_password_confirm">Confirm Password</label>
-          <input type="password" id="admin_password_confirm" name="admin_password_confirm" class="form-input" required minlength="8" autocomplete="new-password">
+          <input type="password" id="admin_password_confirm" name="admin_password_confirm" class="form-input" required minlength="8" autocomplete="new-password"{{if .Error}} aria-describedby="setup-error"{{end}}>
         </div>
       </div>
     </div>
@@ -49,7 +63,7 @@
     <!-- Step 3: Google OAuth Configuration -->
     <div class="admin-card">
       <h3 class="setup-section-title">3. Google Cloud OAuth Credentials</h3>
-      <p class="setup-section-desc">From your Google Cloud Console OAuth 2.0 Web Application client.</p>
+      <p class="setup-section-desc">Optional. Add your Google Cloud OAuth 2.0 Web Application credentials now, or configure providers later from Admin.</p>
       <div class="form-group">
         <label class="form-label" for="google_client_id">Google Client ID</label>
         <input type="text" id="google_client_id" name="google_client_id" class="form-input" value="{{.GoogleClientID}}" placeholder="apps.googleusercontent.com" autocorrect="off" spellcheck="false">
@@ -91,5 +105,5 @@
       <button type="submit" class="btn btn-primary setup-submit-btn">Complete Setup & Launch</button>
     </div>
   </form>
-</div>
+</main>
 {{end}}

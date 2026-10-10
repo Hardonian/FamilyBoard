@@ -16,6 +16,8 @@
   let renderSequence = 0;
   let naturalLanguageSequence = 0;
   let previouslyFocusedElement = null;
+  let timeFormat = '12h';
+  let birthdayHighlight = true;
 
   // --- DOM Elements ---
   const elClockTime = document.getElementById('clock-time');
@@ -49,6 +51,7 @@
   const elBtnDrawerAddEvent = document.getElementById('btn-drawer-add-event');
   const elEventDetailModal = document.getElementById('event-detail-modal');
   const elWifiSetupModal = document.getElementById('modal-wifi-setup');
+  const elMobilePairModal = document.getElementById('modal-mobile-pair');
 
   // Virtual Keyboard
   const elVirtualKeyboard = document.getElementById('virtual-keyboard');
@@ -63,6 +66,7 @@
 
   // --- Initialization ---
   function init() {
+    applyKioskPreferences();
     updateClock();
     // Throttled clock update: updates every 15s instead of 1s, reducing idle CPU timer wakeups by 93%
     setInterval(updateClock, 15000);
@@ -81,17 +85,11 @@
     setupMobileSyncTriggers();
     setupSSE();
 
-    // Check URL parameters for view preference (e.g. /?view=schedule)
+    // A URL preference takes precedence over the appliance default.
     const urlParams = new URLSearchParams(window.location.search);
-    const viewParam = urlParams.get('view');
-    if (viewParam && ['hybrid', 'week', 'schedule', 'today'].includes(viewParam)) {
-      currentView = viewParam;
-      syncViewButtons();
-    } else if (isMobileDevice() && window.innerWidth <= 480) {
-      // Default smartphones (iPhone & Poco F7) to Schedule (Agenda) view for best vertical 1-thumb readability
-      currentView = 'schedule';
-      syncViewButtons();
-    }
+    const viewParam = normalizeView(urlParams.get('view'));
+    if (viewParam) currentView = viewParam;
+    syncViewButtons();
 
     loadCalendarsAndTemplates().then(() => {
       renderView();
@@ -100,11 +98,28 @@
     document.addEventListener('keydown', handleGlobalKeydown);
   }
 
+  function applyKioskPreferences() {
+    const root = document.querySelector('.kiosk-main-layout');
+    if (!root) return;
+    const configuredView = normalizeView(root.dataset.defaultView);
+    if (configuredView) currentView = configuredView;
+    timeFormat = root.dataset.timeFormat === '24h' ? '24h' : '12h';
+    birthdayHighlight = root.dataset.birthdayHighlight !== 'false';
+    document.querySelectorAll('#time-chips-grid .time-chip').forEach(function(button) {
+      button.textContent = formatClockValue(button.dataset.time);
+    });
+  }
+
+  function normalizeView(value) {
+    const normalized = value === 'month' ? 'hybrid' : value;
+    return ['hybrid', 'week', 'schedule', 'today'].includes(normalized) ? normalized : '';
+  }
+
   // --- Clock & Date ---
   function updateClock() {
     const now = new Date();
     if (elClockTime) {
-      elClockTime.textContent = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      elClockTime.textContent = formatTimeShort(now);
     }
     if (elClockDate) {
       elClockDate.textContent = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
@@ -178,7 +193,8 @@
       try {
         const presResp = await fetch('/api/system/presence');
         if (presResp.ok) {
-          const beacons = await presResp.json();
+          const data = await presResp.json();
+          const beacons = Array.isArray(data) ? data : [];
           if (elPresenceBadge && elPresenceContainer) {
             const presentMembers = beacons.filter(b => b.is_present);
             if (presentMembers.length > 0) {
@@ -227,6 +243,7 @@
 
     previouslyFocusedElement = document.activeElement;
     modal.classList.remove('hidden');
+    modal.style.display = 'flex';
     modal.setAttribute('aria-hidden', 'false');
     if (btnClose) btnClose.focus();
 
@@ -396,6 +413,7 @@
     if (!elWifiSetupModal) return;
     const wasOpen = elWifiSetupModal.getAttribute('aria-hidden') === 'false';
     elWifiSetupModal.classList.add('hidden');
+    elWifiSetupModal.style.display = 'none';
     elWifiSetupModal.setAttribute('aria-hidden', 'true');
     document.getElementById('kiosk-wifi-connect-box')?.classList.add('hidden');
     const passwordInput = document.getElementById('kiosk-wifi-password-input');
@@ -487,8 +505,10 @@
       ]);
 
       if (!calResp.ok || !tmplResp.ok) throw new Error('Metadata request failed');
-      displayCalendars = await calResp.json();
-      quickTemplates = await tmplResp.json();
+      const calendars = await calResp.json();
+      const templates = await tmplResp.json();
+      displayCalendars = Array.isArray(calendars) ? calendars : [];
+      quickTemplates = Array.isArray(templates) ? templates : [];
       populateDestinationTiles();
       renderQuickTemplates();
     } catch (e) {
@@ -653,18 +673,21 @@
     try {
       const resp = await fetch(`/api/events?start=${encodeURIComponent(startStr)}&end=${encodeURIComponent(endStr)}`);
       if (resp.ok) {
-        cachedEvents = await resp.json();
-        localStorage.setItem('fb_cached_events', JSON.stringify(cachedEvents));
+        const events = await resp.json();
+        if (!Array.isArray(events)) throw new Error('Invalid event response');
+        cachedEvents = events;
+        safeStorageSet('fb_cached_events', JSON.stringify(cachedEvents));
         updateStatus('', 'Up to date');
         return cachedEvents;
       }
       throw new Error(`Event request failed (${resp.status})`);
     } catch (e) {
       console.warn('Fetch failed, using local offline storage cache:', e);
-      const offline = localStorage.getItem('fb_cached_events');
+      const offline = safeStorageGet('fb_cached_events');
       if (offline) {
         try {
-          cachedEvents = JSON.parse(offline);
+          const parsed = JSON.parse(offline);
+          cachedEvents = Array.isArray(parsed) ? parsed : [];
         } catch (_) {
           cachedEvents = [];
         }
@@ -749,7 +772,7 @@
     startGridDate.setDate(startGridDate.getDate() - startGridDate.getDay());
 
     const endGridDate = new Date(startGridDate);
-    endGridDate.setDate(endGridDate.getDate() + 41);
+    endGridDate.setDate(endGridDate.getDate() + 42);
 
     const events = await fetchEvents(startGridDate, endGridDate);
     const today = new Date();
@@ -803,7 +826,7 @@
         pill.className = 'event-pill ' + getEventColorClass(ev);
         makeInteractive(pill, () => openEventDetailSheet(ev), `${ev.title}, ${ev.all_day ? 'all day' : formatTimeShort(new Date(ev.start_at))}`);
 
-        const isBirthday = (ev.title || '').toLowerCase().includes('birthday');
+        const isBirthday = isBirthdayEvent(ev);
         const icon = isBirthday ? '🎂 ' : '';
         const timeStr = ev.all_day ? '' : formatTimeShort(new Date(ev.start_at)) + ' ';
 
@@ -868,9 +891,7 @@
     for (let h = 7; h <= 21; h++) {
       const slot = document.createElement('div');
       slot.className = 'week-time-slot-label';
-      const period = h >= 12 ? 'PM' : 'AM';
-      const displayHour = h > 12 ? h - 12 : (h === 0 ? 12 : h);
-      slot.textContent = `${displayHour} ${period}`;
+      slot.textContent = formatClockValue(`${String(h).padStart(2, '0')}:00`);
       gutter.appendChild(slot);
     }
     elWeekColumnsGrid.appendChild(gutter);
@@ -942,7 +963,7 @@
         evCard.style.top = `${top}px`;
         evCard.style.height = `${height}px`;
 
-        const isBirthday = (ev.title || '').toLowerCase().includes('birthday');
+        const isBirthday = isBirthdayEvent(ev);
         const icon = isBirthday ? '🎂 ' : '';
         const time = document.createElement('div');
         time.textContent = `${icon}${formatTimeShort(start)}`;

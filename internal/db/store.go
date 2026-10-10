@@ -113,6 +113,23 @@ func (s *Store) GetOAuthAccount(ctx context.Context, personID, provider string) 
 	return &acc, nil
 }
 
+// GetOAuthAccountByID resolves the exact account referenced by a calendar.
+// Callers that already have an account ID should use this instead of falling
+// back to another account for the same provider; doing so preserves strict
+// household-member isolation when more than one person uses a provider.
+func (s *Store) GetOAuthAccountByID(ctx context.Context, id string) (*models.OAuthAccount, error) {
+	var acc models.OAuthAccount
+	row := s.db.QueryRowContext(ctx, `SELECT id, person_id, provider, provider_account_id, verified_email, scopes, credential_reference, expires_at, status, created_at, updated_at
+		FROM oauth_accounts WHERE id = ?;`, id)
+	if err := row.Scan(&acc.ID, &acc.PersonID, &acc.Provider, &acc.ProviderAccountID, &acc.VerifiedEmail, &acc.Scopes, &acc.CredentialReference, &acc.ExpiresAt, &acc.Status, &acc.CreatedAt, &acc.UpdatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get oauth account by id: %w", err)
+	}
+	return &acc, nil
+}
+
 func (s *Store) ListOAuthAccounts(ctx context.Context) ([]models.OAuthAccount, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, person_id, provider, provider_account_id, verified_email, scopes, credential_reference, expires_at, status, created_at, updated_at
 		FROM oauth_accounts ORDER BY created_at ASC;`)
@@ -404,13 +421,7 @@ func (s *Store) GetEventByProviderID(ctx context.Context, calendarID, providerEv
 	return &e, nil
 }
 
-func (s *Store) UpsertEvent(ctx context.Context, e *models.Event) error {
-	allDay := 0
-	if e.AllDay {
-		allDay = 1
-	}
-
-	query := `INSERT INTO events (id, provider, provider_event_id, provider_uid, calendar_id, etag, version, title, description, location,
+const upsertEventSQL = `INSERT INTO events (id, provider, provider_event_id, provider_uid, calendar_id, etag, version, title, description, location,
 		start_at, end_at, timezone, all_day, status, recurrence_rule, recurrence_parent, organizer, source,
 		remote_created_at, remote_updated_at, local_created_at, local_updated_at, deleted_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -437,10 +448,24 @@ func (s *Store) UpsertEvent(ctx context.Context, e *models.Event) error {
 			local_updated_at = excluded.local_updated_at,
 			deleted_at = excluded.deleted_at;`
 
-	_, err := s.db.ExecContext(ctx, query, e.ID, e.Provider, e.ProviderEventID, e.ProviderUID, e.CalendarID, e.ETag, e.Version, e.Title, e.Description, e.Location,
+type contextExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func upsertEvent(ctx context.Context, exec contextExecer, e *models.Event) error {
+	allDay := 0
+	if e.AllDay {
+		allDay = 1
+	}
+
+	_, err := exec.ExecContext(ctx, upsertEventSQL, e.ID, e.Provider, e.ProviderEventID, e.ProviderUID, e.CalendarID, e.ETag, e.Version, e.Title, e.Description, e.Location,
 		e.StartAt, e.EndAt, e.Timezone, allDay, e.Status, e.RecurrenceRule, e.RecurrenceParent, e.Organizer, e.Source,
 		e.RemoteCreatedAt, e.RemoteUpdatedAt, e.LocalCreatedAt, e.LocalUpdatedAt, e.DeletedAt)
 	return err
+}
+
+func (s *Store) UpsertEvent(ctx context.Context, e *models.Event) error {
+	return upsertEvent(ctx, s.db, e)
 }
 
 func (s *Store) SoftDeleteEvent(ctx context.Context, id string) error {
@@ -463,21 +488,41 @@ func (s *Store) CountActiveEvents(ctx context.Context) (int, error) {
 
 // --- Mutation Queue ---
 
-func (s *Store) EnqueueMutation(ctx context.Context, item *models.MutationQueueItem) error {
-	query := `INSERT INTO mutation_queue (id, operation, provider, calendar_id, local_event_id, payload, idempotency_key, attempt_count, next_attempt_at, last_error, state, created_at, updated_at)
+const enqueueMutationSQL = `INSERT INTO mutation_queue (id, operation, provider, calendar_id, local_event_id, payload, idempotency_key, attempt_count, next_attempt_at, last_error, state, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(idempotency_key) DO UPDATE SET
 			payload = excluded.payload,
 			updated_at = excluded.updated_at;`
+
+func enqueueMutation(ctx context.Context, exec contextExecer, item *models.MutationQueueItem) error {
 	now := time.Now()
 	if item.CreatedAt.IsZero() {
 		item.CreatedAt = now
 	}
 	item.UpdatedAt = now
 
-	_, err := s.db.ExecContext(ctx, query, item.ID, item.Operation, item.Provider, item.CalendarID, item.LocalEventID, item.Payload, item.IdempotencyKey,
+	_, err := exec.ExecContext(ctx, enqueueMutationSQL, item.ID, item.Operation, item.Provider, item.CalendarID, item.LocalEventID, item.Payload, item.IdempotencyKey,
 		item.AttemptCount, item.NextAttemptAt, item.LastError, string(item.State), item.CreatedAt, item.UpdatedAt)
 	return err
+}
+
+func (s *Store) EnqueueMutation(ctx context.Context, item *models.MutationQueueItem) error {
+	return enqueueMutation(ctx, s.db, item)
+}
+
+// UpsertEventAndEnqueueMutation persists the local-first event state and its
+// durable outbound work item in one SQLite transaction. A successful API
+// response can therefore never leave an event stranded without sync work.
+func (s *Store) UpsertEventAndEnqueueMutation(ctx context.Context, event *models.Event, item *models.MutationQueueItem) error {
+	return s.db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := upsertEvent(ctx, tx, event); err != nil {
+			return fmt.Errorf("upsert event: %w", err)
+		}
+		if err := enqueueMutation(ctx, tx, item); err != nil {
+			return fmt.Errorf("enqueue mutation: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *Store) GetPendingMutations(ctx context.Context, limit int) ([]models.MutationQueueItem, error) {
