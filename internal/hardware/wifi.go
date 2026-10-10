@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,21 +35,32 @@ type WifiAccessPoint struct {
 
 // WifiManager interfaces with NetworkManager (nmcli) on the Radxa Dragon.
 type WifiManager struct {
-	mu            sync.RWMutex
-	isMock        bool
-	cachedScan    []WifiAccessPoint
-	lastScanTime  time.Time
-	mockConnected bool
-	mockSSID      string
-	mockHotspot   bool
+	mu              sync.RWMutex
+	isMock          bool
+	cachedScan      []WifiAccessPoint
+	lastScanTime    time.Time
+	mockConnected   bool
+	mockSSID        string
+	mockHotspot     bool
+	hotspotPassword string
 }
 
 // NewWifiManager creates a Wi-Fi subsystem controller.
 func NewWifiManager(isMock bool) *WifiManager {
 	return &WifiManager{
-		isMock:        isMock,
-		mockConnected: true,
-		mockSSID:      "FamilyHouse-5G",
+		isMock:          isMock,
+		mockConnected:   true,
+		mockSSID:        "FamilyHouse-5G",
+		hotspotPassword: "familyboard123",
+	}
+}
+
+// SetHotspotPassword configures the stable, per-installation setup hotspot key.
+func (w *WifiManager) SetHotspotPassword(password string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if password != "" {
+		w.hotspotPassword = password
 	}
 }
 
@@ -88,7 +100,7 @@ func (w *WifiManager) GetStatus(ctx context.Context) WifiStatus {
 	if err == nil {
 		lines := strings.Split(string(activeOut), "\n")
 		for _, line := range lines {
-			parts := strings.Split(line, ":")
+			parts := splitNMTerseLine(line)
 			if len(parts) >= 4 && parts[1] == "wifi" {
 				status.Interface = parts[0]
 				if parts[2] == "connected" {
@@ -176,7 +188,7 @@ func (w *WifiManager) ScanNetworks(ctx context.Context) ([]WifiAccessPoint, erro
 	seen := make(map[string]bool)
 
 	for _, line := range strings.Split(string(out), "\n") {
-		parts := strings.Split(line, ":")
+		parts := splitNMTerseLine(line)
 		if len(parts) >= 4 {
 			inUse := parts[0] == "*"
 			ssid := strings.TrimSpace(parts[1])
@@ -201,6 +213,12 @@ func (w *WifiManager) ScanNetworks(ctx context.Context) ([]WifiAccessPoint, erro
 	}
 
 	w.lastScanTime = time.Now()
+	sort.SliceStable(results, func(i, j int) bool {
+		if results[i].IsCurrent != results[j].IsCurrent {
+			return results[i].IsCurrent
+		}
+		return results[i].SignalPercent > results[j].SignalPercent
+	})
 	w.cachedScan = results
 	return results, nil
 }
@@ -218,6 +236,8 @@ func (w *WifiManager) Connect(ctx context.Context, ssid, password string) error 
 	if w.isMock || runtime.GOOS != "linux" {
 		w.mockConnected = true
 		w.mockSSID = ssid
+		w.mockHotspot = false
+		w.cachedScan = nil
 		return nil
 	}
 
@@ -232,8 +252,39 @@ func (w *WifiManager) Connect(ctx context.Context, ssid, password string) error 
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %s (%w)", ssid, string(out), err)
 	}
+	w.cachedScan = nil
 
 	return nil
+}
+
+// splitNMTerseLine parses nmcli's terse output while honoring backslash-escaped
+// separators (for example an SSID named "Family\: Upstairs").
+func splitNMTerseLine(line string) []string {
+	fields := make([]string, 0, 4)
+	var field strings.Builder
+	escaped := false
+	for _, r := range line {
+		if escaped {
+			field.WriteRune(r)
+			escaped = false
+			continue
+		}
+		if r == '\\' {
+			escaped = true
+			continue
+		}
+		if r == ':' {
+			fields = append(fields, field.String())
+			field.Reset()
+			continue
+		}
+		field.WriteRune(r)
+	}
+	if escaped {
+		field.WriteRune('\\')
+	}
+	fields = append(fields, field.String())
+	return fields
 }
 
 // ToggleHotspot enables or disables the plug-and-play onboarding hotspot AP.
@@ -248,7 +299,7 @@ func (w *WifiManager) ToggleHotspot(ctx context.Context, enable bool) error {
 
 	if enable {
 		// Launch hotspot: FamilyBoard-Setup
-		cmd := exec.CommandContext(ctx, "nmcli", "device", "wifi", "hotspot", "ifname", "wlan0", "ssid", "FamilyBoard-Setup", "password", "familyboard123")
+		cmd := exec.CommandContext(ctx, "nmcli", "device", "wifi", "hotspot", "ifname", "wlan0", "ssid", "FamilyBoard-Setup", "password", w.hotspotPassword)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("failed to start setup hotspot: %s (%w)", string(out), err)
 		}

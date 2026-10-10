@@ -55,6 +55,28 @@ func main() {
 	} else {
 		slog.Info("Using default configuration")
 	}
+	if cfg.Security.SessionSecret == "" || cfg.Security.HotspotPassword == "" {
+		if err := cfg.EnsureSessionSecret(); err != nil {
+			slog.Error("Failed to generate session secret", "err", err)
+			os.Exit(1)
+		}
+		if err := cfg.EnsureHotspotPassword(); err != nil {
+			slog.Error("Failed to generate hotspot password", "err", err)
+			os.Exit(1)
+		}
+		savePath := loadedPath
+		if savePath == "" || savePath == "config.example.toml" {
+			savePath = "config.toml"
+		}
+		if *configPath != "" {
+			savePath = *configPath
+		}
+		if err := cfg.Save(savePath); err != nil {
+			slog.Error("Failed to persist generated session secret", "path", savePath, "err", err)
+			os.Exit(1)
+		}
+		slog.Info("Generated and saved installation security secrets", "path", savePath)
+	}
 
 	if *portFlag > 0 {
 		cfg.Server.Port = *portFlag
@@ -116,6 +138,19 @@ func main() {
 	syncEngine.SetTokenProvider(server)
 	syncEngine.SetOnSyncCompleted(server.BroadcastReload)
 
+	// Bring up the per-installation setup hotspot whenever the appliance has no
+	// working Wi-Fi connection, keeping first boot and recovery phone-friendly.
+	wifiCtx, cancelWifi := context.WithTimeout(context.Background(), 20*time.Second)
+	wifiStatus := server.HardwareManager().Wifi().GetStatus(wifiCtx)
+	if !wifiStatus.Connected && !wifiStatus.HotspotActive {
+		if err := server.HardwareManager().Wifi().ToggleHotspot(wifiCtx, true); err != nil {
+			slog.Warn("Could not start setup hotspot", "err", err)
+		} else {
+			slog.Info("Started setup hotspot", "ssid", "FamilyBoard-Setup")
+		}
+	}
+	cancelWifi()
+
 	// 8. Start Background Workers
 	appCtx, cancelApp := context.WithCancel(context.Background())
 	defer cancelApp()
@@ -126,11 +161,13 @@ func main() {
 	// 9. HTTP Server
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	httpServer := &http.Server{
-		Addr:         addr,
-		Handler:      server,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:              addr,
+		Handler:           server,
+		ReadTimeout:       15 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 
 	go func() {

@@ -48,6 +48,7 @@ func setupTestServer(t *testing.T) (*web.Server, *db.Store, func()) {
 	stateManager := oauth.NewStateManager("test-secret-key-1234567890123456")
 
 	cfg := config.DefaultConfig()
+	cfg.Database.Path = filepath.Join(tmpDir, "test.db")
 	cfg.Auth.AdminPasswordHash, _ = auth.HashPassword("correct-horse-battery")
 
 	queueEngine := queue.NewEngine(store, nil, 3, 10*time.Second)
@@ -66,6 +67,76 @@ func setupTestServer(t *testing.T) (*web.Server, *db.Store, func()) {
 	}
 
 	return srv, store, cleanup
+}
+
+func csrfForTest(t *testing.T, srv *web.Server, path string) (*http.Cookie, string) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected %s to render for CSRF setup, got %d", path, w.Code)
+	}
+	for _, cookie := range w.Result().Cookies() {
+		if cookie.Name == "fb_csrf" && cookie.Value != "" {
+			return cookie, cookie.Value
+		}
+	}
+	t.Fatalf("expected CSRF cookie from %s", path)
+	return nil, ""
+}
+
+func TestWeb_CSRFRedirectAndSecurityHeaders(t *testing.T) {
+	srv, _, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	missingTokenForm := url.Values{"username": {"admin"}, "password": {"correct-horse-battery"}}
+	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(missingTokenForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected login without CSRF token to be rejected, got %d", w.Code)
+	}
+
+	csrfCookie, csrfToken := csrfForTest(t, srv, "/login?next=//evil.example/steal")
+	loginForm := url.Values{
+		"username":   {"admin"},
+		"password":   {"correct-horse-battery"},
+		"csrf_token": {csrfToken},
+		"next":       {"//evil.example/steal"},
+	}
+	req = httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(loginForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(csrfCookie)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/admin" {
+		t.Fatalf("expected unsafe redirect to fall back to /admin, got %d %q", w.Code, w.Header().Get("Location"))
+	}
+
+	crossSiteReq := httptest.NewRequest(http.MethodPost, "/api/kiosk/parse-natural", strings.NewReader(`{"input":"Dinner tomorrow at 6"}`))
+	crossSiteReq.RemoteAddr = "127.0.0.1:1234"
+	crossSiteReq.Header.Set("Content-Type", "application/json")
+	crossSiteReq.Header.Set("Sec-Fetch-Site", "cross-site")
+	crossSiteW := httptest.NewRecorder()
+	srv.ServeHTTP(crossSiteW, crossSiteReq)
+	if crossSiteW.Code != http.StatusForbidden {
+		t.Fatalf("expected cross-site mutation to be rejected, got %d", crossSiteW.Code)
+	}
+
+	headerReq := httptest.NewRequest(http.MethodGet, "/health/live", nil)
+	headerW := httptest.NewRecorder()
+	srv.ServeHTTP(headerW, headerReq)
+	for name, want := range map[string]string{
+		"X-Content-Type-Options":     "nosniff",
+		"X-Frame-Options":            "DENY",
+		"Cross-Origin-Opener-Policy": "same-origin",
+	} {
+		if got := headerW.Header().Get(name); got != want {
+			t.Errorf("expected %s=%q, got %q", name, want, got)
+		}
+	}
 }
 
 func TestWeb_HealthEndpoints(t *testing.T) {
@@ -237,12 +308,15 @@ func TestWeb_AdminLoginAndSessionAuth(t *testing.T) {
 	}
 
 	// 2. Failed login with wrong password
+	csrfCookie, csrfToken := csrfForTest(t, srv, "/login")
 	form := url.Values{
-		"username": {"admin"},
-		"password": {"wrong-password"},
+		"username":   {"admin"},
+		"password":   {"wrong-password"},
+		"csrf_token": {csrfToken},
 	}
 	req = httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(csrfCookie)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 	if !strings.Contains(w.Body.String(), "Invalid username or password") {
@@ -251,11 +325,13 @@ func TestWeb_AdminLoginAndSessionAuth(t *testing.T) {
 
 	// 3. Successful login with correct password
 	form = url.Values{
-		"username": {"admin"},
-		"password": {"correct-horse-battery"},
+		"username":   {"admin"},
+		"password":   {"correct-horse-battery"},
+		"csrf_token": {csrfToken},
 	}
 	req = httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(csrfCookie)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/admin" {
@@ -349,12 +425,15 @@ func TestWeb_AdminCalendarAndPersonActions(t *testing.T) {
 	_ = store.UpsertCalendar(ctx, cal2)
 
 	// Log in to get session cookie
+	csrfCookie, csrfToken := csrfForTest(t, srv, "/login")
 	loginForm := url.Values{
-		"username": {"admin"},
-		"password": {"correct-horse-battery"},
+		"username":   {"admin"},
+		"password":   {"correct-horse-battery"},
+		"csrf_token": {csrfToken},
 	}
 	loginReq := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(loginForm.Encode()))
 	loginReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginReq.AddCookie(csrfCookie)
 	loginRec := httptest.NewRecorder()
 	srv.ServeHTTP(loginRec, loginReq)
 
@@ -372,6 +451,8 @@ func TestWeb_AdminCalendarAndPersonActions(t *testing.T) {
 	// 1. POST /admin/calendars/cal-2/set-default
 	req := httptest.NewRequest(http.MethodPost, "/admin/calendars/cal-2/set-default", nil)
 	req.AddCookie(sessionCookie)
+	req.AddCookie(csrfCookie)
+	req.Header.Set("X-CSRF-Token", csrfToken)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusSeeOther {
@@ -388,10 +469,12 @@ func TestWeb_AdminCalendarAndPersonActions(t *testing.T) {
 		"display_color":       {"#059669"},
 		"enabled_for_display": {"1"},
 		"writable":            {"1"},
+		"csrf_token":          {csrfToken},
 	}
 	req = httptest.NewRequest(http.MethodPost, "/admin/calendars/cal-2/preferences", strings.NewReader(prefForm.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(sessionCookie)
+	req.AddCookie(csrfCookie)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusSeeOther {
@@ -407,10 +490,12 @@ func TestWeb_AdminCalendarAndPersonActions(t *testing.T) {
 	personForm := url.Values{
 		"display_name": {"Scott H."},
 		"email":        {"scott@familydomain.org"},
+		"csrf_token":   {csrfToken},
 	}
 	req = httptest.NewRequest(http.MethodPost, "/admin/people/person-1/update", strings.NewReader(personForm.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(sessionCookie)
+	req.AddCookie(csrfCookie)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusSeeOther {
@@ -425,6 +510,8 @@ func TestWeb_AdminCalendarAndPersonActions(t *testing.T) {
 	// 4. POST /admin/calendars/refresh
 	req = httptest.NewRequest(http.MethodPost, "/admin/calendars/refresh", nil)
 	req.AddCookie(sessionCookie)
+	req.AddCookie(csrfCookie)
+	req.Header.Set("X-CSRF-Token", csrfToken)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusSeeOther {

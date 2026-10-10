@@ -22,6 +22,7 @@ const sessionCookieName = "fb_session"
 
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store, private")
 		sess, ok := s.isAuthenticatedAdmin(r)
 		if !ok || sess == nil {
 			http.SetCookie(w, &http.Cookie{
@@ -30,8 +31,10 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 				Path:     "/",
 				MaxAge:   -1,
 				HttpOnly: true,
+				SameSite: http.SameSiteStrictMode,
+				Secure:   s.cfg.Security.CookieSecure,
 			})
-			http.Redirect(w, r, "/login?next="+r.URL.Path, http.StatusSeeOther)
+			http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusSeeOther)
 			return
 		}
 
@@ -56,28 +59,34 @@ func (s *Server) handleAdminLock(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   s.cfg.Security.CookieSecure,
 	})
 
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (s *Server) handleLoginGet(w http.ResponseWriter, r *http.Request) {
-	csrfToken, _ := auth.GenerateSecureToken(16)
+	w.Header().Set("Cache-Control", "no-store, private")
+	csrfToken := s.issueCSRFToken(w, r)
 	s.render(w, "login.html", map[string]interface{}{
 		"Title":     "Admin Login",
 		"Theme":     "dark",
 		"CSRFToken": csrfToken,
 		"Username":  s.cfg.Auth.AdminUsername,
+		"Next":      safeLocalRedirect(r.URL.Query().Get("next"), "/admin"),
 	})
 }
 
 func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
-	ip := r.RemoteAddr
+	w.Header().Set("Cache-Control", "no-store, private")
+	ip := remoteIP(r)
+	next := safeLocalRedirect(r.FormValue("next"), "/admin")
+	csrfToken := r.FormValue("csrf_token")
 	if !s.rateLimiter.Allow(ip) {
 		s.render(w, "login.html", map[string]interface{}{
-			"Title": "Admin Login",
-			"Theme": "dark",
-			"Error": "Too many failed attempts. Please try again later.",
+			"Title": "Admin Login", "Theme": "dark", "CSRFToken": csrfToken,
+			"Next": next, "Error": "Too many failed attempts. Please try again later.",
 		})
 		return
 	}
@@ -98,10 +107,8 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 		})
 
 		s.render(w, "login.html", map[string]interface{}{
-			"Title":    "Admin Login",
-			"Theme":    "dark",
-			"Username": username,
-			"Error":    "Invalid username or password",
+			"Title": "Admin Login", "Theme": "dark", "CSRFToken": csrfToken,
+			"Username": username, "Next": next, "Error": "Invalid username or password",
 		})
 		return
 	}
@@ -109,18 +116,27 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 	s.rateLimiter.Reset(ip)
 
 	// Create session
-	token, _ := auth.GenerateSecureToken(32)
+	token, err := auth.GenerateSecureToken(32)
+	if err != nil {
+		slog.Error("Failed to generate admin session token", "err", err)
+		http.Error(w, "could not create admin session", http.StatusInternalServerError)
+		return
+	}
 	tokenHash := auth.HashToken(token)
 	now := time.Now()
 	expiresAt := now.Add(24 * time.Hour)
 
-	_ = s.store.CreateSession(r.Context(), &models.Session{
+	if err := s.store.CreateSession(r.Context(), &models.Session{
 		TokenHash:    tokenHash,
 		UserID:       username,
 		ExpiresAt:    expiresAt,
 		CreatedAt:    now,
 		LastActiveAt: now,
-	})
+	}); err != nil {
+		slog.Error("Failed to persist admin session", "err", err)
+		http.Error(w, "could not create admin session", http.StatusInternalServerError)
+		return
+	}
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
@@ -128,7 +144,7 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		Expires:  expiresAt,
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		Secure:   s.cfg.Security.CookieSecure,
 	})
 
@@ -141,11 +157,18 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 		IPAddress:    ip,
 	})
 
-	next := r.URL.Query().Get("next")
-	if next == "" || !strings.HasPrefix(next, "/") {
-		next = "/admin"
-	}
 	http.Redirect(w, r, next, http.StatusSeeOther)
+}
+
+func safeLocalRedirect(candidate, fallback string) string {
+	if !strings.HasPrefix(candidate, "/") || strings.HasPrefix(candidate, "//") || strings.Contains(candidate, "\\") {
+		return fallback
+	}
+	parsed, err := url.Parse(candidate)
+	if err != nil || parsed.IsAbs() || parsed.Host != "" {
+		return fallback
+	}
+	return candidate
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -160,19 +183,22 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   s.cfg.Security.CookieSecure,
 	})
 
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
 func (s *Server) handleSetupGet(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store, private")
 	meta, err := s.store.GetDeviceMetadata(r.Context())
 	if err == nil && meta != nil {
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
 	}
 
-	csrfToken, _ := auth.GenerateSecureToken(16)
+	csrfToken := s.issueCSRFToken(w, r)
 	s.render(w, "setup.html", map[string]interface{}{
 		"Title":          "First-Run Setup",
 		"Theme":          "dark",
@@ -184,6 +210,7 @@ func (s *Server) handleSetupGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store, private")
 	deviceName := strings.TrimSpace(r.FormValue("device_name"))
 	tz := strings.TrimSpace(r.FormValue("timezone"))
 	password := r.FormValue("admin_password")
@@ -195,6 +222,7 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 		s.render(w, "setup.html", map[string]interface{}{
 			"Title": "First-Run Setup", "Theme": "dark", "Error": "Passwords do not match",
 			"DeviceName": deviceName, "Timezone": tz, "GoogleClientID": googleClientID,
+			"CSRFToken": r.FormValue("csrf_token"),
 		})
 		return
 	}
@@ -203,6 +231,7 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 		s.render(w, "setup.html", map[string]interface{}{
 			"Title": "First-Run Setup", "Theme": "dark", "Error": "Password must be at least 8 characters",
 			"DeviceName": deviceName, "Timezone": tz, "GoogleClientID": googleClientID,
+			"CSRFToken": r.FormValue("csrf_token"),
 		})
 		return
 	}
@@ -224,7 +253,10 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 		s.cfg.Google.ClientSecret = googleSecret
 	}
 
-	_ = s.cfg.Save("config.toml")
+	if err := s.cfg.Save(s.cfg.SourcePath("config.toml")); err != nil {
+		http.Error(w, "failed to save appliance configuration", http.StatusInternalServerError)
+		return
+	}
 
 	ctx := r.Context()
 	now := time.Now()
@@ -300,17 +332,26 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create initial admin session
-	token, _ := auth.GenerateSecureToken(32)
+	token, err := auth.GenerateSecureToken(32)
+	if err != nil {
+		slog.Error("Failed to generate setup session token", "err", err)
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
 	tokenHash := auth.HashToken(token)
 	expiresAt := now.Add(24 * time.Hour)
 
-	_ = s.store.CreateSession(ctx, &models.Session{
+	if err := s.store.CreateSession(ctx, &models.Session{
 		TokenHash:    tokenHash,
 		UserID:       s.cfg.Auth.AdminUsername,
 		ExpiresAt:    expiresAt,
 		CreatedAt:    now,
 		LastActiveAt: now,
-	})
+	}); err != nil {
+		slog.Error("Failed to persist setup session", "err", err)
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
@@ -318,7 +359,7 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		Expires:  expiresAt,
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		Secure:   s.cfg.Security.CookieSecure,
 	})
 
@@ -363,7 +404,7 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	activeEventCount, _ := s.store.CountActiveEvents(ctx)
 	conflicts, _ := s.store.ListPendingConflicts(ctx)
 
-	csrfToken, _ := auth.GenerateSecureToken(16)
+	csrfToken := s.issueCSRFToken(w, r)
 
 	hwInfo := s.hwMgr.GetSystemInfo(ctx)
 	wifiStatus := s.hwMgr.Wifi().GetStatus(ctx)
@@ -399,6 +440,7 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		"FamilyBeacons":         beacons,
 		"Message":               r.URL.Query().Get("msg"),
 		"Error":                 r.URL.Query().Get("err"),
+		"HotspotPassword":       s.cfg.Security.HotspotPassword,
 	}
 
 	s.render(w, "admin.html", data)
@@ -602,6 +644,10 @@ func (s *Server) handleAdminOAuthStart(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleOAuthCallbackGoogle(w http.ResponseWriter, r *http.Request) {
+	if s.googleOAuth == nil {
+		http.Redirect(w, r, "/admin?tab=accounts&err=Google+OAuth+is+not+configured", http.StatusSeeOther)
+		return
+	}
 	code := r.URL.Query().Get("code")
 	stateStr := r.URL.Query().Get("state")
 
@@ -613,7 +659,8 @@ func (s *Server) handleOAuthCallbackGoogle(w http.ResponseWriter, r *http.Reques
 
 	token, userInfo, err := s.googleOAuth.Exchange(r.Context(), code)
 	if err != nil {
-		http.Redirect(w, r, "/admin?tab=accounts&err="+err.Error(), http.StatusSeeOther)
+		slog.Error("Google OAuth exchange failed", "err", err)
+		http.Redirect(w, r, "/admin?tab=accounts&err=Google+authentication+failed", http.StatusSeeOther)
 		return
 	}
 
@@ -645,7 +692,8 @@ func (s *Server) handleOAuthCallbackGoogle(w http.ResponseWriter, r *http.Reques
 			}
 		} else {
 			slog.Error("OAuth cross-assignment attempted and prevented", "expected", expectedEmail, "authenticated", userInfo.Email)
-			http.Redirect(w, r, fmt.Sprintf("/admin?tab=accounts&err=Account+mismatch:+Authenticated+as+%s+but+expected+%s.+Cross-assignment+prevented.", userInfo.Email, expectedEmail), http.StatusSeeOther)
+			message := fmt.Sprintf("Account mismatch: authenticated as %s but expected %s. Cross-assignment prevented.", userInfo.Email, expectedEmail)
+			http.Redirect(w, r, "/admin?tab=accounts&err="+url.QueryEscape(message), http.StatusSeeOther)
 			return
 		}
 	}
@@ -653,7 +701,11 @@ func (s *Server) handleOAuthCallbackGoogle(w http.ResponseWriter, r *http.Reques
 	accountID := fmt.Sprintf("acc-g-%s", userInfo.Sub)
 
 	// Save token securely in 0600 storage
-	_ = s.tokenStorage.Save(accountID, token)
+	if err := s.tokenStorage.Save(accountID, token); err != nil {
+		slog.Error("Failed to store Google OAuth token", "account_id", accountID, "err", err)
+		http.Redirect(w, r, "/admin?tab=accounts&err=Could+not+securely+store+Google+credentials", http.StatusSeeOther)
+		return
+	}
 
 	scopes := oauth.ScopeGoogleCalendar
 	if parsedState.Flow == "mail" {
@@ -672,7 +724,11 @@ func (s *Server) handleOAuthCallbackGoogle(w http.ResponseWriter, r *http.Reques
 		Status:              "active",
 	}
 
-	_ = s.store.UpsertOAuthAccount(r.Context(), oauthAccount)
+	if err := s.store.UpsertOAuthAccount(r.Context(), oauthAccount); err != nil {
+		slog.Error("Failed to store Google OAuth account", "account_id", accountID, "err", err)
+		http.Redirect(w, r, "/admin?tab=accounts&err=Could+not+save+Google+account", http.StatusSeeOther)
+		return
+	}
 
 	// Discover and register all calendars if flow was calendar
 	if parsedState.Flow == "calendar" {
@@ -735,6 +791,10 @@ func (s *Server) handleOAuthCallbackGoogle(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handleOAuthCallbackMicrosoft(w http.ResponseWriter, r *http.Request) {
+	if s.msOAuth == nil {
+		http.Redirect(w, r, "/admin?tab=accounts&err=Microsoft+OAuth+is+not+configured", http.StatusSeeOther)
+		return
+	}
 	code := r.URL.Query().Get("code")
 	stateStr := r.URL.Query().Get("state")
 
@@ -746,12 +806,17 @@ func (s *Server) handleOAuthCallbackMicrosoft(w http.ResponseWriter, r *http.Req
 
 	token, profile, err := s.msOAuth.Exchange(r.Context(), code)
 	if err != nil {
-		http.Redirect(w, r, "/admin?tab=accounts&err="+err.Error(), http.StatusSeeOther)
+		slog.Error("Microsoft OAuth exchange failed", "err", err)
+		http.Redirect(w, r, "/admin?tab=accounts&err=Microsoft+authentication+failed", http.StatusSeeOther)
 		return
 	}
 
 	accountID := fmt.Sprintf("acc-ms-%s", profile.ID)
-	_ = s.tokenStorage.Save(accountID, token)
+	if err := s.tokenStorage.Save(accountID, token); err != nil {
+		slog.Error("Failed to store Microsoft OAuth token", "account_id", accountID, "err", err)
+		http.Redirect(w, r, "/admin?tab=accounts&err=Could+not+securely+store+Microsoft+credentials", http.StatusSeeOther)
+		return
+	}
 
 	oauthAccount := &models.OAuthAccount{
 		ID:                  accountID,
@@ -765,7 +830,11 @@ func (s *Server) handleOAuthCallbackMicrosoft(w http.ResponseWriter, r *http.Req
 		Status:              "active",
 	}
 
-	_ = s.store.UpsertOAuthAccount(r.Context(), oauthAccount)
+	if err := s.store.UpsertOAuthAccount(r.Context(), oauthAccount); err != nil {
+		slog.Error("Failed to store Microsoft OAuth account", "account_id", accountID, "err", err)
+		http.Redirect(w, r, "/admin?tab=accounts&err=Could+not+save+Microsoft+account", http.StatusSeeOther)
+		return
+	}
 
 	http.Redirect(w, r, "/admin?tab=mail&msg=Successfully+connected+Microsoft+Outlook", http.StatusSeeOther)
 }

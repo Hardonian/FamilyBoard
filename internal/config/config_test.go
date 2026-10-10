@@ -1,0 +1,64 @@
+package config
+
+import (
+	"path/filepath"
+	"testing"
+)
+
+func TestEnsureSessionSecretIsStrongAndStable(t *testing.T) {
+	cfg := DefaultConfig()
+	if err := cfg.EnsureSessionSecret(); err != nil {
+		t.Fatalf("EnsureSessionSecret: %v", err)
+	}
+	if err := cfg.EnsureHotspotPassword(); err != nil {
+		t.Fatalf("EnsureHotspotPassword: %v", err)
+	}
+	if len(cfg.Security.HotspotPassword) < 16 {
+		t.Fatalf("expected a strong generated hotspot password, got %d characters", len(cfg.Security.HotspotPassword))
+	}
+	first := cfg.Security.SessionSecret
+	if len(first) < 43 {
+		t.Fatalf("expected at least 256 bits of encoded entropy, got %d characters", len(first))
+	}
+	if err := cfg.EnsureSessionSecret(); err != nil {
+		t.Fatalf("second EnsureSessionSecret: %v", err)
+	}
+	if cfg.Security.SessionSecret != first {
+		t.Fatal("existing session secret must not be rotated implicitly")
+	}
+}
+
+func TestSaveCanSafelyReplaceAndRememberSource(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "config.toml")
+	cfg := DefaultConfig()
+	if err := cfg.EnsureSessionSecret(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.EnsureHotspotPassword(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Save(target); err != nil {
+		t.Fatalf("initial Save: %v", err)
+	}
+	cfg.Server.DeviceName = "Updated Kitchen Board"
+	if err := cfg.Save(target); err != nil {
+		t.Fatalf("replacement Save: %v", err)
+	}
+
+	loaded, loadedPath, err := Load(target)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loadedPath != target || loaded.SourcePath("fallback") != target {
+		t.Fatalf("expected source path %q, got %q / %q", target, loadedPath, loaded.SourcePath("fallback"))
+	}
+	if loaded.Server.DeviceName != "Updated Kitchen Board" {
+		t.Fatalf("replacement content was not persisted: %q", loaded.Server.DeviceName)
+	}
+	if loaded.Security.SessionSecret != cfg.Security.SessionSecret {
+		t.Fatal("session secret changed during save/load")
+	}
+	if loaded.Security.HotspotPassword != cfg.Security.HotspotPassword {
+		t.Fatal("hotspot password changed during save/load")
+	}
+}

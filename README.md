@@ -2,10 +2,10 @@
 
 [![CI](https://github.com/Hardonian/FamilyBoard/actions/workflows/ci.yml/badge.svg)](https://github.com/Hardonian/FamilyBoard/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform: Linux ARM64](https://img.shields.io/badge/Platform-Linux%20ARM64-orange.svg)](https://www.raspberrypi.com/)
+[![Platform: Linux ARM64](https://img.shields.io/badge/Platform-Linux%20ARM64-orange.svg)](#hardware-targets--supported-boards)
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8.svg)](https://golang.org)
 
-**FamilyBoard** is an appliance-grade, sovereign, local-first digital family calendar and email event ingestion system designed for dedicated kitchen and refrigerator touchscreen displays (specifically tuned for a 15-inch 1080p display driven by a Raspberry Pi 3B with 1 GB RAM running Raspberry Pi OS 64-bit).
+**FamilyBoard** is an appliance-grade, sovereign, local-first digital family calendar and email event ingestion system for dedicated kitchen and refrigerator touchscreens. It targets Linux ARM64 appliances, with first-class Radxa Dragon Q64 support and a low-resource Raspberry Pi 3B profile.
 
 ---
 
@@ -14,27 +14,48 @@
 - **Sovereign & Local-First:** Runs an embedded SQLite database in WAL mode. If home Wi-Fi drops, the kitchen touchscreen never freezes, blanks, or drops edits. All changes are stored locally and replayed automatically upon reconnection.
 - **Multi-Identity Household Isolation:** Native support for independent accounts for family members (e.g., Parent 1: `alex@example.com` and Parent 2: `jordan@example.com`). Strict identity isolation blocks cross-assignment, cross-pollination, or silent token remapping.
 - **Autonomous Email Ingestion Pipeline:** Ingests calendar invitations, school newsletters, soccer practice schedules, and dentist appointments from Gmail and Microsoft Graph. Uses RFC 5545 `.ics` parsing, natural language date extraction (`America/Toronto`), and optional LAN AI fallback (Ollama/vLLM) with strict SSRF protection.
-- **Ultra-Low Resource Footprint:** Pure Go daemon using `modernc.org/sqlite` (no CGO cross-compilation headaches). Baseline memory consumption is under **20 MB RAM**, leaving 980+ MB for the OS and Chromium kiosk.
+- **Low Resource Footprint:** Pure Go daemon using `modernc.org/sqlite` (no CGO cross-compilation headaches), designed to leave most appliance memory available to the OS and Chromium kiosk.
 - **Zero Runtime Dependencies:** Server-rendered HTML templates via embedded Go `embed.FS`, vanilla CSS with light/dark high-contrast themes, and vanilla JavaScript. Zero CDN calls, zero npm packages, and zero external runtime requirements.
 - **Pi-hole Coexistence:** Binds strictly to `127.0.0.1:8080` (or `0.0.0.0:8080`), preserving standard ports `53` (DNS), `80` (HTTP), and `443` (HTTPS) for Pi-hole and Lighttpd.
 - **Durable Mutation Queue:** Offline creations, edits, and deletions are persisted to SQLite and synced upstream with exponential backoff, jitter, and dead-letter handling.
+- **Hardened Local Control Plane:** Strict-site sessions, real CSRF validation, localhost kiosk capabilities, bounded JSON and photo uploads, and authenticated access to household-sensitive hardware, presence, QR, and photo endpoints.
 - **Turnkey Appliance Tooling:** Includes complete automation scripts (`bootstrap.sh`, `install.sh`, `update.sh`, `verify.sh`, `uninstall.sh`), systemd integration, and `familyboardctl` CLI management utility.
 
 ---
 
-## Hardware Target & Specifications
+## Hardware Targets & Supported Boards
 
-- **Device:** Raspberry Pi 3 Model B (1.2 GHz 64-bit quad-core ARMv8, 1 GB LPDDR2 RAM).
+FamilyBoard is built for appliance single-board computers (SBCs):
+
+### Tier 1: Radxa Dragon Q64 (Flagship Kitchen Appliance)
+
+- **SoC:** Qualcomm Snapdragon QCS6490 (8-core Kryo 670 CPU up to 2.7 GHz, Hexagon NPU).
+- **Graphics:** Qualcomm Adreno 643 GPU (Wayland / `cage` compositor with GPU rasterization).
+- **Storage:** High-speed M.2 PCIe Gen3 NVMe SSD with 1-click live SD-to-NVMe cloner.
+- **Wireless:** Qualcomm Wi-Fi 6E (2.4/5/6 GHz) + Bluetooth 5.2 (BLE household presence tracking).
+- **Ambient Smart Frame:** FotoCube digital photo frame screensaver with drag-and-drop gallery manager.
+- **Zero-Touch Onboarding:** Mobile phone camera QR pairing (`WIFI:S:FamilyBoard-Setup;...`).
+- **Full Guide:** **[Radxa Dragon Native Appliance & Plug-and-Play Setup Guide](docs/RADXA_DRAGON_SETUP.md)**.
+
+### Tier 2: Raspberry Pi 3 Model B (Low-Power / Cost-Effective)
+
+- **SoC:** Broadcom BCM2837 (1.2 GHz 64-bit quad-core ARMv8, 1 GB LPDDR2 RAM).
 - **Operating System:** Raspberry Pi OS Lite (64-bit / Debian Bookworm).
 - **Display:** 15-inch HDMI 1080p (1920x1080) capacitive USB touchscreen.
 - **Storage:** 32 GB or 64 GB High Endurance Class 10 MicroSD card.
-- **Power:** Official Raspberry Pi 5.1V / 2.5A Micro-USB power supply.
+- **Full Guide:** **[Turnkey MicroSD & One-Shot Setup Guide](docs/MICROSD_ONE_SHOT.md)**.
 
 ---
 
 ## Turnkey Appliance Deployment
 
-### Method 1: Zero-Token MicroSD Installation (Recommended for Private Repo)
+### Radxa Dragon: Standalone SD or Appliance Takeover
+
+1. Copy the standalone folder to any MicroSD card: `.\scripts\prepare_radxa_sd.ps1 -DriveLetter E:`
+2. Insert into the Radxa Dragon and run `./run-standalone.sh` (zero install) or `sudo ./install-appliance.sh` (fullscreen kiosk on boot).
+3. Clone to M.2 NVMe SSD anytime with 1 click in the Admin portal.
+
+### Raspberry Pi: Zero-Token MicroSD Installation
 
 See the full guide: **[Turnkey MicroSD & One-Shot Appliance Setup Guide](docs/MICROSD_ONE_SHOT.md)**.
 
@@ -154,6 +175,8 @@ Detailed guides and operational runbooks are available in the [`docs/`](docs/) d
   - [Email Ingestion & Extraction Pipeline](docs/EMAIL_INGESTION.md)
   - [Offline-First & Synchronization Model](docs/OFFLINE_MODEL.md)
   - [Database Schema & Migration Architecture](docs/DATABASE.md)
+- **Radxa Dragon & FotoCube Appliance:**
+  - [Radxa Dragon Native Appliance & Plug-and-Play Setup Guide](docs/RADXA_DRAGON_SETUP.md)
 - **Raspberry Pi Operations & Runbooks:**
   - [Turnkey MicroSD & One-Shot Setup Guide](docs/MICROSD_ONE_SHOT.md)
   - [Appliance Bootstrap Guide](docs/PI_BOOTSTRAP.md)

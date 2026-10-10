@@ -2412,6 +2412,7 @@ body.kiosk-ambient-dim {
 
 .admin-card-header-wrap { flex-wrap: wrap; }
 .admin-header-actions { flex-wrap: wrap; }
+.admin-action-form { margin: 0; }
 .admin-card-header > div:first-child { flex: 1 1 320px; }
 
 .admin-callout {
@@ -3412,4 +3413,3 @@ body.kiosk-ambient-dim {
   font-size: 0.9rem;
   color: rgba(255, 255, 255, 0.7);
 }
-

@@ -24,8 +24,10 @@ screen_blank_enabled = false
 screen_blank_schedule = "23:00-06:00"
 
 [security]
-# Set a unique session secret in production. The setup wizard generates this automatically.
+# Leave blank on first boot; FamilyBoard generates and persists a unique secret.
 session_secret = ""
+# Leave blank to generate a unique per-installation setup hotspot key.
+hotspot_password = ""
 # Set to true only if accessing via HTTPS
 cookie_secure = false
 credentials_dir = "credentials"

@@ -48,6 +48,7 @@
   const elDrawerEventsList = document.getElementById('drawer-events-list');
   const elBtnDrawerAddEvent = document.getElementById('btn-drawer-add-event');
   const elEventDetailModal = document.getElementById('event-detail-modal');
+  const elWifiSetupModal = document.getElementById('modal-wifi-setup');
 
   // Virtual Keyboard
   const elVirtualKeyboard = document.getElementById('virtual-keyboard');
@@ -193,7 +194,7 @@
   }
 
   function openKioskWifiModal() {
-    const modal = document.getElementById('modal-wifi-setup');
+    const modal = elWifiSetupModal;
     const btnClose = document.getElementById('btn-close-wifi-modal');
     const btnCloseFooter = document.getElementById('btn-close-wifi-modal-footer');
     const btnScan = document.getElementById('btn-kiosk-scan-wifi');
@@ -206,19 +207,19 @@
     const connectStatus = document.getElementById('kiosk-connect-status');
     const currentStatusText = document.getElementById('kiosk-current-wifi-status');
     const hotspotSsid = document.getElementById('kiosk-hotspot-ssid');
-    const hotspotPass = document.getElementById('kiosk-hotspot-pass');
 
     if (!modal) return;
 
+    previouslyFocusedElement = document.activeElement;
     modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    if (btnClose) btnClose.focus();
 
-    function closeModal() {
-      modal.classList.add('hidden');
-      if (connectBox) connectBox.classList.add('hidden');
-    }
-
-    if (btnClose) btnClose.onclick = closeModal;
-    if (btnCloseFooter) btnCloseFooter.onclick = closeModal;
+    if (btnClose) btnClose.onclick = closeKioskWifiModal;
+    if (btnCloseFooter) btnCloseFooter.onclick = closeKioskWifiModal;
+    modal.onclick = function(event) {
+      if (event.target === modal) closeKioskWifiModal();
+    };
 
     let selectedSSID = '';
 
@@ -228,20 +229,20 @@
         if (statusResp.ok) {
           const st = await statusResp.json();
           if (hotspotSsid && st.hotspot_ssid) hotspotSsid.textContent = st.hotspot_ssid;
-          if (hotspotPass && st.hotspot_password) hotspotPass.textContent = st.hotspot_password;
           if (currentStatusText) {
             if (st.connected) {
-              currentStatusText.innerHTML = `Connected to <strong>${escapeKioskText(st.ssid)}</strong> (${st.signal_percent}%, IP: ${st.ip_address || '--'})`;
+              currentStatusText.textContent = `Connected to ${st.ssid || 'Wi-Fi'} (${st.signal_percent}%, IP: ${st.ip_address || '--'})`;
             } else if (st.hotspot_active) {
-              currentStatusText.innerHTML = `Setup Hotspot Active: <strong>${escapeKioskText(st.hotspot_ssid || 'FamilyBoard-Setup')}</strong> (192.168.4.1)`;
+              currentStatusText.textContent = `Setup Hotspot Active: ${st.hotspot_ssid || 'FamilyBoard-Setup'} (192.168.4.1)`;
             } else {
-              currentStatusText.innerHTML = `Status: <strong>Disconnected</strong>`;
+              currentStatusText.textContent = 'Status: Disconnected';
             }
           }
         }
       } catch (_) {}
 
       if (listContainer) {
+        listContainer.setAttribute('aria-busy', 'true');
         listContainer.innerHTML = '<div class="kiosk-wifi-empty">Scanning for wireless networks…</div>';
       }
       try {
@@ -253,6 +254,8 @@
         if (listContainer) {
           listContainer.innerHTML = `<div class="kiosk-wifi-empty">Could not scan: ${escapeKioskText(err.message)}</div>`;
         }
+      } finally {
+        if (listContainer) listContainer.setAttribute('aria-busy', 'false');
       }
     }
 
@@ -263,22 +266,41 @@
         return;
       }
 
-      let html = '';
+      listContainer.replaceChildren();
       aps.forEach(ap => {
-        const isCurrent = ap.is_current ? '<span class="status-badge status-badge-home">Connected</span>' : '';
-        html += `
-          <div class="kiosk-wifi-item ${ap.is_current ? 'active' : ''}" data-ssid="${escapeKioskText(ap.ssid)}">
-            <div class="kiosk-wifi-item-info">
-              <span class="kiosk-wifi-item-ssid">${escapeKioskText(ap.ssid)}</span>
-              <span class="kiosk-wifi-item-meta">${ap.signal_percent}% · ${escapeKioskText(ap.security || 'Open')}</span>
-            </div>
-            <div class="kiosk-wifi-item-action">
-              ${isCurrent || `<button type="button" class="btn btn-primary btn-sm btn-select-wifi" data-ssid="${escapeKioskText(ap.ssid)}">Join</button>`}
-            </div>
-          </div>
-        `;
+        const item = document.createElement('div');
+        item.className = 'kiosk-wifi-item' + (ap.is_current ? ' active' : '');
+        item.dataset.ssid = String(ap.ssid || '');
+
+        const info = document.createElement('div');
+        info.className = 'kiosk-wifi-item-info';
+        const ssid = document.createElement('span');
+        ssid.className = 'kiosk-wifi-item-ssid';
+        ssid.textContent = ap.ssid || 'Hidden network';
+        const meta = document.createElement('span');
+        meta.className = 'kiosk-wifi-item-meta';
+        const signal = Math.max(0, Math.min(100, Number(ap.signal_percent) || 0));
+        meta.textContent = `${signal}% · ${ap.security || 'Open'}`;
+        info.append(ssid, meta);
+
+        const action = document.createElement('div');
+        action.className = 'kiosk-wifi-item-action';
+        if (ap.is_current) {
+          const badge = document.createElement('span');
+          badge.className = 'status-badge status-badge-home';
+          badge.textContent = 'Connected';
+          action.appendChild(badge);
+        } else {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'btn btn-primary btn-sm btn-select-wifi';
+          button.dataset.ssid = String(ap.ssid || '');
+          button.textContent = 'Join';
+          action.appendChild(button);
+        }
+        item.append(info, action);
+        listContainer.appendChild(item);
       });
-      listContainer.innerHTML = html;
     }
 
     if (listContainer) {
@@ -353,6 +375,17 @@
     }
 
     refreshStatusAndScan();
+  }
+
+  function closeKioskWifiModal() {
+    if (!elWifiSetupModal) return;
+    const wasOpen = elWifiSetupModal.getAttribute('aria-hidden') === 'false';
+    elWifiSetupModal.classList.add('hidden');
+    elWifiSetupModal.setAttribute('aria-hidden', 'true');
+    document.getElementById('kiosk-wifi-connect-box')?.classList.add('hidden');
+    const passwordInput = document.getElementById('kiosk-wifi-password-input');
+    if (passwordInput) passwordInput.value = '';
+    if (wasOpen) restorePreviousFocus();
   }
 
   // --- Navigation & View Switching ---
@@ -2092,7 +2125,7 @@
   }
 
   function getVisibleOverlay() {
-    return [elEventDetailModal, elEventModal, elDayDrawerOverlay].find(overlay =>
+    return [elEventDetailModal, elEventModal, elDayDrawerOverlay, elWifiSetupModal].find(overlay =>
       overlay && overlay.getAttribute('aria-hidden') === 'false'
     );
   }
@@ -2105,7 +2138,8 @@
       event.preventDefault();
       if (overlay === elEventDetailModal) closeEventDetailSheet();
       else if (overlay === elEventModal) closeQuickAddModal();
-      else closeDayDrawer();
+      else if (overlay === elDayDrawerOverlay) closeDayDrawer();
+      else closeKioskWifiModal();
       return;
     }
 
@@ -2190,6 +2224,7 @@
     closeQuickAddModal();
     closeEventDetailSheet();
     closeDayDrawer();
+    closeKioskWifiModal();
     hideVirtualKeyboard();
 
     // 2. Reset date to today
@@ -2315,15 +2350,16 @@
     const elEventTime = document.getElementById('photo-frame-event-time');
 
     if (elEventCard && elEventTitle && elEventTime) {
-      const upcoming = (allEvents || [])
-        .filter(ev => new Date(ev.start_time) >= now)
-        .sort((a, b) => new Date(a.start_time) - new Date(b.start_time))[0];
+      const upcoming = (cachedEvents || [])
+        .filter(ev => ev.status !== 'cancelled' && new Date(ev.end_at) >= now)
+        .sort((a, b) => new Date(a.start_at) - new Date(b.start_at))[0];
 
       if (upcoming) {
         elEventCard.classList.remove('hidden');
         elEventTitle.textContent = upcoming.title;
-        const evStart = new Date(upcoming.start_time);
-        elEventTime.textContent = evStart.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + ' · ' + evStart.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+        const evStart = new Date(upcoming.start_at);
+        const timeLabel = upcoming.all_day ? 'All day' : evStart.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        elEventTime.textContent = timeLabel + ' · ' + evStart.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
       } else {
         elEventCard.classList.add('hidden');
       }

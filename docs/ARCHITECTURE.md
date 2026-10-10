@@ -88,7 +88,7 @@
   - Scheduled background loop (default: every 5 minutes) checks configured Google and Microsoft accounts.
   - Utilizes incremental sync tokens (`syncToken` in Google Calendar, `deltaToken` in Microsoft Graph).
   - Automatically handles `410 Gone` (sync cursor expiration) by flushing stale state and performing a full clean re-sync.
-  - Updates SQLite `events` table; broadcasts delta changes to active kiosks via SSE (`/api/kiosk/stream`).
+  - Updates SQLite `events` table; broadcasts reload notifications to active kiosks via SSE (`/api/events/stream`).
 - **Local to Remote (Offline-First):**
   - Kiosk user creates, edits, or deletes an event.
   - Changes immediately commit to local SQLite with an `ephemeral` or `local` flag, providing instant tactile feedback.

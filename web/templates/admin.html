@@ -3,20 +3,26 @@
   <aside class="admin-sidebar">
     <div class="admin-brand">FamilyBoard Admin</div>
     <nav class="admin-nav">
-      <a href="/admin?tab=accounts" class="admin-nav-item {{if eq .ActiveTab "accounts"}}active{{end}}">Accounts</a>
-      <a href="/admin?tab=calendars" class="admin-nav-item {{if eq .ActiveTab "calendars"}}active{{end}}">Calendars</a>
-      <a href="/admin?tab=mail" class="admin-nav-item {{if eq .ActiveTab "mail"}}active{{end}}">Mail Sources</a>
-      <a href="/admin?tab=candidates" class="admin-nav-item {{if eq .ActiveTab "candidates"}}active{{end}}">Approval Queue ({{.PendingCandidateCount}})</a>
-      <a href="/admin?tab=conflicts" class="admin-nav-item {{if eq .ActiveTab "conflicts"}}active{{end}}">Conflicts ({{.PendingConflictCount}})</a>
-      <a href="/admin?tab=queue" class="admin-nav-item {{if eq .ActiveTab "queue"}}active{{end}}">Mutation Queue ({{.PendingQueueCount}})</a>
-      <a href="/admin?tab=senders" class="admin-nav-item {{if eq .ActiveTab "senders"}}active{{end}}">Trusted Senders</a>
-      <a href="/admin?tab=audit" class="admin-nav-item {{if eq .ActiveTab "audit"}}active{{end}}">Audit Log</a>
-      <a href="/admin?tab=hardware" class="admin-nav-item {{if eq .ActiveTab "hardware"}}active{{end}}">Hardware &amp; Network</a>
-      <a href="/admin?tab=system" class="admin-nav-item {{if eq .ActiveTab "system"}}active{{end}}">System &amp; Diagnostics</a>
+      <a href="/admin?tab=accounts" class="admin-nav-item{{if eq .ActiveTab `accounts`}} active{{end}}">Accounts</a>
+      <a href="/admin?tab=calendars" class="admin-nav-item{{if eq .ActiveTab `calendars`}} active{{end}}">Calendars</a>
+      <a href="/admin?tab=mail" class="admin-nav-item{{if eq .ActiveTab `mail`}} active{{end}}">Mail Sources</a>
+      <a href="/admin?tab=candidates" class="admin-nav-item{{if eq .ActiveTab `candidates`}} active{{end}}">Approval Queue ({{.PendingCandidateCount}})</a>
+      <a href="/admin?tab=conflicts" class="admin-nav-item{{if eq .ActiveTab `conflicts`}} active{{end}}">Conflicts ({{.PendingConflictCount}})</a>
+      <a href="/admin?tab=queue" class="admin-nav-item{{if eq .ActiveTab `queue`}} active{{end}}">Mutation Queue ({{.PendingQueueCount}})</a>
+      <a href="/admin?tab=senders" class="admin-nav-item{{if eq .ActiveTab `senders`}} active{{end}}">Trusted Senders</a>
+      <a href="/admin?tab=audit" class="admin-nav-item{{if eq .ActiveTab `audit`}} active{{end}}">Audit Log</a>
+      <a href="/admin?tab=hardware" class="admin-nav-item{{if eq .ActiveTab `hardware`}} active{{end}}">Hardware &amp; Network</a>
+      <a href="/admin?tab=system" class="admin-nav-item{{if eq .ActiveTab `system`}} active{{end}}">System &amp; Diagnostics</a>
     </nav>
     <div class="admin-sidebar-footer">
-      <a href="/admin/lock" class="btn btn-primary btn-return-kiosk">← Return to FamilyBoard</a>
-      <a href="/logout" class="btn btn-secondary btn-signout">Sign Out</a>
+      <form method="POST" action="/admin/lock" class="admin-action-form">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="btn btn-primary btn-return-kiosk">← Return to FamilyBoard</button>
+      </form>
+      <form method="POST" action="/logout" class="admin-action-form">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="btn btn-secondary btn-signout">Sign Out</button>
+      </form>
     </div>
   </aside>
 
@@ -162,13 +168,13 @@
             </td>
             <td>
                 <label class="admin-check-label" for="cal-display-{{.ID}}">
-                  <input type="checkbox" id="cal-display-{{.ID}}" name="enabled_for_display" value="1" form="form-pref-{{.ID}}" title="Display {{.Name}} on kiosk" {{if .EnabledForDisplay}}checked{{end}}>
+                  <input type="checkbox" id="cal-display-{{.ID}}" name="enabled_for_display" value="1" form="form-pref-{{.ID}}" title="Display {{.Name}} on kiosk" {{if .EnabledForDisplay}}checked="checked"{{end}}>
                   <span>{{if .EnabledForDisplay}}Visible{{else}}Hidden{{end}}</span>
                 </label>
             </td>
             <td>
                 <label class="admin-check-label" for="cal-writable-{{.ID}}">
-                  <input type="checkbox" id="cal-writable-{{.ID}}" name="writable" value="1" form="form-pref-{{.ID}}" title="Writable access for {{.Name}}" {{if .Writable}}checked{{end}}>
+                  <input type="checkbox" id="cal-writable-{{.ID}}" name="writable" value="1" form="form-pref-{{.ID}}" title="Writable access for {{.Name}}" {{if .Writable}}checked="checked"{{end}}>
                   <span>{{if .Writable}}Yes{{else}}Read-Only{{end}}</span>
                 </label>
             </td>
@@ -270,7 +276,7 @@
             <td><strong>{{.Operation}}</strong></td>
             <td>{{.Provider}}</td>
             <td>
-              <span class="status-badge {{if eq .State "dead_letter"}}offline{{end}}">{{.State}}</span>
+              <span class="status-badge{{if eq .State `dead_letter`}} offline{{end}}">{{.State}}</span>
             </td>
             <td>{{.AttemptCount}}</td>
             <td>{{.NextAttemptAt.Format "15:04:05"}}</td>
@@ -383,7 +389,7 @@
               </div>
               <div class="cred-item">
                 <span class="cred-label">Wi-Fi Password:</span>
-                <code class="cred-val">familyboard123</code>
+              <code class="cred-val">{{.HotspotPassword}}</code>
               </div>
               <div class="cred-item">
                 <span class="cred-label">Setup URL:</span>
@@ -444,7 +450,7 @@
           <input type="hidden" id="wifi-connect-ssid" name="ssid" value="">
           <div class="form-group-compact">
             <label for="wifi-connect-password">Passphrase / Security Key:</label>
-            <input type="password" id="wifi-connect-password" name="password" class="form-input" placeholder="Enter Wi-Fi password" aria-label="Wi-Fi password" title="Wi-Fi password">
+            <input type="password" id="wifi-connect-password" name="password" class="form-input" placeholder="Enter Wi-Fi password" aria-label="Wi-Fi password" title="Wi-Fi password" autocomplete="off">
           </div>
           <div class="form-actions-inline">
             <button type="submit" id="btn-submit-wifi-connect" class="btn btn-primary btn-sm">Join Network</button>
@@ -619,7 +625,8 @@
           <h2 class="admin-section-heading">Storage Media &amp; High-Speed NVMe SSD</h2>
           <p class="admin-section-sub">PCIe M.2 storage acceleration and one-click live system migration from MicroSD to NVMe SSD.</p>
         </div>
-        <span class="status-badge {{if eq .HardwareInfo.BootMedia "NVMe SSD"}}status-badge-home{{end}}">
+        {{$isNVMe := eq .HardwareInfo.BootMedia "NVMe SSD"}}
+        <span class="status-badge{{if $isNVMe}} status-badge-home{{end}}">
           Current Boot: {{.HardwareInfo.BootMedia}}
         </span>
       </div>

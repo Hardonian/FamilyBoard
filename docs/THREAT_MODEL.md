@@ -41,14 +41,15 @@ This document provides a formal STRIDE-based threat assessment and security boun
 | :--- | :--- | :--- | :--- |
 | **Spoofing** | Attacker spoofs an OAuth callback or attempts cross-account token linkage | Low | `state` parameter is cryptographically signed using HMAC-SHA256 with nonce and timestamp. Email identity is explicitly re-verified against provider API via `VerifyAccountIsolation`. |
 | **Spoofing** | Forged sender header in an email to trigger auto-approval of malicious events | Low | Senders must match approved domain/address whitelist in rules engine. Unrecognized senders are relegated to `pending` event candidate queue for manual approval. |
-| **Tampering** | Malicious script tags or HTML injections in event titles or email bodies | Medium | Strict HTML stripping (`StripHTML`), entity escaping in Go HTML templates, and rigid Content Security Policy (`script-src 'self' 'unsafe-inline'`). |
+| **Tampering** | Malicious script tags or HTML injections in event titles or email bodies | Medium | Strict HTML stripping (`StripHTML`), safe DOM text rendering, entity escaping in Go HTML templates, and a nonce-free Content Security Policy (`script-src 'self'`). |
 | **Tampering** | Local file tampering or directory traversal via ICS attachments | High | Filename paths are sanitized to base names; attachments are not executed; strict filesystem permissions (`0600`/`0640`). |
 | **Repudiation** | Unauthorized deletion or alteration of calendar events | Low | Transactional `audit_log` table records all creation, update, delete, sync, and queue dispatch events with timestamps and actor metadata. |
 | **Information Disclosure** | Leakage of OAuth refresh tokens or passwords in diagnostic exports | High | Diagnostics bundle engine scrubs sensitive keys (`token`, `secret`, `password`, `key`, `credential`) from output before archiving. |
 | **Information Disclosure** | Token theft via physical SD card extraction | Medium | File permissions restrict access to `familyboard` user. Documentation provides LUKS root partition encryption guidelines for high-security environments. |
 | **Denial of Service** | Deeply nested MIME multipart bomb or infinite loop in ICS parsing | High | Bounded parsing: maximum 10 recursion levels, 10 MB payload ceiling, and 50 part maximum limit. |
 | **Denial of Service** | Flash storage wear-out via rapid database writes | Medium | SQLite WAL mode with 64 MB memory cache, pooled transactions, and batch mutation queue execution. |
-| **Elevation of Privilege** | Unauthenticated user attempts to access administrative settings | Medium | All `/admin/*` routes require active authenticated session verified by SHA-256 hashed session token; CSRF token validation on POST/PUT. |
+| **Elevation of Privilege** | Unauthenticated user attempts to access administrative settings | Medium | All `/admin/*` routes require an active, expiring session verified by a SHA-256 token hash; double-submit CSRF validation protects every state-changing admin operation. |
+| **Elevation of Privilege** | Development or CI Linux host is mistaken for appliance hardware and receives reboot/storage commands | High | Privileged hardware controls are enabled only when the device-tree model identifies supported Radxa/Dragon/QCS6490 hardware. |
 
 ---
 

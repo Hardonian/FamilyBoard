@@ -1,10 +1,14 @@
 package web
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +17,31 @@ import (
 	"github.com/Hardonian/FamilyBoard/internal/hardware"
 	qrcode "github.com/skip2/go-qrcode"
 )
+
+const maxJSONRequestBody = 64 << 10
+const presenceBeaconsSettingKey = "presence_beacons"
+
+func decodeRequestJSON(w http.ResponseWriter, r *http.Request, dst interface{}) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONRequestBody)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(dst); err != nil {
+		writeHardwareError(w, http.StatusBadRequest, "invalid request payload")
+		return false
+	}
+	var trailing interface{}
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		writeHardwareError(w, http.StatusBadRequest, "request body must contain one JSON object")
+		return false
+	}
+	return true
+}
+
+func writeHardwareError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
 
 // handleAPIGetHardware returns hardware specifications and real-time thermals/metrics.
 func (s *Server) handleAPIGetHardware(w http.ResponseWriter, r *http.Request) {
@@ -32,7 +61,7 @@ func (s *Server) handleAPIGetWifi(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAPIScanWifi(w http.ResponseWriter, r *http.Request) {
 	aps, err := s.hwMgr.Wifi().ScanNetworks(r.Context())
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		writeHardwareError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -44,22 +73,43 @@ type connectWifiRequest struct {
 	Password string `json:"password"`
 }
 
+func validWifiPassword(password string) bool {
+	if len(password) >= 8 && len(password) <= 63 {
+		return true
+	}
+	if len(password) != 64 {
+		return false
+	}
+	for _, char := range password {
+		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f') || (char >= 'A' && char <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
 // handleAPIConnectWifi joins an access point.
 func (s *Server) handleAPIConnectWifi(w http.ResponseWriter, r *http.Request) {
 	var req connectWifiRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request payload"}`, http.StatusBadRequest)
+	if !decodeRequestJSON(w, r, &req) {
 		return
 	}
 
-	req.SSID = strings.TrimSpace(req.SSID)
-	if req.SSID == "" {
-		http.Error(w, `{"error":"ssid is required"}`, http.StatusBadRequest)
+	if strings.TrimSpace(req.SSID) == "" {
+		writeHardwareError(w, http.StatusBadRequest, "ssid is required")
+		return
+	}
+	if len([]byte(req.SSID)) > 32 {
+		writeHardwareError(w, http.StatusBadRequest, "ssid must be at most 32 bytes")
+		return
+	}
+	if req.Password != "" && !validWifiPassword(req.Password) {
+		writeHardwareError(w, http.StatusBadRequest, "password must be 8–63 characters or a 64-digit hexadecimal key")
 		return
 	}
 
 	if err := s.hwMgr.Wifi().Connect(r.Context(), req.SSID, req.Password); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		writeHardwareError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -77,13 +127,12 @@ type toggleHotspotRequest struct {
 // handleAPIToggleHotspot turns on or off the FamilyBoard-Setup AP hotspot.
 func (s *Server) handleAPIToggleHotspot(w http.ResponseWriter, r *http.Request) {
 	var req toggleHotspotRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request payload"}`, http.StatusBadRequest)
+	if !decodeRequestJSON(w, r, &req) {
 		return
 	}
 
 	if err := s.hwMgr.Wifi().ToggleHotspot(r.Context(), req.Enable); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		writeHardwareError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -101,14 +150,14 @@ func (s *Server) handleAPIGetWifiQRCode(w http.ResponseWriter, r *http.Request) 
 	if ssid == "" {
 		ssid = "FamilyBoard-Setup"
 	}
-	const pass = "familyboard123"
+	pass := s.cfg.Security.HotspotPassword
 
 	// Wi-Fi QR Code standard format: WIFI:S:<SSID>;T:WPA;P:<PASSWORD>;;
 	payload := fmt.Sprintf("WIFI:S:%s;T:WPA;P:%s;;", escapeWifiQRValue(ssid), escapeWifiQRValue(pass))
 
 	pngBytes, err := qrcode.Encode(payload, qrcode.Medium, 280)
 	if err != nil {
-		http.Error(w, `{"error":"failed to generate QR code"}`, http.StatusInternalServerError)
+		writeHardwareError(w, http.StatusInternalServerError, "failed to generate QR code")
 		return
 	}
 
@@ -136,13 +185,12 @@ type setBluetoothPowerRequest struct {
 // handleAPISetBluetoothPower powers on or off the Bluetooth adapter.
 func (s *Server) handleAPISetBluetoothPower(w http.ResponseWriter, r *http.Request) {
 	var req setBluetoothPowerRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request payload"}`, http.StatusBadRequest)
+	if !decodeRequestJSON(w, r, &req) {
 		return
 	}
 
 	if err := s.hwMgr.Bluetooth().SetPower(r.Context(), req.Powered); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		writeHardwareError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -157,7 +205,7 @@ func (s *Server) handleAPISetBluetoothPower(w http.ResponseWriter, r *http.Reque
 func (s *Server) handleAPIScanBluetooth(w http.ResponseWriter, r *http.Request) {
 	devices, err := s.hwMgr.Bluetooth().ScanDevices(r.Context())
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		writeHardwareError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -166,6 +214,9 @@ func (s *Server) handleAPIScanBluetooth(w http.ResponseWriter, r *http.Request) 
 
 // handleAPIGetPresence returns household presence beacons for family members.
 func (s *Server) handleAPIGetPresence(w http.ResponseWriter, r *http.Request) {
+	scanCtx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+	_, _ = s.hwMgr.Bluetooth().ScanDevices(scanCtx)
+	cancel()
 	beacons := s.hwMgr.Bluetooth().ListBeacons()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(beacons)
@@ -174,17 +225,34 @@ func (s *Server) handleAPIGetPresence(w http.ResponseWriter, r *http.Request) {
 // handleAPIRegisterBeacon adds or updates a family member's device beacon.
 func (s *Server) handleAPIRegisterBeacon(w http.ResponseWriter, r *http.Request) {
 	var beacon hardware.FamilyBeacon
-	if err := json.NewDecoder(r.Body).Decode(&beacon); err != nil {
-		http.Error(w, `{"error":"invalid request payload"}`, http.StatusBadRequest)
+	if !decodeRequestJSON(w, r, &beacon) {
 		return
 	}
 
 	if strings.TrimSpace(beacon.PersonName) == "" || strings.TrimSpace(beacon.MACAddress) == "" {
-		http.Error(w, `{"error":"person_name and mac_address are required"}`, http.StatusBadRequest)
+		writeHardwareError(w, http.StatusBadRequest, "person_name and mac_address are required")
 		return
+	}
+	if len(beacon.PersonName) > 100 || len(beacon.DeviceName) > 100 {
+		writeHardwareError(w, http.StatusBadRequest, "person and device names must be at most 100 characters")
+		return
+	}
+	parsedMAC, err := net.ParseMAC(beacon.MACAddress)
+	if err != nil {
+		writeHardwareError(w, http.StatusBadRequest, "mac_address is invalid")
+		return
+	}
+	beacon.MACAddress = strings.ToUpper(parsedMAC.String())
+	if beacon.ID == "" {
+		beacon.ID = fmt.Sprintf("beacon-%d", time.Now().UnixNano())
 	}
 
 	s.hwMgr.Bluetooth().RegisterBeacon(beacon)
+	if err := s.persistPresenceBeacons(r.Context()); err != nil {
+		s.hwMgr.Bluetooth().RemoveBeacon(beacon.ID)
+		writeHardwareError(w, http.StatusInternalServerError, "failed to save presence beacon")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
@@ -196,15 +264,38 @@ func (s *Server) handleAPIRegisterBeacon(w http.ResponseWriter, r *http.Request)
 func (s *Server) handleAPIDeleteBeacon(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
-		http.Error(w, `{"error":"beacon id is required"}`, http.StatusBadRequest)
+		writeHardwareError(w, http.StatusBadRequest, "beacon id is required")
 		return
 	}
 
 	s.hwMgr.Bluetooth().RemoveBeacon(id)
+	if err := s.persistPresenceBeacons(r.Context()); err != nil {
+		writeHardwareError(w, http.StatusInternalServerError, "failed to save presence beacon changes")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 	})
+}
+
+func (s *Server) persistPresenceBeacons(ctx context.Context) error {
+	encoded, err := json.Marshal(s.hwMgr.Bluetooth().ListBeacons())
+	if err != nil {
+		return err
+	}
+	return s.store.SetSetting(ctx, presenceBeaconsSettingKey, string(encoded))
+}
+
+func (s *Server) loadPresenceBeacons(ctx context.Context) {
+	encoded, err := s.store.GetSetting(ctx, presenceBeaconsSettingKey)
+	if err != nil || encoded == "" {
+		return
+	}
+	var beacons []hardware.FamilyBeacon
+	if json.Unmarshal([]byte(encoded), &beacons) == nil {
+		s.hwMgr.Bluetooth().ReplaceBeacons(beacons)
+	}
 }
 
 type systemPowerRequest struct {
@@ -214,15 +305,16 @@ type systemPowerRequest struct {
 // handleAPISystemPower executes graceful reboot or shutdown on the Radxa Dragon.
 func (s *Server) handleAPISystemPower(w http.ResponseWriter, r *http.Request) {
 	var req systemPowerRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request payload"}`, http.StatusBadRequest)
+	if !decodeRequestJSON(w, r, &req) {
 		return
 	}
 
 	switch strings.ToLower(req.Action) {
 	case "reboot":
 		go func() {
-			_ = s.hwMgr.Reboot(r.Context())
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			_ = s.hwMgr.Reboot(ctx)
 		}()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -232,7 +324,9 @@ func (s *Server) handleAPISystemPower(w http.ResponseWriter, r *http.Request) {
 		})
 	case "shutdown", "poweroff":
 		go func() {
-			_ = s.hwMgr.PowerOff(r.Context())
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			_ = s.hwMgr.PowerOff(ctx)
 		}()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -241,13 +335,12 @@ func (s *Server) handleAPISystemPower(w http.ResponseWriter, r *http.Request) {
 			"message": "Appliance is powering off...",
 		})
 	default:
-		http.Error(w, `{"error":"action must be reboot or shutdown"}`, http.StatusBadRequest)
+		writeHardwareError(w, http.StatusBadRequest, "action must be reboot or shutdown")
 	}
 }
 
 func (s *Server) getPhotosDir() string {
 	photosDir := filepath.Join(filepath.Dir(s.cfg.Database.Path), "photos")
-	_ = os.MkdirAll(photosDir, 0755)
 	return photosDir
 }
 
@@ -255,14 +348,17 @@ func (s *Server) getPhotosDir() string {
 func (s *Server) handleAPIGetPhotos(w http.ResponseWriter, r *http.Request) {
 	photosDir := s.getPhotosDir()
 
-	var photos []string
-	if entries, err := os.ReadDir(photosDir); err == nil {
-		for _, e := range entries {
-			if !e.IsDir() {
-				ext := strings.ToLower(filepath.Ext(e.Name()))
-				if ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".webp" {
-					photos = append(photos, "/photos/"+e.Name())
-				}
+	photos := make([]string, 0)
+	entries, err := os.ReadDir(photosDir)
+	if err != nil {
+		writeHardwareError(w, http.StatusInternalServerError, "failed to read photo library")
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			ext := strings.ToLower(filepath.Ext(e.Name()))
+			if ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".webp" {
+				photos = append(photos, "/photos/"+url.PathEscape(e.Name()))
 			}
 		}
 	}
@@ -278,39 +374,61 @@ func (s *Server) handleAPIUploadPhoto(w http.ResponseWriter, r *http.Request) {
 	// Keep request bodies bounded before multipart parsing writes overflow to disk.
 	r.Body = http.MaxBytesReader(w, r.Body, 33<<20)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		http.Error(w, `{"error":"file too large or invalid multipart form"}`, http.StatusBadRequest)
+		writeHardwareError(w, http.StatusBadRequest, "file too large or invalid multipart form")
 		return
 	}
 
 	file, header, err := r.FormFile("photo")
 	if err != nil {
-		http.Error(w, `{"error":"missing 'photo' form field"}`, http.StatusBadRequest)
+		writeHardwareError(w, http.StatusBadRequest, "missing 'photo' form field")
 		return
 	}
 	defer file.Close()
 
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
-		http.Error(w, `{"error":"only JPG, PNG, and WebP images are supported"}`, http.StatusBadRequest)
+		writeHardwareError(w, http.StatusBadRequest, "only JPG, PNG, and WebP images are supported")
+		return
+	}
+	headerBytes := make([]byte, 512)
+	n, readErr := file.Read(headerBytes)
+	if readErr != nil && readErr != io.EOF {
+		writeHardwareError(w, http.StatusBadRequest, "could not read image content")
+		return
+	}
+	contentType := http.DetectContentType(headerBytes[:n])
+	if contentType != "image/jpeg" && contentType != "image/png" && contentType != "image/webp" {
+		writeHardwareError(w, http.StatusBadRequest, "uploaded file content is not a supported image")
+		return
+	}
+	if (contentType == "image/jpeg" && ext != ".jpg" && ext != ".jpeg") ||
+		(contentType == "image/png" && ext != ".png") ||
+		(contentType == "image/webp" && ext != ".webp") {
+		writeHardwareError(w, http.StatusBadRequest, "image content does not match its filename extension")
 		return
 	}
 
 	photosDir := s.getPhotosDir()
-	cleanName := filepath.Base(header.Filename)
+	if err := os.MkdirAll(photosDir, 0755); err != nil {
+		writeHardwareError(w, http.StatusInternalServerError, "failed to prepare photo library")
+		return
+	}
+	cleanName := sanitizePhotoFilename(header.Filename, ext)
 	timestampedName := fmt.Sprintf("%d_%s", time.Now().UnixNano(), cleanName)
 	dstPath := filepath.Join(photosDir, timestampedName)
 
 	dst, err := os.OpenFile(dstPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
 	if err != nil {
-		http.Error(w, `{"error":"failed to save photo"}`, http.StatusInternalServerError)
+		writeHardwareError(w, http.StatusInternalServerError, "failed to save photo")
 		return
 	}
 	defer dst.Close()
 
-	if _, err := io.Copy(dst, file); err != nil {
+	imageReader := io.MultiReader(bytes.NewReader(headerBytes[:n]), file)
+	if _, err := io.Copy(dst, imageReader); err != nil {
 		_ = dst.Close()
 		_ = os.Remove(dstPath)
-		http.Error(w, `{"error":"failed to write photo content"}`, http.StatusInternalServerError)
+		writeHardwareError(w, http.StatusInternalServerError, "failed to write photo content")
 		return
 	}
 
@@ -322,24 +440,56 @@ func (s *Server) handleAPIUploadPhoto(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func sanitizePhotoFilename(name, ext string) string {
+	base := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
+	var safe strings.Builder
+	lastWasUnderscore := false
+	for _, char := range base {
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') || char == '-' || char == '_' {
+			safe.WriteRune(char)
+			lastWasUnderscore = char == '_'
+		} else if safe.Len() > 0 && !lastWasUnderscore {
+			safe.WriteByte('_')
+			lastWasUnderscore = true
+		}
+		if safe.Len() >= 80 {
+			break
+		}
+	}
+	if safe.Len() == 0 {
+		safe.WriteString("photo")
+	}
+	return safe.String() + ext
+}
+
 // handleAPIDeletePhoto removes a photo from the FotoCube slideshow directory.
 func (s *Server) handleAPIDeletePhoto(w http.ResponseWriter, r *http.Request) {
 	filename := r.PathValue("filename")
 	if filename == "" {
-		http.Error(w, `{"error":"filename is required"}`, http.StatusBadRequest)
+		writeHardwareError(w, http.StatusBadRequest, "filename is required")
 		return
 	}
 
 	cleanName := filepath.Base(filename)
+	if cleanName != filename {
+		writeHardwareError(w, http.StatusBadRequest, "invalid filename")
+		return
+	}
+	ext := strings.ToLower(filepath.Ext(cleanName))
+	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
+		writeHardwareError(w, http.StatusBadRequest, "invalid photo filename")
+		return
+	}
 	photosDir := s.getPhotosDir()
 	targetPath := filepath.Join(photosDir, cleanName)
 
 	if err := os.Remove(targetPath); err != nil {
 		if os.IsNotExist(err) {
-			http.Error(w, `{"error":"photo not found"}`, http.StatusNotFound)
+			writeHardwareError(w, http.StatusNotFound, "photo not found")
 			return
 		}
-		http.Error(w, `{"error":"failed to delete photo"}`, http.StatusInternalServerError)
+		writeHardwareError(w, http.StatusInternalServerError, "failed to delete photo")
 		return
 	}
 

@@ -87,14 +87,14 @@ FamilyBoard on Radxa Dragon is designed to be plug-and-play without requiring an
 If the device has never connected to Wi-Fi or cannot reach known networks:
 
 1. FamilyBoard activates the fallback access point: **`FamilyBoard-Setup`**.
-2. Connect your smartphone to the `FamilyBoard-Setup` Wi-Fi network.
+2. Use the QR code shown on the physical display to join with the unique password generated for this appliance.
 3. Open your mobile browser and navigate to:
 
    ```text
-   http://192.168.4.1:8080/admin?tab=hardware
+   http://192.168.4.1:8080/
    ```
 
-4. Scan and select your home Wi-Fi network, enter your password, and click **Join Network**.
+4. Complete first-run setup if prompted, open **Hardware** in the admin portal, then scan and select your home Wi-Fi network.
 5. The Radxa Dragon connects to your home network, shuts down the setup hotspot, and switches to normal kiosk operation.
 
 ---

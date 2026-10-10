@@ -32,8 +32,16 @@ jobs:
       - name: Go Vet
         run: go vet ./...
 
+      - name: Verify Dependencies
+        run: go mod verify
+
+      - name: Validate Browser JavaScript
+        run: |
+          node --check web/static/js/kiosk.js
+          node --check web/static/js/admin.js
+
       - name: Run Unit & Integration Tests
-        run: go test -v ./tests/...
+        run: go test -v ./...
 
       - name: Run Race Detector Tests
         run: go test -race -v ./tests/...
@@ -48,6 +56,15 @@ jobs:
       - name: Validate Pi Deployment Shell Scripts
         run: |
           for script in deploy/pi/*.sh deploy/pi/kiosk/*.sh; do
+            if [ -f "$script" ]; then
+              bash -n "$script"
+              echo "Syntax OK: $script"
+            fi
+          done
+
+      - name: Validate Radxa Deployment Shell Scripts
+        run: |
+          for script in deploy/radxa/*.sh scripts/prepare_radxa_sd.sh; do
             if [ -f "$script" ]; then
               bash -n "$script"
               echo "Syntax OK: $script"

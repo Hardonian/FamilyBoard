@@ -7,6 +7,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -94,8 +96,8 @@ func TestHardware_ManagerDirect(t *testing.T) {
 	for _, b := range updatedBeacons {
 		if b.ID == "test-beacon-custom" {
 			found = true
-			if !b.IsPresent {
-				t.Errorf("expected newly registered nearby beacon to be marked present")
+			if b.IsPresent {
+				t.Errorf("newly registered beacon must remain away until actually observed")
 			}
 			break
 		}
@@ -115,12 +117,13 @@ func TestHardware_ManagerDirect(t *testing.T) {
 }
 
 func TestHardware_HTTPEndpoints(t *testing.T) {
-	srv, _, cleanup := setupTestServer(t)
+	srv, store, cleanup := setupTestServer(t)
 	defer cleanup()
 
 	// 1. GET /api/system/hardware
 	{
 		req := httptest.NewRequest(http.MethodGet, "/api/system/hardware", nil)
+		req.RemoteAddr = "127.0.0.1:1234"
 		w := httptest.NewRecorder()
 		srv.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
@@ -138,6 +141,7 @@ func TestHardware_HTTPEndpoints(t *testing.T) {
 	// 2. GET /api/system/wifi
 	{
 		req := httptest.NewRequest(http.MethodGet, "/api/system/wifi", nil)
+		req.RemoteAddr = "127.0.0.1:1234"
 		w := httptest.NewRecorder()
 		srv.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
@@ -148,6 +152,7 @@ func TestHardware_HTTPEndpoints(t *testing.T) {
 	// 3. GET /api/system/wifi/scan
 	{
 		req := httptest.NewRequest(http.MethodGet, "/api/system/wifi/scan", nil)
+		req.RemoteAddr = "127.0.0.1:1234"
 		w := httptest.NewRecorder()
 		srv.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
@@ -184,6 +189,7 @@ func TestHardware_HTTPEndpoints(t *testing.T) {
 	// 6. GET /api/system/bluetooth
 	{
 		req := httptest.NewRequest(http.MethodGet, "/api/system/bluetooth", nil)
+		req.RemoteAddr = "127.0.0.1:1234"
 		w := httptest.NewRecorder()
 		srv.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
@@ -207,6 +213,7 @@ func TestHardware_HTTPEndpoints(t *testing.T) {
 	// 8. GET /api/system/presence
 	{
 		req := httptest.NewRequest(http.MethodGet, "/api/system/presence", nil)
+		req.RemoteAddr = "127.0.0.1:1234"
 		w := httptest.NewRecorder()
 		srv.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
@@ -232,15 +239,21 @@ func TestHardware_HTTPEndpoints(t *testing.T) {
 		if w.Code != http.StatusOK {
 			t.Errorf("expected 200 for register beacon, got %d (body: %s)", w.Code, w.Body.String())
 		}
+		persisted, err := store.GetSetting(context.Background(), "presence_beacons")
+		if err != nil || !strings.Contains(persisted, "Taylor") {
+			t.Errorf("expected registered beacon to be persisted, got %q (err: %v)", persisted, err)
+		}
 	}
 
 	// 10. POST /api/system/power (requires admin auth)
 	{
-		cookie := loginAdminForTest(t, srv)
+		cookie, csrfCookie, csrfToken := loginAdminForTest(t, srv)
 		payload := []byte(`{"action":"reboot"}`)
 		req := httptest.NewRequest(http.MethodPost, "/api/system/power", bytes.NewReader(payload))
 		req.Header.Set("Content-Type", "application/json")
 		req.AddCookie(cookie)
+		req.AddCookie(csrfCookie)
+		req.Header.Set("X-CSRF-Token", csrfToken)
 		w := httptest.NewRecorder()
 		srv.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
@@ -251,6 +264,7 @@ func TestHardware_HTTPEndpoints(t *testing.T) {
 	// 11. GET /api/photos (FotoCube Ambient Photo Frame) & Upload/Delete
 	{
 		req := httptest.NewRequest(http.MethodGet, "/api/photos", nil)
+		req.RemoteAddr = "127.0.0.1:1234"
 		w := httptest.NewRecorder()
 		srv.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
@@ -267,7 +281,7 @@ func TestHardware_HTTPEndpoints(t *testing.T) {
 		_, _ = part.Write([]byte("\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xFF\xDB"))
 		_ = writer.Close()
 
-		cookie := loginAdminForTest(t, srv)
+		cookie, _, _ := loginAdminForTest(t, srv)
 		uploadReq := httptest.NewRequest(http.MethodPost, "/api/photos/upload", &body)
 		uploadReq.Header.Set("Content-Type", writer.FormDataContentType())
 		uploadReq.AddCookie(cookie)
@@ -286,6 +300,7 @@ func TestHardware_HTTPEndpoints(t *testing.T) {
 
 		// Verify listed
 		listReq := httptest.NewRequest(http.MethodGet, "/api/photos", nil)
+		listReq.RemoteAddr = "127.0.0.1:1234"
 		listW := httptest.NewRecorder()
 		srv.ServeHTTP(listW, listReq)
 		if listW.Code != http.StatusOK {
@@ -329,9 +344,11 @@ func TestHardware_HTTPEndpoints(t *testing.T) {
 
 	// 12. POST /api/system/storage/migrate-nvme
 	{
-		cookie := loginAdminForTest(t, srv)
+		cookie, csrfCookie, csrfToken := loginAdminForTest(t, srv)
 		req := httptest.NewRequest(http.MethodPost, "/api/system/storage/migrate-nvme", nil)
 		req.AddCookie(cookie)
+		req.AddCookie(csrfCookie)
+		req.Header.Set("X-CSRF-Token", csrfToken)
 		w := httptest.NewRecorder()
 		srv.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
@@ -342,7 +359,7 @@ func TestHardware_HTTPEndpoints(t *testing.T) {
 	// 13. Admin Dashboard with Hardware Tab
 	{
 		req := httptest.NewRequest(http.MethodGet, "/admin?tab=hardware", nil)
-		cookie := loginAdminForTest(t, srv)
+		cookie, _, _ := loginAdminForTest(t, srv)
 		req.AddCookie(cookie)
 		w := httptest.NewRecorder()
 		srv.ServeHTTP(w, req)
@@ -365,19 +382,82 @@ func TestHardware_HTTPEndpoints(t *testing.T) {
 	}
 }
 
-func loginAdminForTest(t *testing.T, srv *web.Server) *http.Cookie {
+func TestHardware_RemotePrivacyAndInputValidation(t *testing.T) {
+	srv, _, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	for _, path := range []string{
+		"/api/system/hardware",
+		"/api/system/wifi",
+		"/api/system/wifi/scan",
+		"/api/system/bluetooth",
+		"/api/system/presence",
+		"/api/photos",
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.RemoteAddr = "192.0.2.44:54321"
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("expected remote unauthenticated %s to return 401, got %d", path, w.Code)
+		}
+	}
+
+	invalidRequests := []struct {
+		path string
+		body string
+	}{
+		{"/api/system/wifi/connect", `{"ssid":"Home","password":"short"}`},
+		{"/api/system/wifi/connect", `{"ssid":"Home","password":"validpass","unexpected":true}`},
+		{"/api/system/presence/beacon", `{"person_name":"Taylor","device_name":"Phone","mac_address":"not-a-mac"}`},
+	}
+	for _, tc := range invalidRequests {
+		req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+		req.RemoteAddr = "127.0.0.1:1234"
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected invalid request to %s to return 400, got %d: %s", tc.path, w.Code, w.Body.String())
+		}
+		if w.Header().Get("Content-Type") != "application/json" {
+			t.Errorf("expected JSON error content type for %s", tc.path)
+		}
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("photo", "not-really.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = part.Write([]byte("plain text masquerading as an image"))
+	_ = writer.Close()
+	req := httptest.NewRequest(http.MethodPost, "/api/photos/upload", &body)
+	req.RemoteAddr = "127.0.0.1:1234"
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected disguised image upload to be rejected, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func loginAdminForTest(t *testing.T, srv *web.Server) (*http.Cookie, *http.Cookie, string) {
 	t.Helper()
-	form := "username=admin&password=correct-horse-battery"
+	csrfCookie, csrfToken := csrfForTest(t, srv, "/login")
+	form := "username=admin&password=correct-horse-battery&csrf_token=" + url.QueryEscape(csrfToken)
 	req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBufferString(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(csrfCookie)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
 	for _, c := range w.Result().Cookies() {
 		if c.Name == "fb_session" {
-			return c
+			return c, csrfCookie, csrfToken
 		}
 	}
 	t.Fatalf("expected admin session cookie")
-	return nil
+	return nil, nil, ""
 }

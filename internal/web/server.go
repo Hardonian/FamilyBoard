@@ -51,6 +51,12 @@ func NewServer(
 	syncEngine *calsync.Engine,
 	queueEngine *queue.Engine,
 ) (*Server, error) {
+	if err := cfg.EnsureSessionSecret(); err != nil {
+		return nil, fmt.Errorf("initialize session secret: %w", err)
+	}
+	if err := cfg.EnsureHotspotPassword(); err != nil {
+		return nil, fmt.Errorf("initialize hotspot password: %w", err)
+	}
 	s := &Server{
 		cfg:          cfg,
 		store:        store,
@@ -66,9 +72,15 @@ func NewServer(
 		sseClients:   make(map[chan string]struct{}),
 		mux:          http.NewServeMux(),
 	}
+	s.hwMgr.Wifi().SetHotspotPassword(cfg.Security.HotspotPassword)
+	s.loadPresenceBeacons(context.Background())
 
 	if err := s.initTemplates(); err != nil {
 		return nil, fmt.Errorf("init templates: %w", err)
+	}
+	photosDir := filepath.Join(filepath.Dir(cfg.Database.Path), "photos")
+	if err := os.MkdirAll(photosDir, 0755); err != nil {
+		return nil, fmt.Errorf("create photos directory: %w", err)
 	}
 
 	s.routes()
@@ -128,21 +140,21 @@ func (s *Server) routes() {
 
 	// Auth & Setup
 	s.mux.HandleFunc("GET /setup", s.handleSetupGet)
-	s.mux.HandleFunc("POST /setup", s.handleSetupPost)
+	s.mux.HandleFunc("POST /setup", s.requireCSRF(s.handleSetupPost))
 	s.mux.HandleFunc("GET /login", s.handleLoginGet)
-	s.mux.HandleFunc("POST /login", s.handleLoginPost)
-	s.mux.HandleFunc("GET /logout", s.handleLogout)
+	s.mux.HandleFunc("POST /login", s.requireCSRF(s.handleLoginPost))
+	s.mux.HandleFunc("POST /logout", s.requireAuth(s.requireCSRF(s.handleLogout)))
 
 	// Admin Dashboard
 	s.mux.HandleFunc("GET /admin", s.requireAuth(s.handleAdminDashboard))
-	s.mux.HandleFunc("GET /admin/lock", s.handleAdminLock)
-	s.mux.HandleFunc("POST /admin/sync-now", s.requireAuth(s.handleAdminSyncNow))
-	s.mux.HandleFunc("POST /admin/calendars/refresh", s.requireAuth(s.handleAdminCalendarsRefresh))
-	s.mux.HandleFunc("POST /admin/calendars/{id}/preferences", s.requireAuth(s.handleAdminCalendarUpdatePreferences))
-	s.mux.HandleFunc("POST /admin/calendars/{id}/set-default", s.requireAuth(s.handleAdminCalendarSetDefault))
-	s.mux.HandleFunc("POST /admin/people/{id}/update", s.requireAuth(s.handleAdminPersonUpdate))
-	s.mux.HandleFunc("POST /admin/candidates/{id}/approve", s.requireAuth(s.handleAdminCandidateApprove))
-	s.mux.HandleFunc("POST /admin/candidates/{id}/reject", s.requireAuth(s.handleAdminCandidateReject))
+	s.mux.HandleFunc("POST /admin/lock", s.requireAuth(s.requireCSRF(s.handleAdminLock)))
+	s.mux.HandleFunc("POST /admin/sync-now", s.requireAuth(s.requireCSRF(s.handleAdminSyncNow)))
+	s.mux.HandleFunc("POST /admin/calendars/refresh", s.requireAuth(s.requireCSRF(s.handleAdminCalendarsRefresh)))
+	s.mux.HandleFunc("POST /admin/calendars/{id}/preferences", s.requireAuth(s.requireCSRF(s.handleAdminCalendarUpdatePreferences)))
+	s.mux.HandleFunc("POST /admin/calendars/{id}/set-default", s.requireAuth(s.requireCSRF(s.handleAdminCalendarSetDefault)))
+	s.mux.HandleFunc("POST /admin/people/{id}/update", s.requireAuth(s.requireCSRF(s.handleAdminPersonUpdate)))
+	s.mux.HandleFunc("POST /admin/candidates/{id}/approve", s.requireAuth(s.requireCSRF(s.handleAdminCandidateApprove)))
+	s.mux.HandleFunc("POST /admin/candidates/{id}/reject", s.requireAuth(s.requireCSRF(s.handleAdminCandidateReject)))
 	s.mux.HandleFunc("GET /admin/oauth/start", s.requireAuth(s.handleAdminOAuthStart))
 	s.mux.HandleFunc("GET /admin/backup/download", s.requireAuth(s.handleAdminBackupDownload))
 
@@ -151,28 +163,28 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /oauth/callback/microsoft", s.handleOAuthCallbackMicrosoft)
 
 	// Radxa Dragon Appliance Hardware & Network Endpoints
-	s.mux.HandleFunc("GET /api/system/hardware", s.handleAPIGetHardware)
-	s.mux.HandleFunc("GET /api/system/wifi", s.handleAPIGetWifi)
-	s.mux.HandleFunc("GET /api/system/wifi/scan", s.handleAPIScanWifi)
+	s.mux.HandleFunc("GET /api/system/hardware", s.requireApplianceAccess(s.handleAPIGetHardware))
+	s.mux.HandleFunc("GET /api/system/wifi", s.requireApplianceAccess(s.handleAPIGetWifi))
+	s.mux.HandleFunc("GET /api/system/wifi/scan", s.requireApplianceAccess(s.handleAPIScanWifi))
 	s.mux.HandleFunc("POST /api/system/wifi/connect", s.requireKioskWriteAccess(s.handleAPIConnectWifi))
 	s.mux.HandleFunc("POST /api/system/wifi/hotspot", s.requireKioskWriteAccess(s.handleAPIToggleHotspot))
-	s.mux.HandleFunc("GET /api/system/wifi/qrcode", s.requireKioskWriteAccess(s.handleAPIGetWifiQRCode))
-	s.mux.HandleFunc("GET /api/system/bluetooth", s.handleAPIGetBluetooth)
+	s.mux.HandleFunc("GET /api/system/wifi/qrcode", s.requireApplianceAccess(s.handleAPIGetWifiQRCode))
+	s.mux.HandleFunc("GET /api/system/bluetooth", s.requireApplianceAccess(s.handleAPIGetBluetooth))
 	s.mux.HandleFunc("POST /api/system/bluetooth/power", s.requireKioskWriteAccess(s.handleAPISetBluetoothPower))
-	s.mux.HandleFunc("GET /api/system/bluetooth/scan", s.handleAPIScanBluetooth)
-	s.mux.HandleFunc("GET /api/system/presence", s.handleAPIGetPresence)
+	s.mux.HandleFunc("GET /api/system/bluetooth/scan", s.requireApplianceAccess(s.handleAPIScanBluetooth))
+	s.mux.HandleFunc("GET /api/system/presence", s.requireApplianceAccess(s.handleAPIGetPresence))
 	s.mux.HandleFunc("POST /api/system/presence/beacon", s.requireKioskWriteAccess(s.handleAPIRegisterBeacon))
 	s.mux.HandleFunc("DELETE /api/system/presence/beacon/{id}", s.requireKioskWriteAccess(s.handleAPIDeleteBeacon))
-	s.mux.HandleFunc("POST /api/system/power", s.requireAuth(s.handleAPISystemPower))
+	s.mux.HandleFunc("POST /api/system/power", s.requireAuth(s.requireCSRF(s.handleAPISystemPower)))
 
 	// FotoCube Ambient Photo Frame & NVMe Migration
-	s.mux.HandleFunc("GET /api/photos", s.handleAPIGetPhotos)
+	s.mux.HandleFunc("GET /api/photos", s.requireApplianceAccess(s.handleAPIGetPhotos))
 	s.mux.HandleFunc("POST /api/photos/upload", s.requireKioskWriteAccess(s.handleAPIUploadPhoto))
 	s.mux.HandleFunc("DELETE /api/photos/{filename}", s.requireKioskWriteAccess(s.handleAPIDeletePhoto))
 	photosDir := filepath.Join(filepath.Dir(s.cfg.Database.Path), "photos")
-	_ = os.MkdirAll(photosDir, 0755)
-	s.mux.Handle("GET /photos/", http.StripPrefix("/photos/", http.FileServer(http.Dir(photosDir))))
-	s.mux.HandleFunc("POST /api/system/storage/migrate-nvme", s.requireAuth(s.handleAPIMigrateNVMe))
+	photoHandler := http.StripPrefix("/photos/", http.FileServer(http.Dir(photosDir)))
+	s.mux.HandleFunc("GET /photos/", s.requireApplianceAccess(photoHandler.ServeHTTP))
+	s.mux.HandleFunc("POST /api/system/storage/migrate-nvme", s.requireAuth(s.requireCSRF(s.handleAPIMigrateNVMe)))
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -180,7 +192,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none';")
+	w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+	w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
+	w.Header().Set("X-Permitted-Cross-Domain-Policies", "none")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';")
+	if s.cfg.Security.CookieSecure {
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+	}
+	if rejectCrossSiteMutation(w, r) {
+		return
+	}
 
 	// Middleware: Logging & Recovery
 	defer func() {

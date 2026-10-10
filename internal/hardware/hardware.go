@@ -47,12 +47,27 @@ type Manager struct {
 
 // NewManager creates an appliance hardware coordinator.
 func NewManager() *Manager {
+	isMock := !isSupportedApplianceHardware()
 	m := &Manager{
-		isMock: runtime.GOOS != "linux",
+		isMock: isMock,
 	}
 	m.wifi = NewWifiManager(m.isMock)
 	m.bluetooth = NewBluetoothManager(m.isMock)
 	return m
+}
+
+// isSupportedApplianceHardware prevents ordinary Linux development and CI hosts
+// from executing privileged appliance commands such as reboot or Wi-Fi changes.
+func isSupportedApplianceHardware() bool {
+	if runtime.GOOS != "linux" {
+		return false
+	}
+	modelBytes, err := os.ReadFile("/proc/device-tree/model")
+	if err != nil {
+		return false
+	}
+	model := strings.ToLower(strings.TrimRight(string(modelBytes), "\x00\n\r"))
+	return strings.Contains(model, "radxa") || strings.Contains(model, "dragon") || strings.Contains(model, "qcs6490")
 }
 
 // Wifi returns the Wi-Fi subsystem manager.
@@ -96,7 +111,7 @@ func (m *Manager) GetSystemInfo(ctx context.Context) SystemInfo {
 
 	return SystemInfo{
 		HardwareModel:   hwModel,
-		IsRadxaDragon:   isRadxa || runtime.GOARCH == "arm64",
+		IsRadxaDragon:   isRadxa,
 		Architecture:    runtime.GOARCH,
 		Kernel:          runtime.GOOS,
 		NumCPU:          runtime.NumCPU(),
@@ -198,6 +213,7 @@ func (m *Manager) readDisk() (totalGB float64, usedGB float64, pct float64) {
 				}
 			}
 		}
+		return 0, 0, 0
 	}
 	return 64.0, 4.2, 6.56 // Simulated 64GB eMMC storage
 }
@@ -213,13 +229,14 @@ func (m *Manager) readUptime() int64 {
 				}
 			}
 		}
+		return 0
 	}
 	return 1200
 }
 
 // Reboot requests an operating system reboot via systemd / shutdown command.
 func (m *Manager) Reboot(ctx context.Context) error {
-	if runtime.GOOS != "linux" {
+	if m.isMock {
 		return nil
 	}
 	cmd := exec.CommandContext(ctx, "systemctl", "reboot")
@@ -231,7 +248,7 @@ func (m *Manager) Reboot(ctx context.Context) error {
 
 // PowerOff requests an operating system halt/shutdown.
 func (m *Manager) PowerOff(ctx context.Context) error {
-	if runtime.GOOS != "linux" {
+	if m.isMock {
 		return nil
 	}
 	cmd := exec.CommandContext(ctx, "systemctl", "poweroff")
@@ -286,7 +303,7 @@ func (m *Manager) inspectStorageMedia() (bootMedia string, nvmeDetected bool, nv
 
 // MigrateToNVMe triggers the background migration script to clone the live system to an NVMe drive.
 func (m *Manager) MigrateToNVMe(ctx context.Context) (string, error) {
-	if runtime.GOOS != "linux" {
+	if m.isMock {
 		return "Simulated migration to NVMe completed successfully.", nil
 	}
 

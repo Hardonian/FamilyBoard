@@ -3,12 +3,24 @@
   'use strict';
 
   const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
   let idleTimer;
+
+  function apiFetch(url, options) {
+    const requestOptions = { ...(options || {}) };
+    const headers = new Headers(requestOptions.headers || {});
+    if (csrfToken && requestOptions.method && requestOptions.method.toUpperCase() !== 'GET') {
+      headers.set('X-CSRF-Token', csrfToken);
+    }
+    requestOptions.headers = headers;
+    return window.fetch(url, requestOptions);
+  }
 
   function resetIdleTimer() {
     window.clearTimeout(idleTimer);
     idleTimer = window.setTimeout(function() {
-      window.location.assign('/admin/lock');
+      apiFetch('/admin/lock', { method: 'POST' })
+        .finally(function() { window.location.assign('/'); });
     }, IDLE_TIMEOUT_MS);
   }
 
@@ -41,7 +53,7 @@
         btnRescanWifi.disabled = true;
         btnRescanWifi.textContent = 'Scanning…';
         try {
-          const resp = await fetch('/api/system/wifi/scan');
+          const resp = await apiFetch('/api/system/wifi/scan');
           if (!resp.ok) throw new Error('Scan failed');
           const aps = await resp.json();
           renderWifiNetworks(aps);
@@ -83,7 +95,7 @@
         btnSubmit.textContent = 'Connecting…';
 
         try {
-          const resp = await fetch('/api/system/wifi/connect', {
+          const resp = await apiFetch('/api/system/wifi/connect', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ssid, password })
@@ -110,7 +122,7 @@
         const currentlyActive = btnToggleHotspot.dataset.active === 'true';
         btnToggleHotspot.disabled = true;
         try {
-          const resp = await fetch('/api/system/wifi/hotspot', {
+          const resp = await apiFetch('/api/system/wifi/hotspot', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enable: !currentlyActive })
@@ -132,7 +144,7 @@
         const currentlyPowered = btnToggleBluetooth.dataset.powered === 'true';
         btnToggleBluetooth.disabled = true;
         try {
-          const resp = await fetch('/api/system/bluetooth/power', {
+          const resp = await apiFetch('/api/system/bluetooth/power', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ powered: !currentlyPowered })
@@ -154,7 +166,7 @@
         btnRescanBluetooth.disabled = true;
         btnRescanBluetooth.textContent = 'Scanning…';
         try {
-          const resp = await fetch('/api/system/bluetooth/scan');
+          const resp = await apiFetch('/api/system/bluetooth/scan');
           if (!resp.ok) throw new Error('Bluetooth scan failed');
           const devices = await resp.json();
           renderBluetoothDevices(devices);
@@ -177,7 +189,7 @@
         const macAddress = document.getElementById('beacon-mac-address').value.trim();
 
         try {
-          const resp = await fetch('/api/system/presence/beacon', {
+          const resp = await apiFetch('/api/system/presence/beacon', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ person_name: personName, device_name: deviceName, mac_address: macAddress })
@@ -198,7 +210,7 @@
         const id = btn.dataset.id;
         if (!confirm('Remove this presence beacon?')) return;
         try {
-          const resp = await fetch('/api/system/presence/beacon/' + encodeURIComponent(id), {
+          const resp = await apiFetch('/api/system/presence/beacon/' + encodeURIComponent(id), {
             method: 'DELETE'
           });
           if (!resp.ok) throw new Error('Delete failed');
@@ -229,11 +241,12 @@
       btnReboot.addEventListener('click', async function() {
         if (!confirm('Restart the FamilyBoard appliance now?')) return;
         try {
-          await fetch('/api/system/power', {
+          const resp = await apiFetch('/api/system/power', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'reboot' })
           });
+          if (!resp.ok) throw new Error('Restart request was rejected');
           alert('Appliance is restarting. This page will reload once ready.');
           setTimeout(() => window.location.reload(), 15000);
         } catch (err) {
@@ -247,11 +260,12 @@
       btnShutdown.addEventListener('click', async function() {
         if (!confirm('Shut down the Radxa Dragon appliance now? You will need to unplug and plug it back in to turn it on.')) return;
         try {
-          await fetch('/api/system/power', {
+          const resp = await apiFetch('/api/system/power', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'shutdown' })
           });
+          if (!resp.ok) throw new Error('Shutdown request was rejected');
           alert('Appliance is shutting down safely.');
         } catch (err) {
           alert('Shutdown request error: ' + err.message);
@@ -267,7 +281,7 @@
         btnMigrateNVMe.disabled = true;
         btnMigrateNVMe.textContent = '⏳ Porting System to NVMe... (Please Wait)';
         try {
-          const resp = await fetch('/api/system/storage/migrate-nvme', {
+          const resp = await apiFetch('/api/system/storage/migrate-nvme', {
             method: 'POST'
           });
           const res = await resp.json();
@@ -359,7 +373,7 @@
       deleteBtn.textContent = '…';
 
       try {
-        const resp = await fetch('/api/photos/' + encodeURIComponent(filename), {
+        const resp = await apiFetch('/api/photos/' + encodeURIComponent(filename), {
           method: 'DELETE'
         });
         const res = await resp.json();
@@ -376,7 +390,7 @@
 
     async function loadPhotos() {
       try {
-        const resp = await fetch('/api/photos');
+        const resp = await apiFetch('/api/photos');
         if (!resp.ok) throw new Error('Failed to fetch photos');
         const data = await resp.json();
         const photos = data.photos || [];
@@ -435,7 +449,7 @@
         formData.append('photo', file);
 
         try {
-          const resp = await fetch('/api/photos/upload', {
+          const resp = await apiFetch('/api/photos/upload', {
             method: 'POST',
             body: formData
           });

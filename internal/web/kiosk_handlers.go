@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -58,6 +59,10 @@ func (s *Server) handleKiosk(w http.ResponseWriter, r *http.Request) {
 	if birthdayHighlight == "" {
 		birthdayHighlight = "true"
 	}
+	hotspotPassword := ""
+	if s.hasKioskCapability(r) {
+		hotspotPassword = s.cfg.Security.HotspotPassword
+	}
 
 	data := map[string]interface{}{
 		"Title":             deviceName,
@@ -70,6 +75,7 @@ func (s *Server) handleKiosk(w http.ResponseWriter, r *http.Request) {
 		"TimeFormat":        timeFormat,
 		"BirthdayHighlight": birthdayHighlight == "true",
 		"IsLocalhost":       s.isLocalhost(r),
+		"HotspotPassword":   hotspotPassword,
 	}
 
 	s.render(w, "kiosk.html", data)
@@ -78,7 +84,8 @@ func (s *Server) handleKiosk(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAPICalendars(w http.ResponseWriter, r *http.Request) {
 	calendars, err := s.store.ListDisplayCalendars(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("Failed to list kiosk calendars", "err", err)
+		writeHardwareError(w, http.StatusInternalServerError, "failed to load calendars")
 		return
 	}
 
@@ -106,18 +113,33 @@ func (s *Server) handleAPIGetEvents(w http.ResponseWriter, r *http.Request) {
 	startStr := q.Get("start")
 	endStr := q.Get("end")
 
-	startAt, err := time.Parse(time.RFC3339, startStr)
-	if err != nil {
-		startAt = time.Now().AddDate(0, -1, 0)
+	startAt := time.Now().AddDate(0, -1, 0)
+	if startStr != "" {
+		var err error
+		startAt, err = time.Parse(time.RFC3339, startStr)
+		if err != nil {
+			writeHardwareError(w, http.StatusBadRequest, "start must use RFC3339 format")
+			return
+		}
 	}
-	endAt, err := time.Parse(time.RFC3339, endStr)
-	if err != nil {
-		endAt = time.Now().AddDate(0, 2, 0)
+	endAt := time.Now().AddDate(0, 2, 0)
+	if endStr != "" {
+		var err error
+		endAt, err = time.Parse(time.RFC3339, endStr)
+		if err != nil {
+			writeHardwareError(w, http.StatusBadRequest, "end must use RFC3339 format")
+			return
+		}
+	}
+	if !endAt.After(startAt) || endAt.Sub(startAt) > 366*24*time.Hour {
+		writeHardwareError(w, http.StatusBadRequest, "event range must be positive and no longer than 366 days")
+		return
 	}
 
 	events, err := s.store.ListEventsRange(r.Context(), startAt, endAt)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("Failed to list kiosk events", "err", err)
+		writeHardwareError(w, http.StatusInternalServerError, "failed to load events")
 		return
 	}
 
@@ -144,15 +166,12 @@ func (s *Server) handleAPIGetEvents(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAPICreateEvent(w http.ResponseWriter, r *http.Request) {
 	var ev models.Event
-	if err := json.NewDecoder(r.Body).Decode(&ev); err != nil {
-		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
+	if !decodeRequestJSON(w, r, &ev) {
 		return
 	}
 
-	if strings.TrimSpace(ev.Title) == "" || ev.CalendarID == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Event title and destination calendar are required."})
+	if err := validateEventInput(&ev); err != nil {
+		writeHardwareError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -177,9 +196,8 @@ func (s *Server) handleAPICreateEvent(w http.ResponseWriter, r *http.Request) {
 
 	// 1. Write to local SQLite database
 	if err := s.store.UpsertEvent(r.Context(), &ev); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Failed to save event locally: " + err.Error()})
+		slog.Error("Failed to save kiosk event", "err", err)
+		writeHardwareError(w, http.StatusInternalServerError, "failed to save event locally")
 		return
 	}
 
@@ -226,13 +244,50 @@ func (s *Server) handleAPIUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var update models.Event
-	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
-		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
+	var request struct {
+		CalendarID     *string    `json:"calendar_id"`
+		Title          *string    `json:"title"`
+		Description    *string    `json:"description"`
+		Location       *string    `json:"location"`
+		StartAt        *time.Time `json:"start_at"`
+		EndAt          *time.Time `json:"end_at"`
+		AllDay         *bool      `json:"all_day"`
+		RecurrenceRule *string    `json:"recurrence_rule"`
+	}
+	if !decodeRequestJSON(w, r, &request) {
+		return
+	}
+	update := *existing
+	if request.CalendarID != nil {
+		update.CalendarID = *request.CalendarID
+	}
+	if request.Title != nil {
+		update.Title = *request.Title
+	}
+	if request.Description != nil {
+		update.Description = *request.Description
+	}
+	if request.Location != nil {
+		update.Location = *request.Location
+	}
+	if request.StartAt != nil {
+		update.StartAt = *request.StartAt
+	}
+	if request.EndAt != nil {
+		update.EndAt = *request.EndAt
+	}
+	if request.AllDay != nil {
+		update.AllDay = *request.AllDay
+	}
+	if request.RecurrenceRule != nil {
+		update.RecurrenceRule = *request.RecurrenceRule
+	}
+	if err := validateEventInput(&update); err != nil {
+		writeHardwareError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	if update.CalendarID != "" && update.CalendarID != existing.CalendarID {
+	if update.CalendarID != existing.CalendarID {
 		cal, err := s.isCalendarWritable(r.Context(), update.CalendarID)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -250,11 +305,13 @@ func (s *Server) handleAPIUpdateEvent(w http.ResponseWriter, r *http.Request) {
 	existing.StartAt = update.StartAt
 	existing.EndAt = update.EndAt
 	existing.AllDay = update.AllDay
+	existing.RecurrenceRule = update.RecurrenceRule
 	existing.Source = "kiosk"
 	existing.LocalUpdatedAt = time.Now()
 
 	if err := s.store.UpsertEvent(r.Context(), existing); err != nil {
-		http.Error(w, "update event locally: "+err.Error(), http.StatusInternalServerError)
+		slog.Error("Failed to update kiosk event", "event_id", id, "err", err)
+		writeHardwareError(w, http.StatusInternalServerError, "failed to update event locally")
 		return
 	}
 
@@ -299,7 +356,8 @@ func (s *Server) handleAPIDeleteEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.SoftDeleteEvent(r.Context(), id); err != nil {
-		http.Error(w, "delete event locally: "+err.Error(), http.StatusInternalServerError)
+		slog.Error("Failed to delete kiosk event", "event_id", id, "err", err)
+		writeHardwareError(w, http.StatusInternalServerError, "failed to delete event locally")
 		return
 	}
 
@@ -338,7 +396,8 @@ func (s *Server) handleAPIRestoreEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.RestoreEvent(r.Context(), id); err != nil {
-		http.Error(w, "restore event locally: "+err.Error(), http.StatusInternalServerError)
+		slog.Error("Failed to restore kiosk event", "event_id", id, "err", err)
+		writeHardwareError(w, http.StatusInternalServerError, "failed to restore event locally")
 		return
 	}
 
@@ -374,7 +433,8 @@ func (s *Server) handleAPIRestoreEvent(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAPIGetTemplates(w http.ResponseWriter, r *http.Request) {
 	templates, err := s.store.ListQuickTemplates(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("Failed to list quick templates", "err", err)
+		writeHardwareError(w, http.StatusInternalServerError, "failed to load quick templates")
 		return
 	}
 	if templates == nil {
@@ -401,8 +461,12 @@ type parseNaturalResponse struct {
 
 func (s *Server) handleAPIParseNatural(w http.ResponseWriter, r *http.Request) {
 	var req parseNaturalRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
+	if !decodeRequestJSON(w, r, &req) {
+		return
+	}
+	req.Text = strings.TrimSpace(req.Text)
+	if req.Text == "" || len(req.Text) > 1000 {
+		writeHardwareError(w, http.StatusBadRequest, "text must be between 1 and 1000 characters")
 		return
 	}
 
@@ -426,6 +490,26 @@ func (s *Server) handleAPIParseNatural(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
+func validateEventInput(event *models.Event) error {
+	event.Title = strings.TrimSpace(event.Title)
+	event.CalendarID = strings.TrimSpace(event.CalendarID)
+	event.Location = strings.TrimSpace(event.Location)
+	event.Description = strings.TrimSpace(event.Description)
+	if event.Title == "" || event.CalendarID == "" {
+		return fmt.Errorf("event title and destination calendar are required")
+	}
+	if len(event.Title) > 200 {
+		return fmt.Errorf("event title must be at most 200 characters")
+	}
+	if len(event.Location) > 500 || len(event.Description) > 10000 || len(event.RecurrenceRule) > 2000 {
+		return fmt.Errorf("event details exceed the supported length")
+	}
+	if event.StartAt.IsZero() || event.EndAt.IsZero() || !event.EndAt.After(event.StartAt) {
+		return fmt.Errorf("event end time must be after its start time")
+	}
+	return nil
+}
+
 func (s *Server) handleSSEStream(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -436,7 +520,6 @@ func (s *Server) handleSSEStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	clientCh := make(chan string, 5)
 

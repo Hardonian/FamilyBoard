@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,16 +11,31 @@ import (
 )
 
 type Config struct {
-	Server    ServerConfig    `toml:"server"`
-	Database  DatabaseConfig  `toml:"database"`
-	Kiosk     KioskConfig     `toml:"kiosk"`
-	Security  SecurityConfig  `toml:"security"`
-	Auth      AuthConfig      `toml:"auth"`
-	Google    GoogleConfig    `toml:"google"`
-	Microsoft MicrosoftConfig `toml:"microsoft"`
-	Sync      SyncConfig      `toml:"sync"`
-	Mail      MailConfig      `toml:"mail"`
-	AI        AIConfig        `toml:"ai"`
+	Server     ServerConfig    `toml:"server"`
+	Database   DatabaseConfig  `toml:"database"`
+	Kiosk      KioskConfig     `toml:"kiosk"`
+	Security   SecurityConfig  `toml:"security"`
+	Auth       AuthConfig      `toml:"auth"`
+	Google     GoogleConfig    `toml:"google"`
+	Microsoft  MicrosoftConfig `toml:"microsoft"`
+	Sync       SyncConfig      `toml:"sync"`
+	Mail       MailConfig      `toml:"mail"`
+	AI         AIConfig        `toml:"ai"`
+	sourcePath string
+}
+
+// EnsureSessionSecret generates a cryptographically strong, process-stable
+// secret when a new installation has not configured one yet.
+func (c *Config) EnsureSessionSecret() error {
+	if c.Security.SessionSecret != "" {
+		return nil
+	}
+	random := make([]byte, 32)
+	if _, err := rand.Read(random); err != nil {
+		return fmt.Errorf("generate session secret: %w", err)
+	}
+	c.Security.SessionSecret = base64.RawURLEncoding.EncodeToString(random)
+	return nil
 }
 
 type ServerConfig struct {
@@ -46,9 +63,23 @@ type KioskConfig struct {
 }
 
 type SecurityConfig struct {
-	SessionSecret  string `toml:"session_secret"`
-	CookieSecure   bool   `toml:"cookie_secure"`
-	CredentialsDir string `toml:"credentials_dir"`
+	SessionSecret   string `toml:"session_secret"`
+	HotspotPassword string `toml:"hotspot_password"`
+	CookieSecure    bool   `toml:"cookie_secure"`
+	CredentialsDir  string `toml:"credentials_dir"`
+}
+
+// EnsureHotspotPassword generates a stable per-installation WPA2 passphrase.
+func (c *Config) EnsureHotspotPassword() error {
+	if c.Security.HotspotPassword != "" {
+		return nil
+	}
+	random := make([]byte, 12)
+	if _, err := rand.Read(random); err != nil {
+		return fmt.Errorf("generate hotspot password: %w", err)
+	}
+	c.Security.HotspotPassword = base64.RawURLEncoding.EncodeToString(random)
+	return nil
 }
 
 type AuthConfig struct {
@@ -182,6 +213,9 @@ func Load(explicitPath string) (*Config, string, error) {
 	}
 
 	if foundPath == "" {
+		if explicitPath != "" {
+			cfg.sourcePath = explicitPath
+		}
 		return cfg, "", nil // Return defaults if no config file found
 	}
 
@@ -193,8 +227,18 @@ func Load(explicitPath string) (*Config, string, error) {
 	if err := toml.Unmarshal(data, cfg); err != nil {
 		return nil, foundPath, fmt.Errorf("unmarshal config TOML: %w", err)
 	}
+	cfg.sourcePath = foundPath
 
 	return cfg, foundPath, nil
+}
+
+// SourcePath returns the file this configuration was loaded from, or fallback
+// for a new installation.
+func (c *Config) SourcePath(fallback string) string {
+	if c.sourcePath != "" {
+		return c.sourcePath
+	}
+	return fallback
 }
 
 // Redacted returns a clone of the configuration with sensitive tokens and passwords scrubbed.
@@ -202,6 +246,9 @@ func (c *Config) Redacted() Config {
 	clone := *c
 	if clone.Security.SessionSecret != "" {
 		clone.Security.SessionSecret = "[REDACTED]"
+	}
+	if clone.Security.HotspotPassword != "" {
+		clone.Security.HotspotPassword = "[REDACTED]"
 	}
 	if clone.Auth.AdminPasswordHash != "" {
 		clone.Auth.AdminPasswordHash = "[REDACTED]"
@@ -233,9 +280,26 @@ func (c *Config) Save(targetPath string) error {
 	}
 
 	if err := os.Rename(tmpFile, targetPath); err != nil {
-		os.Remove(tmpFile)
-		return fmt.Errorf("atomic rename config: %w", err)
+		// Windows does not replace an existing destination with os.Rename. Move
+		// the current file aside, install the complete new file, and roll back if
+		// that second rename fails.
+		if _, statErr := os.Stat(targetPath); statErr != nil {
+			_ = os.Remove(tmpFile)
+			return fmt.Errorf("atomic rename config: %w", err)
+		}
+		backupPath := tmpFile + ".previous"
+		if backupErr := os.Rename(targetPath, backupPath); backupErr != nil {
+			_ = os.Remove(tmpFile)
+			return fmt.Errorf("prepare config replacement: %w", backupErr)
+		}
+		if replaceErr := os.Rename(tmpFile, targetPath); replaceErr != nil {
+			_ = os.Rename(backupPath, targetPath)
+			_ = os.Remove(tmpFile)
+			return fmt.Errorf("replace config: %w", replaceErr)
+		}
+		_ = os.Remove(backupPath)
 	}
+	c.sourcePath = targetPath
 
 	return nil
 }

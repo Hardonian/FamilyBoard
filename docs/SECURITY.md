@@ -45,17 +45,20 @@ Untrusted email parsing is a critical attack vector for appliances. `FamilyBoard
 
 ### A. Content Security Policy (CSP) & HTTP Headers
 Every HTTP response emitted by `FamilyBoard` includes strict, modern security headers:
-- `Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`
+- `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY`
 - `Referrer-Policy: strict-origin-when-cross-origin`
-- `Permissions-Policy: geolocation=(), camera=(), microphone=(), payment=()`
+- `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`
+- `Cross-Origin-Opener-Policy: same-origin`
 
 ### B. Session Security & CSRF Protection
 - **Session Tokens:** Cryptographically random 256-bit entropy (`crypto/rand`), stored hashed via SHA-256 in the database.
-- **Cookies:** `HttpOnly`, `SameSite=Lax`, and `Path=/`.
-- **CSRF Tokens:** Synchronizer token pattern enforced on all state-changing `POST`, `PUT`, and `DELETE` requests.
-- **Brute-Force Rate Limiting:** In-memory sliding window rate limiter protects admin login endpoints (5 attempts per minute per IP).
+- **Cookies:** `HttpOnly`, `SameSite=Strict`, `Path=/`, and `Secure` when HTTPS is configured.
+- **CSRF Tokens:** A double-submit token is enforced for login, setup, every admin form, and destructive system operations. Cross-site browser mutations are rejected at the server boundary; the physical loopback kiosk uses a signed capability.
+- **Brute-Force Rate Limiting:** An in-memory limiter protects admin login endpoints (5 failed attempts per 10 minutes per source IP).
+- **Secret Bootstrap:** A unique 256-bit session secret and per-installation hotspot password are generated and persisted on first boot; there are no shared production fallback credentials.
+- **Sensitive Appliance APIs:** Hardware telemetry, Wi-Fi credentials/QR codes, Bluetooth presence, and family photos require the physical kiosk capability or an authenticated administrator.
 
 ---
 

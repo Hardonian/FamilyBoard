@@ -6,6 +6,7 @@
   <meta name="description" content="FamilyBoard — your private, local-first family calendar.">
   <meta name="theme-color" content="#0f172a">
   <meta name="color-scheme" content="dark light">
+  {{with .CSRFToken}}<meta name="csrf-token" content="{{.}}">{{end}}
   <title>{{.Title}} - FamilyBoard</title>
   <link rel="stylesheet" href="/static/css/app.css">
 </head>

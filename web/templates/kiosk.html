@@ -362,7 +362,7 @@
 </div>
 
 <!-- Wi-Fi & Hotspot Onboarding Modal -->
-<div id="modal-wifi-setup" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="wifi-modal-title">
+<div id="modal-wifi-setup" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="wifi-modal-title" aria-hidden="true">
   <div class="modal-card modal-card-wide">
     <div class="modal-header">
       <div class="modal-title-group">
@@ -385,7 +385,7 @@
 
         <div class="kiosk-hotspot-creds">
           <div><small>Network:</small> <strong id="kiosk-hotspot-ssid">FamilyBoard-Setup</strong></div>
-          <div><small>Password:</small> <code id="kiosk-hotspot-pass">familyboard123</code></div>
+          <div><small>Password:</small> <code id="kiosk-hotspot-pass">{{.HotspotPassword}}</code></div>
           <div><small>Browser:</small> <span class="kiosk-portal-link">http://192.168.4.1:8080</span></div>
         </div>
       </div>
@@ -398,7 +398,7 @@
         </div>
         <p class="wifi-panel-sub">Select your home Wi-Fi network from the list:</p>
 
-        <div class="kiosk-wifi-list-container" id="kiosk-wifi-list-container">
+        <div class="kiosk-wifi-list-container" id="kiosk-wifi-list-container" aria-live="polite" aria-busy="false">
           <div class="kiosk-wifi-empty">Scanning for wireless networks…</div>
         </div>
 
@@ -409,16 +409,16 @@
             <button type="button" id="btn-kiosk-cancel-connect" class="btn-text-sm">Cancel</button>
           </div>
           <div class="kiosk-connect-input-group">
-            <input type="password" id="kiosk-wifi-password-input" class="form-input" placeholder="Wi-Fi Password" aria-label="Wi-Fi Password">
+            <input type="password" id="kiosk-wifi-password-input" class="form-input" placeholder="Wi-Fi Password" aria-label="Wi-Fi Password" autocomplete="off">
             <button type="button" id="btn-kiosk-submit-connect" class="btn btn-primary">Connect</button>
           </div>
-          <div id="kiosk-connect-status" class="kiosk-connect-status hidden"></div>
+          <div id="kiosk-connect-status" class="kiosk-connect-status hidden" role="status" aria-live="polite"></div>
         </div>
       </div>
     </div>
 
     <div class="modal-footer modal-footer-between">
-      <div id="kiosk-current-wifi-status" class="kiosk-current-status-text">
+      <div id="kiosk-current-wifi-status" class="kiosk-current-status-text" role="status" aria-live="polite">
         Status: Checking connection…
       </div>
       <div class="modal-footer-actions">

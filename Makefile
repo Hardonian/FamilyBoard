@@ -8,7 +8,7 @@ else
     BASH_BIN := bash
 endif
 
-.PHONY: all fmt vet lint test test-race build build-arm64 pi-bootstrap-check release-check clean
+.PHONY: all fmt vet lint verify-mod check-js test test-race build build-arm64 pi-bootstrap-check release-check clean
 
 VERSION ?= 1.0.0-rc.1
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
@@ -24,6 +24,13 @@ vet:
 	go vet ./...
 
 lint: vet
+
+verify-mod:
+	go mod verify
+
+check-js:
+	node --check web/static/js/kiosk.js
+	node --check web/static/js/admin.js
 
 test:
 	go test -v ./...
@@ -57,7 +64,13 @@ radxa-check:
 	@echo "Checking deploy/radxa shell scripts syntax..."
 	@"$(BASH_BIN)" -n deploy/radxa/familyboard-kiosk.sh
 	@"$(BASH_BIN)" -n deploy/radxa/setup-radxa.sh
+	@"$(BASH_BIN)" -n deploy/radxa/migrate-to-nvme.sh
+	@"$(BASH_BIN)" -n deploy/radxa/run-standalone.sh
+	@"$(BASH_BIN)" -n scripts/prepare_radxa_sd.sh
 	@echo "All Radxa Dragon shell scripts passed syntax checks."
+
+prepare-radxa-sd: build-arm64
+	@"$(BASH_BIN)" scripts/prepare_radxa_sd.sh $(OUTPUT)
 
 pi-bootstrap-check:
 	@echo "Checking deploy/pi shell scripts syntax..."
@@ -77,7 +90,7 @@ pi-bootstrap-check:
 prepare-sd:
 	@"$(BASH_BIN)" scripts/prepare_sd.sh $(SD)
 
-release-check: fmt vet test test-race build build-arm64 radxa-check pi-bootstrap-check
+release-check: fmt vet verify-mod check-js test test-race build build-arm64 radxa-check pi-bootstrap-check
 	@echo "=== FamilyBoard Canonical Release Gate PASSED ==="
 
 clean:

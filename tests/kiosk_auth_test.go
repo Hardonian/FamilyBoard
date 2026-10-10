@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -47,6 +48,7 @@ func setupTestServer(t *testing.T) (*web.Server, *db.Store, string) {
 	stateManager := oauth.NewStateManager("test-secret-key-1234567890123456")
 
 	cfg := config.DefaultConfig()
+	cfg.Database.Path = dbPath
 	cfg.Security.SessionSecret = "test-secret-kiosk-123456789012"
 	cfg.Auth.AdminUsername = "admin"
 	hash, _ := auth.HashPassword("secretpass123")
@@ -286,10 +288,24 @@ func TestKioskAuthorization_AdminPrivilegeAndLock(t *testing.T) {
 	}
 
 	// 2. Successful login establishes admin session
-	loginForm := "username=admin&password=secretpass123"
+	csrfReq := httptest.NewRequest(http.MethodGet, "/login", nil)
+	csrfRec := httptest.NewRecorder()
+	srv.ServeHTTP(csrfRec, csrfReq)
+	var csrfCookie *http.Cookie
+	for _, c := range csrfRec.Result().Cookies() {
+		if c.Name == "fb_csrf" {
+			csrfCookie = c
+			break
+		}
+	}
+	if csrfCookie == nil {
+		t.Fatal("expected login page to set CSRF cookie")
+	}
+	loginForm := "username=admin&password=secretpass123&csrf_token=" + url.QueryEscape(csrfCookie.Value)
 	loginReq := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBufferString(loginForm))
 	loginReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	loginReq.RemoteAddr = "127.0.0.1:12345"
+	loginReq.AddCookie(csrfCookie)
 	loginRec := httptest.NewRecorder()
 
 	srv.ServeHTTP(loginRec, loginReq)
@@ -318,9 +334,12 @@ func TestKioskAuthorization_AdminPrivilegeAndLock(t *testing.T) {
 		t.Fatalf("expected 200 OK for authenticated /admin, got %d", authedRec.Code)
 	}
 
-	// 4. Calling /admin/lock clears session and redirects back to /
-	lockReq := httptest.NewRequest(http.MethodGet, "/admin/lock", nil)
+	// 4. Posting /admin/lock clears session and redirects back to /
+	lockForm := "csrf_token=" + url.QueryEscape(csrfCookie.Value)
+	lockReq := httptest.NewRequest(http.MethodPost, "/admin/lock", bytes.NewBufferString(lockForm))
+	lockReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	lockReq.AddCookie(sessionCookie)
+	lockReq.AddCookie(csrfCookie)
 	lockRec := httptest.NewRecorder()
 
 	srv.ServeHTTP(lockRec, lockReq)

@@ -22,10 +22,7 @@ const (
 
 // isLocalhost reports whether the incoming request originates from loopback (physical kiosk display).
 func (s *Server) isLocalhost(r *http.Request) bool {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
+	host := remoteIP(r)
 	ip := net.ParseIP(host)
 	if ip == nil {
 		return host == "localhost" || host == "127.0.0.1" || host == "::1"
@@ -33,12 +30,19 @@ func (s *Server) isLocalhost(r *http.Request) bool {
 	return ip.IsLoopback()
 }
 
+// remoteIP normalizes RemoteAddr so rate limiting cannot be bypassed simply by
+// opening a new TCP connection with a different ephemeral source port.
+func remoteIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil {
+		return host
+	}
+	return r.RemoteAddr
+}
+
 // generateKioskToken creates an HMAC-signed token validating kiosk capability.
 func (s *Server) generateKioskToken() string {
 	secret := s.cfg.Security.SessionSecret
-	if secret == "" {
-		secret = "familyboard-appliance-secret-key"
-	}
 	h := hmac.New(sha256.New, []byte(secret))
 	h.Write([]byte("kiosk:household:v1"))
 	return hex.EncodeToString(h.Sum(nil))
@@ -79,7 +83,8 @@ func (s *Server) issueKioskCapabilityCookie(w http.ResponseWriter, r *http.Reque
 			Path:     "/",
 			MaxAge:   86400 * 365, // 1 year on physical display
 			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
+			SameSite: http.SameSiteStrictMode,
+			Secure:   s.cfg.Security.CookieSecure,
 		})
 	}
 }
@@ -97,8 +102,8 @@ func (s *Server) isAuthenticatedAdmin(r *http.Request) (*models.Session, bool) {
 		return nil, false
 	}
 
-	// Check 15-minute auto-lock
-	if time.Since(sess.LastActiveAt) > adminAutoLockDuration {
+	// Check the absolute lifetime as well as the 15-minute inactivity lock.
+	if time.Now().After(sess.ExpiresAt) || time.Since(sess.LastActiveAt) > adminAutoLockDuration {
 		_ = s.store.DeleteSession(r.Context(), tokenHash)
 		return nil, false
 	}
@@ -109,7 +114,15 @@ func (s *Server) isAuthenticatedAdmin(r *http.Request) (*models.Session, bool) {
 // requireKioskWriteAccess enforces the privilege boundary for write mutations (POST/PUT/DELETE).
 // Physical localhost kiosk or devices with kiosk capability token or admin session are permitted.
 func (s *Server) requireKioskWriteAccess(next http.HandlerFunc) http.HandlerFunc {
+	return s.requireApplianceAccess(next)
+}
+
+// requireApplianceAccess protects household-sensitive appliance APIs. Access is
+// granted to the physical loopback kiosk, a signed kiosk capability, or an
+// authenticated administrator.
+func (s *Server) requireApplianceAccess(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store, private")
 		// Allow authenticated admin
 		if _, ok := s.isAuthenticatedAdmin(r); ok {
 			next(w, r)
@@ -125,7 +138,7 @@ func (s *Server) requireKioskWriteAccess(next http.HandlerFunc) http.HandlerFunc
 		// Reject remote LAN clients attempting unauthenticated writes
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintf(w, `{"error":"unauthorized","message":"Calendar modifications from remote LAN devices require admin login. Physical kiosk has direct access."}`)
+		fmt.Fprint(w, `{"error":"unauthorized","message":"This appliance operation requires admin login or the physical kiosk."}`)
 	}
 }
 
