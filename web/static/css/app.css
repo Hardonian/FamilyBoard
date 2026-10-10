@@ -671,6 +671,16 @@ body.kiosk-ambient-dim {
   box-shadow: 0 0 8px rgba(251, 113, 133, 0.3);
 }
 
+.pill-apple {
+  border-left-color: #10b981;
+  background-color: rgba(16, 185, 129, 0.18);
+}
+
+.pill-microsoft {
+  border-left-color: #0078d4;
+  background-color: rgba(0, 120, 212, 0.18);
+}
+
 .pill-more {
   font-size: 0.85rem;
   font-weight: 700;
@@ -1081,6 +1091,8 @@ body.kiosk-ambient-dim {
   border-left-color: var(--color-birthday);
   box-shadow: 0 0 10px rgba(251, 113, 133, 0.25);
 }
+.rail-event-card.card-apple { border-left-color: #10b981; }
+.rail-event-card.card-microsoft { border-left-color: #0078d4; }
 
 .rail-event-time-row {
   display: flex;
@@ -1174,6 +1186,10 @@ body.kiosk-ambient-dim {
 .schedule-event-card.card-kids { border-left-color: var(--color-kids); }
 .today-full-card.card-birthday,
 .schedule-event-card.card-birthday { border-left-color: var(--color-birthday); }
+.today-full-card.card-apple,
+.schedule-event-card.card-apple { border-left-color: #10b981; }
+.today-full-card.card-microsoft,
+.schedule-event-card.card-microsoft { border-left-color: #0078d4; }
 
 /* Quick Templates Strip in Rail */
 .rail-quick-templates {
@@ -3453,8 +3469,8 @@ body.kiosk-ambient-dim {
   justify-content: space-between;
   gap: 12px;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 12px rgba(56, 189, 248, 0.2);
-  backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
   animation: pwaBannerSlide 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -3737,7 +3753,6 @@ body.kiosk-ambient-dim {
     padding: 10px 10px calc(76px + var(--safe-bottom));
     height: calc(100dvh - 58px);
     overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
   }
 
   /* Mobile Bottom Navigation Dock */
@@ -3753,8 +3768,8 @@ body.kiosk-ambient-dim {
     background: rgba(15, 23, 42, 0.94);
     border-top: 1px solid rgba(255, 255, 255, 0.12);
     box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.35);
-    backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
     justify-content: space-around;
     align-items: center;
   }
@@ -3898,7 +3913,6 @@ body.kiosk-ambient-dim {
     border-radius: 24px 24px 0 0 !important;
     max-height: 90dvh !important;
     overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch;
     margin: 0 !important;
     box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.6) !important;
     animation: bottomSheetSlide 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
@@ -4003,5 +4017,72 @@ body.kiosk-ambient-dim {
   .durations-row {
     grid-template-columns: repeat(3, 1fr);
   }
+}
+
+/* ==========================================================================
+   Universal Meeting Action Links (Google Meet, Teams, FaceTime, Zoom)
+   ========================================================================== */
+.kiosk-detail-meeting-row {
+  display: flex;
+  margin: 12px 0 6px 0;
+}
+
+.btn-meeting-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-meeting-link:active {
+  transform: scale(0.97);
+}
+
+.btn-meeting-link.btn-meet-google {
+  background: linear-gradient(135deg, rgba(2, 132, 199, 0.25), rgba(16, 185, 129, 0.25));
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  color: #38bdf8;
+}
+.btn-meeting-link.btn-meet-google:hover {
+  background: linear-gradient(135deg, rgba(2, 132, 199, 0.4), rgba(16, 185, 129, 0.4));
+  box-shadow: 0 4px 18px rgba(56, 189, 248, 0.35);
+}
+
+.btn-meeting-link.btn-meet-teams {
+  background: linear-gradient(135deg, rgba(91, 95, 199, 0.3), rgba(79, 70, 229, 0.3));
+  border: 1px solid rgba(129, 140, 248, 0.5);
+  color: #c7d2fe;
+}
+.btn-meeting-link.btn-meet-teams:hover {
+  background: linear-gradient(135deg, rgba(91, 95, 199, 0.45), rgba(79, 70, 229, 0.45));
+  box-shadow: 0 4px 18px rgba(99, 102, 241, 0.35);
+}
+
+.btn-meeting-link.btn-meet-apple {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(34, 197, 94, 0.25));
+  border: 1px solid rgba(52, 211, 153, 0.5);
+  color: #6ee7b7;
+}
+.btn-meeting-link.btn-meet-apple:hover {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.4), rgba(34, 197, 94, 0.4));
+  box-shadow: 0 4px 18px rgba(16, 185, 129, 0.35);
+}
+
+.btn-meeting-link.btn-meet-zoom {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(37, 99, 235, 0.25));
+  border: 1px solid rgba(96, 165, 250, 0.5);
+  color: #93c5fd;
+}
+.btn-meeting-link.btn-meet-zoom:hover {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.4), rgba(37, 99, 235, 0.4));
+  box-shadow: 0 4px 18px rgba(59, 130, 246, 0.35);
 }
 

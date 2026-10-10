@@ -13,6 +13,12 @@
 
 - **Sovereign & Local-First:** Runs an embedded SQLite database in WAL mode. If home Wi-Fi drops, the kitchen touchscreen never freezes, blanks, or drops edits. All changes are stored locally and replayed automatically upon reconnection.
 - **Multi-Identity Household Isolation:** Native support for independent accounts for family members (e.g., Parent 1: `alex@example.com` and Parent 2: `jordan@example.com`). Strict identity isolation blocks cross-assignment, cross-pollination, or silent token remapping.
+- **Universal Calendar Ecosystem Interoperability (Google Workspace, Exchange & Apple):**
+  - **Google Workspace (G Suite):** Paged multi-calendar discovery (`nextPageToken`), multi-tenant account chooser (`select_account`), automatic hosted domain (`hd`) routing for custom domain family accounts, and enterprise policy guidance.
+  - **Microsoft Exchange Online & Office 365:** Native two-way calendar sync via Microsoft Graph (`Calendars.ReadWrite`), delta link updates, optimistic concurrency changeKey verification, and unified single sign-on with Outlook mail.
+  - **Apple iCloud (CalDAV & Shared Webcal):** Direct two-way CalDAV synchronization via Apple ID + App-Specific Passwords, plus zero-friction public Apple Calendar link (`webcal://`) subscription feeds with embedded RFC 5545 iCalendar parsing.
+- **Cross-Platform Smartphone PWA & Zero-Friction QR Pairing:** Seamless interoperability with Apple iPhone (iOS Safari) and Poco F7 / modern Android (Chrome / HyperOS). Standalone PWA mode with borderless Dynamic Island / notch edge-to-edge layout, bottom navigation dock, floating action button (FAB), and instant point-and-scan camera QR onboarding with cryptographically signed HMAC household write capability (`fb_kiosk_cap`).
+- **Flawless Real-Time Push Synchronization:** High-frequency 15s keepalive heartbeats (`: keepalive\n\n`) on Server-Sent Events (`/api/events/stream`) preventing mobile router NAT drops. Instant synchronization triggers on phone screen wake (`visibilitychange`) and app focus. Production Service Worker (`/sw.js`) provides offline caching for uninterrupted use across the yard or garage.
 - **Autonomous Email Ingestion Pipeline:** Ingests calendar invitations, school newsletters, soccer practice schedules, and dentist appointments from Gmail and Microsoft Graph. Uses RFC 5545 `.ics` parsing, natural language date extraction (`America/Toronto`), and optional LAN AI fallback (Ollama/vLLM) with strict SSRF protection.
 - **Low Resource Footprint:** Pure Go daemon using `modernc.org/sqlite` (no CGO cross-compilation headaches), designed to leave most appliance memory available to the OS and Chromium kiosk.
 - **Zero Runtime Dependencies:** Server-rendered HTML templates via embedded Go `embed.FS`, vanilla CSS with light/dark high-contrast themes, and vanilla JavaScript. Zero CDN calls, zero npm packages, and zero external runtime requirements.
@@ -175,6 +181,8 @@ Detailed guides and operational runbooks are available in the [`docs/`](docs/) d
   - [Email Ingestion & Extraction Pipeline](docs/EMAIL_INGESTION.md)
   - [Offline-First & Synchronization Model](docs/OFFLINE_MODEL.md)
   - [Database Schema & Migration Architecture](docs/DATABASE.md)
+- **Mobile Smartphones & PWA Interoperability:**
+  - [Mobile Smartphone Setup & Real-Time Sync Guide](docs/MOBILE_SETUP.md)
 - **Radxa Dragon & FotoCube Appliance:**
   - [Radxa Dragon Native Appliance & Plug-and-Play Setup Guide](docs/RADXA_DRAGON_SETUP.md)
 - **Raspberry Pi Operations & Runbooks:**

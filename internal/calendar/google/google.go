@@ -106,7 +106,8 @@ func (c *GoogleCalendarClient) executeWithRetry(ctx context.Context, req *http.R
 
 // Google Calendar List Response schema
 type calendarListResponse struct {
-	Items []struct {
+	NextPageToken string `json:"nextPageToken"`
+	Items         []struct {
 		ID              string `json:"id"`
 		Summary         string `json:"summary"`
 		Description     string `json:"description"`
@@ -118,58 +119,80 @@ type calendarListResponse struct {
 }
 
 func (c *GoogleCalendarClient) ListCalendars(ctx context.Context, accessToken string) ([]models.Calendar, error) {
-	endpoint := fmt.Sprintf("%s/users/me/calendarList", c.baseURL)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create list calendars request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	resp, err := c.executeWithRetry(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("list calendars request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return nil, fmt.Errorf("list calendars failed status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var list calendarListResponse
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		return nil, fmt.Errorf("decode calendar list: %w", err)
-	}
-
 	var calendars []models.Calendar
-	for _, item := range list.Items {
-		color := item.BackgroundColor
-		if color == "" {
-			color = "#3b82f6"
-		}
-		tz := item.TimeZone
-		if tz == "" {
-			tz = "America/Toronto"
-		}
-		writable := item.AccessRole == "owner" || item.AccessRole == "writer"
+	pageToken := ""
 
-		name := item.Summary
-		if name == "" {
-			name = item.ID
+	for {
+		endpoint := fmt.Sprintf("%s/users/me/calendarList", c.baseURL)
+		u, err := url.Parse(endpoint)
+		if err != nil {
+			return nil, fmt.Errorf("parse list calendars url: %w", err)
 		}
-		calID := fmt.Sprintf("cal-g-%s", item.ID)
+		q := u.Query()
+		q.Set("maxResults", "250")
+		if pageToken != "" {
+			q.Set("pageToken", pageToken)
+		}
+		u.RawQuery = q.Encode()
 
-		calendars = append(calendars, models.Calendar{
-			ID:                 calID,
-			Provider:           "google",
-			ProviderCalendarID: item.ID,
-			Name:               name,
-			Timezone:           tz,
-			DisplayColor:       color,
-			EnabledForDisplay:  true,
-			Writable:           writable,
-			DefaultWriteTarget: item.Primary,
-		})
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+		if err != nil {
+			return nil, fmt.Errorf("create list calendars request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+
+		resp, err := c.executeWithRetry(ctx, req)
+		if err != nil {
+			return nil, fmt.Errorf("list calendars request: %w", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+			resp.Body.Close()
+			return nil, fmt.Errorf("list calendars failed status %d: %s", resp.StatusCode, string(body))
+		}
+
+		var list calendarListResponse
+		if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+			resp.Body.Close()
+			return nil, fmt.Errorf("decode calendar list: %w", err)
+		}
+		resp.Body.Close()
+
+		for _, item := range list.Items {
+			color := item.BackgroundColor
+			if color == "" {
+				color = "#3b82f6"
+			}
+			tz := item.TimeZone
+			if tz == "" {
+				tz = "America/Toronto"
+			}
+			writable := item.AccessRole == "owner" || item.AccessRole == "writer"
+
+			name := item.Summary
+			if name == "" {
+				name = item.ID
+			}
+			calID := fmt.Sprintf("cal-g-%s", item.ID)
+
+			calendars = append(calendars, models.Calendar{
+				ID:                 calID,
+				Provider:           "google",
+				ProviderCalendarID: item.ID,
+				Name:               name,
+				Timezone:           tz,
+				DisplayColor:       color,
+				EnabledForDisplay:  true,
+				Writable:           writable,
+				DefaultWriteTarget: item.Primary,
+			})
+		}
+
+		if list.NextPageToken == "" {
+			break
+		}
+		pageToken = list.NextPageToken
 	}
 
 	return calendars, nil
@@ -192,7 +215,15 @@ type googleEvent struct {
 	ETag             string   `json:"etag"`
 	Recurrence       []string `json:"recurrence"`
 	RecurringEventID string   `json:"recurringEventId"`
-	Organizer        struct {
+	HangoutLink      string   `json:"hangoutLink"`
+	ConferenceData   *struct {
+		EntryPoints []struct {
+			EntryPointType string `json:"entryPointType"`
+			URI            string `json:"uri"`
+			Label          string `json:"label"`
+		} `json:"entryPoints"`
+	} `json:"conferenceData"`
+	Organizer struct {
 		Email       string `json:"email"`
 		DisplayName string `json:"displayName"`
 	} `json:"organizer"`
@@ -362,6 +393,31 @@ func convertGoogleEventToModel(calendarID string, item googleEvent) (models.Even
 		eventID = fmt.Sprintf("evt-g-%s-%s", calendarID, item.ID)
 	}
 
+	desc := item.Description
+	loc := item.Location
+
+	meetURL := item.HangoutLink
+	if meetURL == "" && item.ConferenceData != nil {
+		for _, ep := range item.ConferenceData.EntryPoints {
+			if ep.EntryPointType == "video" || strings.HasPrefix(ep.URI, "https://meet.google.com") {
+				meetURL = ep.URI
+				break
+			}
+		}
+	}
+	if meetURL != "" {
+		if !strings.Contains(desc, meetURL) {
+			if desc != "" {
+				desc += "\n\nGoogle Meet: " + meetURL
+			} else {
+				desc = "Google Meet: " + meetURL
+			}
+		}
+		if loc == "" {
+			loc = "Google Meet"
+		}
+	}
+
 	return models.Event{
 		ID:               eventID,
 		Provider:         "google",
@@ -371,8 +427,8 @@ func convertGoogleEventToModel(calendarID string, item googleEvent) (models.Even
 		ETag:             item.ETag,
 		Version:          item.Updated.Unix(),
 		Title:            item.Summary,
-		Description:      item.Description,
-		Location:         item.Location,
+		Description:      desc,
+		Location:         loc,
 		StartAt:          startAt,
 		EndAt:            endAt,
 		Timezone:         tz,

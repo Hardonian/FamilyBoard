@@ -98,6 +98,7 @@ type MicrosoftConfig struct {
 	ClientID     string `toml:"client_id"`
 	ClientSecret string `toml:"client_secret"`
 	RedirectURL  string `toml:"redirect_url"`
+	TenantID     string `toml:"tenant_id"`
 }
 
 type SyncConfig struct {

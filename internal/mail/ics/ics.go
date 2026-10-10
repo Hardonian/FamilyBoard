@@ -14,6 +14,7 @@ type Event struct {
 	Description  string
 	Location     string
 	Organizer    string
+	URL          string
 	StartAt      time.Time
 	EndAt        time.Time
 	Timezone     string
@@ -102,6 +103,8 @@ func Parse(data []byte) (*Calendar, error) {
 			currentEvent.Description = val
 		case "LOCATION":
 			currentEvent.Location = val
+		case "URL":
+			currentEvent.URL = val
 		case "ORGANIZER":
 			currentEvent.Organizer = val
 		case "STATUS":

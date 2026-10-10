@@ -1320,7 +1320,14 @@
     }
 
     if (calBadge) {
-      calBadge.textContent = getCalendarName(ev.calendar_id);
+      const calName = getCalendarName(ev.calendar_id);
+      const calObj = displayCalendars.find(c => c.id === ev.calendar_id);
+      const prov = (ev.provider || (calObj ? calObj.provider : '')).toLowerCase();
+      let provLabel = '';
+      if (prov === 'apple') provLabel = ' · Apple iCloud';
+      else if (prov === 'microsoft') provLabel = ' · Exchange/365';
+      else if (prov === 'google') provLabel = ' · Google Workspace';
+      calBadge.textContent = calName + provLabel;
       calBadge.style.backgroundColor = getCalendarColor(ev.calendar_id);
       calBadge.style.color = '#ffffff';
     }
@@ -1330,6 +1337,57 @@
       if (locEl) locEl.textContent = ev.location;
     } else {
       if (locRow) locRow.style.display = 'none';
+    }
+
+    // Meeting link detection (Google Meet, Microsoft Teams, Apple FaceTime, Zoom)
+    const meetingRow = document.getElementById('detail-meeting-row');
+    const meetingBtn = document.getElementById('detail-meeting-btn');
+    const meetingIcon = document.getElementById('detail-meeting-icon');
+    const meetingLabel = document.getElementById('detail-meeting-label');
+    if (meetingRow && meetingBtn) {
+      const combinedText = ((ev.description || '') + ' ' + (ev.location || '')).trim();
+      let meetUrl = null;
+      let meetType = null;
+
+      const meetGoogleMatch = combinedText.match(/https:\/\/meet\.google\.com\/[a-z0-9-]+/i);
+      const meetTeamsMatch = combinedText.match(/https:\/\/(teams\.microsoft\.com|teams\.live\.com)\/[^\s<>"']+/i);
+      const meetFaceTimeMatch = combinedText.match(/https:\/\/facetime\.apple\.com\/[^\s<>"']+/i);
+      const meetZoomMatch = combinedText.match(/https:\/\/[a-z0-9-]+\.zoom\.us\/[^\s<>"']+/i);
+
+      if (meetGoogleMatch) {
+        meetUrl = meetGoogleMatch[0];
+        meetType = 'google';
+      } else if (meetTeamsMatch) {
+        meetUrl = meetTeamsMatch[0];
+        meetType = 'teams';
+      } else if (meetFaceTimeMatch) {
+        meetUrl = meetFaceTimeMatch[0];
+        meetType = 'apple';
+      } else if (meetZoomMatch) {
+        meetUrl = meetZoomMatch[0];
+        meetType = 'zoom';
+      }
+
+      if (meetUrl) {
+        meetingRow.style.display = 'flex';
+        meetingBtn.href = meetUrl;
+        meetingBtn.className = 'btn-meeting-link btn-meet-' + meetType;
+        if (meetType === 'google') {
+          if (meetingIcon) meetingIcon.textContent = '📹';
+          if (meetingLabel) meetingLabel.textContent = 'Join Google Meet';
+        } else if (meetType === 'teams') {
+          if (meetingIcon) meetingIcon.textContent = '👥';
+          if (meetingLabel) meetingLabel.textContent = 'Join Microsoft Teams';
+        } else if (meetType === 'apple') {
+          if (meetingIcon) meetingIcon.textContent = '📞';
+          if (meetingLabel) meetingLabel.textContent = 'Join FaceTime Call';
+        } else {
+          if (meetingIcon) meetingIcon.textContent = '🎥';
+          if (meetingLabel) meetingLabel.textContent = 'Join Zoom Meeting';
+        }
+      } else {
+        meetingRow.style.display = 'none';
+      }
     }
 
     if (ev.description) {
@@ -2295,8 +2353,11 @@
     const title = (ev.title || '').toLowerCase();
     const cal = displayCalendars.find(c => c.id === ev.calendar_id);
     const calName = (cal ? cal.name : '').toLowerCase();
+    const prov = (ev.provider || (cal ? cal.provider : '')).toLowerCase();
     if (calName.includes('home')) return 'pill-home';
     if (title.includes('birthday')) return 'pill-birthday';
+    if (prov === 'apple') return 'pill-apple';
+    if (prov === 'microsoft') return 'pill-microsoft';
     if (ev.calendar_id === 'cal-member-1' || title.includes('member-1') || title.includes('alex')) return 'pill-member-1';
     if (ev.calendar_id === 'cal-member-2' || title.includes('member-2') || title.includes('jordan')) return 'pill-member-2';
     if (title.includes('kids') || title.includes('soccer') || title.includes('swimming')) return 'pill-kids';
@@ -2307,8 +2368,11 @@
     const title = (ev.title || '').toLowerCase();
     const cal = displayCalendars.find(c => c.id === ev.calendar_id);
     const calName = (cal ? cal.name : '').toLowerCase();
+    const prov = (ev.provider || (cal ? cal.provider : '')).toLowerCase();
     if (calName.includes('home')) return 'card-home';
     if (title.includes('birthday')) return 'card-birthday';
+    if (prov === 'apple') return 'card-apple';
+    if (prov === 'microsoft') return 'card-microsoft';
     if (ev.calendar_id === 'cal-member-1' || title.includes('member-1') || title.includes('alex')) return 'card-member-1';
     if (ev.calendar_id === 'cal-member-2' || title.includes('member-2') || title.includes('jordan')) return 'card-member-2';
     if (title.includes('kids') || title.includes('soccer') || title.includes('swimming')) return 'card-kids';

@@ -552,5 +552,29 @@
       .replace(/'/g, '&#039;');
   }
 
+  window.openAppleModal = function(personID) {
+    const modal = document.getElementById('modal-apple-connect');
+    if (!modal) return;
+    if (personID) {
+      const sel = document.getElementById('apple_person_id');
+      if (sel) sel.value = personID;
+    }
+    if (typeof modal.showModal === 'function') {
+      modal.showModal();
+    }
+  };
+
+  window.toggleAppleAuthFields = function(val) {
+    const webcal = document.getElementById('apple-webcal-fields');
+    const caldav = document.getElementById('apple-caldav-fields');
+    if (val === 'caldav') {
+      if (webcal) webcal.style.display = 'none';
+      if (caldav) caldav.style.display = 'block';
+    } else {
+      if (webcal) webcal.style.display = 'block';
+      if (caldav) caldav.style.display = 'none';
+    }
+  };
+
   document.addEventListener('DOMContentLoaded', init);
 })();

@@ -15,9 +15,10 @@ import (
 )
 
 const (
-	ScopeMSOfflineAccess = "offline_access"
-	ScopeMSUserRead      = "User.Read"
-	ScopeMSMailRead      = "Mail.Read"
+	ScopeMSOfflineAccess      = "offline_access"
+	ScopeMSUserRead           = "User.Read"
+	ScopeMSMailRead           = "Mail.Read"
+	ScopeMSCalendarsReadWrite = "Calendars.ReadWrite"
 )
 
 type MicrosoftUserProfile struct {
@@ -37,13 +38,17 @@ type MicrosoftClient struct {
 	httpClient   *http.Client
 }
 
-func NewMicrosoftClient(clientID, clientSecret, redirectURL string) *MicrosoftClient {
+func NewMicrosoftClient(clientID, clientSecret, redirectURL string, tenantID ...string) *MicrosoftClient {
+	tid := "common"
+	if len(tenantID) > 0 && strings.TrimSpace(tenantID[0]) != "" {
+		tid = strings.TrimSpace(tenantID[0])
+	}
 	return &MicrosoftClient{
 		clientID:     clientID,
 		clientSecret: clientSecret,
 		redirectURL:  redirectURL,
-		authURL:      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
-		tokenURL:     "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+		authURL:      fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/authorize", tid),
+		tokenURL:     fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", tid),
 		profileURL:   "https://graph.microsoft.com/v1.0/me",
 		httpClient: &http.Client{
 			Timeout: 15 * time.Second,
@@ -67,18 +72,40 @@ func (mc *MicrosoftClient) SetEndpoints(authURL, tokenURL, profileURL string, cl
 }
 
 func (mc *MicrosoftClient) AuthURL(state string) string {
+	return mc.AuthURLWithFlow(state, "calendar", "")
+}
+
+func (mc *MicrosoftClient) AuthURLWithFlow(state, flow, loginHint string) string {
+	scopes := []string{ScopeMSOfflineAccess, ScopeMSUserRead}
+	if flow == "mail" {
+		scopes = append(scopes, ScopeMSMailRead)
+	} else if flow == "all" {
+		scopes = append(scopes, ScopeMSCalendarsReadWrite, ScopeMSMailRead)
+	} else {
+		// Default to calendar (+ optional mail for unified login)
+		scopes = append(scopes, ScopeMSCalendarsReadWrite, ScopeMSMailRead)
+	}
+
 	conf := &oauth2.Config{
 		ClientID:     mc.clientID,
 		ClientSecret: mc.clientSecret,
 		RedirectURL:  mc.redirectURL,
-		Scopes:       []string{ScopeMSOfflineAccess, ScopeMSUserRead, ScopeMSMailRead},
+		Scopes:       scopes,
 		Endpoint: oauth2.Endpoint{
 			AuthURL:  mc.authURL,
 			TokenURL: mc.tokenURL,
 		},
 	}
 
-	return conf.AuthCodeURL(state, oauth2.AccessTypeOffline)
+	opts := []oauth2.AuthCodeOption{
+		oauth2.AccessTypeOffline,
+		oauth2.SetAuthURLParam("prompt", "select_account"),
+	}
+	if loginHint != "" {
+		opts = append(opts, oauth2.SetAuthURLParam("login_hint", loginHint))
+	}
+
+	return conf.AuthCodeURL(state, opts...)
 }
 
 func (mc *MicrosoftClient) Exchange(ctx context.Context, code string) (*StoredToken, *MicrosoftUserProfile, error) {
@@ -156,7 +183,7 @@ func (mc *MicrosoftClient) RefreshToken(ctx context.Context, refreshToken string
 		"client_secret": {mc.clientSecret},
 		"refresh_token": {refreshToken},
 		"grant_type":    {"refresh_token"},
-		"scope":         {strings.Join([]string{ScopeMSOfflineAccess, ScopeMSUserRead, ScopeMSMailRead}, " ")},
+		"scope":         {strings.Join([]string{ScopeMSOfflineAccess, ScopeMSUserRead, ScopeMSCalendarsReadWrite, ScopeMSMailRead}, " ")},
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, mc.tokenURL, strings.NewReader(form.Encode()))

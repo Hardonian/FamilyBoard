@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/Hardonian/FamilyBoard/internal/buildinfo"
+	appleCal "github.com/Hardonian/FamilyBoard/internal/calendar/apple"
 	"github.com/Hardonian/FamilyBoard/internal/calendar/google"
+	msCal "github.com/Hardonian/FamilyBoard/internal/calendar/microsoft"
 	"github.com/Hardonian/FamilyBoard/internal/config"
 	"github.com/Hardonian/FamilyBoard/internal/db"
 	"github.com/Hardonian/FamilyBoard/internal/oauth"
@@ -108,17 +110,23 @@ func main() {
 	googleOAuth := oauth.NewGoogleClient(cfg.Google.ClientID, cfg.Google.ClientSecret, cfg.Google.RedirectURL)
 	var msOAuth *oauth.MicrosoftClient
 	if cfg.Microsoft.Enabled {
-		msOAuth = oauth.NewMicrosoftClient(cfg.Microsoft.ClientID, cfg.Microsoft.ClientSecret, cfg.Microsoft.RedirectURL)
+		msOAuth = oauth.NewMicrosoftClient(cfg.Microsoft.ClientID, cfg.Microsoft.ClientSecret, cfg.Microsoft.RedirectURL, cfg.Microsoft.TenantID)
 	}
 
 	googleCalClient := google.NewGoogleCalendarClient("", nil)
+	msCalClient := msCal.NewCalendarClient("", nil)
+	appleCalClient := appleCal.NewAppleCalendarClient("", nil)
 
 	// 6. Engines: Queue & Sync
 	queueEngine := queue.NewEngine(store, nil, cfg.Sync.MaxMutationAttempts, time.Duration(cfg.Sync.MutationRetryIntervalSeconds)*time.Second)
 	queueEngine.RegisterProvider(googleCalClient)
+	queueEngine.RegisterProvider(msCalClient)
+	queueEngine.RegisterProvider(appleCalClient)
 
 	syncEngine := calsync.NewEngine(store, nil, time.Duration(cfg.Sync.CalendarIntervalSeconds)*time.Second)
 	syncEngine.RegisterProvider(googleCalClient)
+	syncEngine.RegisterProvider(msCalClient)
+	syncEngine.RegisterProvider(appleCalClient)
 
 	// 7. Web Server
 	server, err := web.NewServer(cfg, store, tokenStorage, stateManager, googleOAuth, msOAuth, syncEngine, queueEngine)

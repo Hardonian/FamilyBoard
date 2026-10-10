@@ -7,7 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [1.3.0] - 2026-10-10
+
+### Added
+
+- **Google Workspace (G Suite) Enterprise Polish & Compatibility:**
+  - Multi-page pagination (`nextPageToken`) in `GoogleCalendarClient.ListCalendars` ensuring complete discovery of all domain secondary, shared family, and resource calendars.
+  - Multi-tenant Google Workspace account picker via `prompt=select_account consent`.
+  - Automatic hosted domain (`hd`) parameter derivation for custom family domain emails.
+  - Automatic Google Meet video conference link extraction from `hangoutLink` and `conferenceData` entry points.
+  - Clear, actionable administrative error handling for Google Workspace policy blocks (`admin_policy_enforced`).
+- **Microsoft Exchange Online & Office 365 Two-Way Calendar Synchronization:**
+  - Dedicated `MicrosoftCalendarClient` in `internal/calendar/microsoft` implementing `calendar.Provider`.
+  - Microsoft Graph Calendars API integration (`/v1.0/me/calendars` and `/v1.0/me/calendars/{id}/events`).
+  - Full CRUD operations with changeKey ETags and optimistic concurrency.
+  - Paged calendar discovery with `@odata.nextLink` and delta token synchronization with `@odata.deltaLink`.
+  - Microsoft Teams online meeting link extraction (`onlineMeeting.joinUrl` and `onlineMeetingUrl`).
+  - Configurable `tenant_id` support in `config.toml` (`common`, `organizations`, or custom enterprise tenant UUIDs).
+  - Preserved `Calendars.ReadWrite` scope persistence across periodic OAuth token refresh cycles.
+  - Background mutation queue and sync engine registration for the `microsoft` provider.
+- **Apple iCloud Calendar Ecosystem (CalDAV & Shared Webcal):**
+  - Dedicated `AppleCalendarClient` in `internal/calendar/apple` implementing `calendar.Provider`.
+  - Apple iCloud Shared / Public Family Calendar (`webcal://` or `https://`) feed synchronization using embedded RFC 5545 iCalendar engine (`internal/mail/ics`).
+  - Apple iCloud CalDAV integration supporting Apple ID + App-Specific Passwords with `PROPFIND` calendar collection discovery, `REPORT` queries, and two-way event synchronization.
+  - RFC 5545 `URL` property parsing for video meetings, links, and Apple FaceTime calls.
+  - Preflight credential and feed validation with helpful diagnostic guidance for Apple App-Specific Passwords.
+  - Admin modal dialog (`#modal-apple-connect`) and secure endpoint (`POST /admin/apple/connect`) for connecting Apple iCloud calendars.
+  - Background mutation queue and sync engine registration for the `apple` provider.
+- **Unified Multi-Provider UI & Brand Aesthetics:**
+  - One-tap "Join Meeting" action button in Kiosk & Mobile Event Detail modals with distinct platform styling:
+    - Google Meet (`📹 Join Google Meet`, `.btn-meet-google`)
+    - Microsoft Teams (`👥 Join Microsoft Teams`, `.btn-meet-teams`)
+    - Apple FaceTime (`📞 Join FaceTime Call`, `.btn-meet-apple`)
+    - Zoom (`🎥 Join Zoom Meeting`, `.btn-meet-zoom`)
+  - Ecosystem-aware color-coded event pills and cards on Kiosk:
+    - Apple iCloud: Distinct emerald branding (`.pill-apple`, `.card-apple`, `#10b981`).
+    - Microsoft Exchange / 365: Classic Microsoft corporate blue (`.pill-microsoft`, `.card-microsoft`, `#0078d4`).
+    - Google Workspace: Rich Google blue (`.pill-google`, `.card-google`, `#3b82f6`).
+  - Provider indicator tags in Event Detail modal (`Apple iCloud`, `Exchange/365`, `Google Workspace`).
+  - Universal Calendar & Mail Ecosystem Guide card in Admin Accounts dashboard.
+  - Intelligent email provider detection in `DetectEmailProvider` detecting `@icloud.com`, `@me.com`, `@mac.com`, `@office365.com`, `@onmicrosoft.com`, `@outlook.com`, and `@gmail.com`.
+  - Multi-provider connection selectors in Admin Accounts and Calendars tabs allowing manual provider overrides.
+  - Updated first-run setup wizard (`/setup`) documentation and email input helpers.
+
+## [1.2.0] - 2026-10-10
+
+### Added
+
+- **Cross-Platform Mobile Interoperability (Apple iPhone & Poco F7 Android):**
+  - Full Progressive Web App (PWA) manifest (`/manifest.webmanifest`) with multi-resolution SVG and maskable icons.
+  - Apple Web App meta tags (`apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style`, `viewport-fit=cover`, Apple touch icons) for borderless edge-to-edge notch and Dynamic Island support.
+  - Dynamic Viewport Units (`100dvh`) eliminating jumping address bars on mobile browsers.
+  - Dedicated Mobile Bottom Navigation Dock (`.mobile-bottom-nav`) with tactile one-thumb switching between Month, Week, Schedule (Agenda), and Day views.
+  - Mobile Floating Action Button (FAB) for instant one-thumb event creation.
+  - Bottom sheet modal dialogs with smooth touch physics, rounded top corners, and drag handle indicators.
+  - Dual-keyboard clash prevention: smart mobile device detection suppressing physical kiosk touch keyboard in favor of native iOS and Android soft keyboards.
+  - Inactivity screensaver suppression on mobile devices to prevent hijacking phone browsers.
+  - Haptic feedback integration (`navigator.vibrate`) on Android (Poco F7) for tactile taps when navigating, adding, or deleting events.
+- **Zero-Friction Camera QR Code Smartphone Onboarding:**
+  - Pure Go dynamic QR code generator (`GET /api/system/mobile-pair/qrcode`) and pairing metadata API (`GET /api/system/mobile-pair`).
+  - Point-and-scan camera pairing from Apple iPhone Camera app and Android / Poco F7 Camera/Lens.
+  - Cryptographically signed HMAC pairing token verification (`/?pair=<token>`), automatically granting household write capability (`fb_kiosk_cap`) to smartphones without typing passwords.
+  - One-click pairing link copying with tactile feedback.
+  - Step-by-step native onboarding guidance for iOS Safari ("Add to Home Screen") and Android Chrome ("Install App").
+  - Mobile-optimized first-run setup wizard (`/setup`) with auto-capitalize, auto-correct, and email input modes.
+- **Flawless Real-Time Push Synchronization & Offline Resilience:**
+  - High-frequency 15s keepalive heartbeat ticker (`: keepalive\n\n`) on Server-Sent Events (`GET /api/events/stream`) preventing mobile router NAT drops and cellular timeouts.
+  - Reconnection interval directive (`retry: 2500\n\n`) and proxy buffering prevention (`X-Accel-Buffering: no`).
+  - Resilient client-side SSE sync engine with exponential backoff, random jitter, and live status badge indicators.
+  - Instant sync wake triggers on mobile lifecycle events: `document.visibilityState === 'visible'`, `window.pageshow`, `window.focus`, and `window.online`.
+  - Production Service Worker (`/sw.js`) caching static shell assets and providing network-first offline API fallback for reliable browsing outside home Wi-Fi range.
 
 ### Changed
 

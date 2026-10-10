@@ -96,10 +96,17 @@ func (gc *GoogleClient) AuthURL(state, flow, loginHint string) string {
 
 	opts := []oauth2.AuthCodeOption{
 		oauth2.AccessTypeOffline,
-		oauth2.ApprovalForce, // prompt=consent to ensure refresh_token returned
+		oauth2.SetAuthURLParam("prompt", "select_account consent"),
 	}
 	if loginHint != "" {
 		opts = append(opts, oauth2.SetAuthURLParam("login_hint", loginHint))
+		// If Google Workspace / custom domain, provide hd hint
+		if atIdx := strings.LastIndex(loginHint, "@"); atIdx != -1 && atIdx < len(loginHint)-1 {
+			domain := strings.ToLower(loginHint[atIdx+1:])
+			if domain != "gmail.com" && domain != "googlemail.com" {
+				opts = append(opts, oauth2.SetAuthURLParam("hd", domain))
+			}
+		}
 	}
 
 	return conf.AuthCodeURL(state, opts...)

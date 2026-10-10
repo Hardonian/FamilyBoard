@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -173,6 +174,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /admin/candidates/{id}/approve", s.requireAuth(s.requireCSRF(s.handleAdminCandidateApprove)))
 	s.mux.HandleFunc("POST /admin/candidates/{id}/reject", s.requireAuth(s.requireCSRF(s.handleAdminCandidateReject)))
 	s.mux.HandleFunc("GET /admin/oauth/start", s.requireAuth(s.handleAdminOAuthStart))
+	s.mux.HandleFunc("POST /admin/apple/connect", s.requireAuth(s.requireCSRF(s.handleAdminAppleConnect)))
 	s.mux.HandleFunc("GET /admin/backup/download", s.requireAuth(s.handleAdminBackupDownload))
 
 	// OAuth Callbacks
@@ -301,6 +303,13 @@ func (s *Server) GetValidAccessToken(ctx context.Context, personID, provider str
 	stored, err := s.tokenStorage.Load(account.ID)
 	if err != nil {
 		return "", fmt.Errorf("load stored token for %s: %w", account.ID, err)
+	}
+
+	if provider == "apple" {
+		if stored.AccessToken == "" {
+			return "", errors.New("empty apple credentials")
+		}
+		return stored.AccessToken, nil
 	}
 
 	// If token expires within 5 minutes, refresh it automatically

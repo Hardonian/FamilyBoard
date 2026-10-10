@@ -21,11 +21,11 @@
       <div class="form-row">
         <div class="form-group">
           <label class="form-label" for="device_name">Device Name</label>
-          <input type="text" id="device_name" name="device_name" class="form-input" value="{{.DeviceName}}" required autocapitalize="words">
+          <input type="text" id="device_name" name="device_name" class="form-input" value="{{.DeviceName}}" required>
         </div>
         <div class="form-group">
           <label class="form-label" for="timezone">Appliance Timezone</label>
-          <input type="text" id="timezone" name="timezone" class="form-input" value="{{.Timezone}}" required autocapitalize="none" autocorrect="off" spellcheck="false">
+          <input type="text" id="timezone" name="timezone" class="form-input" value="{{.Timezone}}" required autocorrect="off" spellcheck="false">
         </div>
       </div>
     </div>
@@ -52,39 +52,39 @@
       <p class="setup-section-desc">From your Google Cloud Console OAuth 2.0 Web Application client.</p>
       <div class="form-group">
         <label class="form-label" for="google_client_id">Google Client ID</label>
-        <input type="text" id="google_client_id" name="google_client_id" class="form-input" value="{{.GoogleClientID}}" placeholder="apps.googleusercontent.com" autocapitalize="none" autocorrect="off" spellcheck="false">
+        <input type="text" id="google_client_id" name="google_client_id" class="form-input" value="{{.GoogleClientID}}" placeholder="apps.googleusercontent.com" autocorrect="off" spellcheck="false">
       </div>
       <div class="form-group form-group-spaced">
         <label class="form-label" for="google_client_secret">Google Client Secret</label>
-        <input type="password" id="google_client_secret" name="google_client_secret" class="form-input" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
+        <input type="password" id="google_client_secret" name="google_client_secret" class="form-input" autocomplete="off" autocorrect="off" spellcheck="false">
       </div>
     </div>
 
     <!-- Step 4: Primary Family Accounts & Email Providers -->
     <div class="admin-card">
       <h3 class="setup-section-title">4. Family Member Accounts &amp; Email Providers</h3>
-      <p class="setup-section-desc">Enter your family members' names and email addresses. FamilyBoard automatically detects Gmail or Outlook and configures calendar synchronization.</p>
+      <p class="setup-section-desc">Enter your family members' names and email addresses. FamilyBoard automatically detects Google Workspace / Gmail, Microsoft Exchange / Outlook, and Apple iCloud to configure calendar synchronization.</p>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label" for="member1_name">Family Member 1 Name</label>
-          <input type="text" id="member1_name" name="member1_name" class="form-input" value="{{if .Member1Name}}{{.Member1Name}}{{else}}Family Member 1{{end}}" placeholder="e.g. Alex" required autocapitalize="words" inputmode="text">
+          <input type="text" id="member1_name" name="member1_name" class="form-input" value="{{if .Member1Name}}{{.Member1Name}}{{else}}Family Member 1{{end}}" placeholder="e.g. Alex" required inputmode="text">
         </div>
         <div class="form-group">
           <label class="form-label" for="member1_email">Email Address</label>
-          <input type="email" id="member1_email" name="member1_email" class="form-input" value="{{.Member1Email}}" placeholder="e.g. member1@gmail.com or member1@outlook.com" required autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="email">
+          <input type="email" id="member1_email" name="member1_email" class="form-input" value="{{.Member1Email}}" placeholder="e.g. member1@gmail.com, alex@customdomain.com, or user@icloud.com" required autocorrect="off" spellcheck="false" inputmode="email">
         </div>
       </div>
       <div class="form-row form-group-spaced">
         <div class="form-group">
           <label class="form-label" for="member2_name">Family Member 2 Name</label>
-          <input type="text" id="member2_name" name="member2_name" class="form-input" value="{{if .Member2Name}}{{.Member2Name}}{{else}}Family Member 2{{end}}" placeholder="e.g. Jordan" required autocapitalize="words" inputmode="text">
+          <input type="text" id="member2_name" name="member2_name" class="form-input" value="{{if .Member2Name}}{{.Member2Name}}{{else}}Family Member 2{{end}}" placeholder="e.g. Jordan" required inputmode="text">
         </div>
         <div class="form-group">
           <label class="form-label" for="member2_email">Email Address</label>
-          <input type="email" id="member2_email" name="member2_email" class="form-input" value="{{.Member2Email}}" placeholder="e.g. member2@gmail.com or member2@outlook.com" required autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="email">
+          <input type="email" id="member2_email" name="member2_email" class="form-input" value="{{.Member2Email}}" placeholder="e.g. member2@outlook.com, jordan@customdomain.com, or user@icloud.com" required autocorrect="off" spellcheck="false" inputmode="email">
         </div>
       </div>
-      <p class="setup-member-note">Supports Google Workspace / G Suite (custom domains), personal Gmail, and Microsoft Outlook. Any shared family calendars (like your shared <strong>"HOME"</strong> calendar) will automatically sync once authorized in the Admin dashboard.</p>
+      <p class="setup-member-note">Supports Google Workspace / G Suite (custom domains), personal Gmail, Microsoft Exchange / Office 365, and Apple iCloud (CalDAV / Shared Calendar link). Any shared family calendars (like your shared <strong>"HOME"</strong> calendar) will automatically sync once authorized in the Admin dashboard.</p>
     </div>
 
     <div class="setup-actions">
