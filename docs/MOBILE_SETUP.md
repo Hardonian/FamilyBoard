@@ -38,6 +38,7 @@ FamilyBoard provides sovereign, appliance-grade digital family calendar and dash
 ## Setup on Apple iPhone (iOS Safari)
 
 ### Step 1: Scan & Pair
+
 1. On the kitchen FamilyBoard screen, tap the **"📱 Phone"** button in the top navigation bar.
 2. Open the built-in **Camera** app on your iPhone.
 3. Point your camera at the QR code on the kitchen display.
@@ -45,12 +46,14 @@ FamilyBoard provides sovereign, appliance-grade digital family calendar and dash
 5. Safari will open, validate your physical pairing signature, and grant household access.
 
 ### Step 2: Add to Home Screen (PWA Mode)
-1. At the bottom of Safari, tap the **Share** button (<span class="ios-glyph">⎋</span> square with arrow pointing up).
-2. Scroll down in the share sheet and tap **"Add to Home Screen"** (<span class="ios-glyph">⊞</span>).
+
+1. At the bottom of Safari, tap the **Share** button (⎋ square with arrow pointing up).
+2. Scroll down in the share sheet and tap **"Add to Home Screen"** (⊞).
 3. Confirm the name **FamilyBoard** and tap **Add** in the top-right corner.
 4. FamilyBoard is now installed on your iPhone Home Screen with the high-resolution app icon!
 
 ### Step 3: Launch Sovereign App
+
 - Tap the **FamilyBoard** icon on your Home Screen.
 - It launches as a full-screen, standalone application without Safari's top or bottom address bars.
 - Schedule, Day, Week, and Month views adapt fluidly to the iPhone's screen size and Dynamic Island.
@@ -60,18 +63,21 @@ FamilyBoard provides sovereign, appliance-grade digital family calendar and dash
 ## Setup on Poco F7 / Modern Android (Chrome & HyperOS)
 
 ### Step 1: Scan & Pair
+
 1. Tap **"📱 Phone"** on the kitchen touchscreen.
 2. Open your Poco F7 Camera app (or Google Lens).
 3. Point the camera at the QR code and tap the link banner to open in Google Chrome.
 4. Your phone is immediately authenticated with full household write capability.
 
 ### Step 2: Install as Native Web App
+
 1. Chrome will automatically display an **"Install FamilyBoard"** banner at the bottom or top.
 2. Tap **"Install"** (or open the Chrome menu **⋮** in the upper-right corner and select **"Install App"** / **"Add to Home screen"**).
 3. Tap **Install** to confirm.
 4. FamilyBoard will be added to your app drawer and home screen.
 
 ### Step 3: Ultra-Smooth High Refresh Rate
+
 - Launch FamilyBoard from your home screen.
 - On the Poco F7's 120Hz CrystalRes display, scrolling through the family Agenda schedule is silky smooth with zero stutter.
 - Tapping view tabs, adding events, or saving changes provides subtle haptic vibration pulses.
@@ -111,7 +117,9 @@ FamilyBoard provides sovereign, appliance-grade digital family calendar and dash
 ```
 
 ### Automatic Sync Triggers
+
 FamilyBoard does not require manual refresh. It triggers live sync across all devices via:
+
 - **Server Push (SSE):** Whenever an event is created, edited, approved from email, or deleted on any device, the server broadcasts an immediate reload event.
 - **Screen Wake (`visibilitychange`):** When you take your phone out of your pocket and unlock the screen, FamilyBoard checks connection health and pulls any new items within milliseconds.
 - **Wi-Fi Reconnection (`online`):** If you step outside and return home, the app immediately re-establishes the SSE stream with exponential backoff and jitter.
@@ -121,6 +129,7 @@ FamilyBoard does not require manual refresh. It triggers live sync across all de
 ## Mobile First-Run Setup (`/setup`)
 
 If initializing an appliance for the first time from an iPhone or Poco F7:
+
 1. Connect your phone to the `FamilyBoard-Setup` Wi-Fi hotspot (or visit `http://familyboard.local:8080/setup`).
 2. The First-Run Setup Wizard automatically formats inputs for mobile soft keyboards:
    - Names use capitalized words.
