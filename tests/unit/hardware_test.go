@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -247,13 +248,82 @@ func TestHardware_HTTPEndpoints(t *testing.T) {
 		}
 	}
 
-	// 11. GET /api/photos (FotoCube Ambient Photo Frame)
+	// 11. GET /api/photos (FotoCube Ambient Photo Frame) & Upload/Delete
 	{
 		req := httptest.NewRequest(http.MethodGet, "/api/photos", nil)
 		w := httptest.NewRecorder()
 		srv.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
 			t.Errorf("expected 200 for /api/photos, got %d", w.Code)
+		}
+
+		// Upload photo test
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		part, err := writer.CreateFormFile("photo", "family_trip.jpg")
+		if err != nil {
+			t.Fatalf("failed to create form file: %v", err)
+		}
+		_, _ = part.Write([]byte("\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xFF\xDB"))
+		_ = writer.Close()
+
+		cookie := loginAdminForTest(t, srv)
+		uploadReq := httptest.NewRequest(http.MethodPost, "/api/photos/upload", &body)
+		uploadReq.Header.Set("Content-Type", writer.FormDataContentType())
+		uploadReq.AddCookie(cookie)
+		uploadW := httptest.NewRecorder()
+		srv.ServeHTTP(uploadW, uploadReq)
+		if uploadW.Code != http.StatusOK {
+			t.Fatalf("expected 200 for photo upload, got %d: %s", uploadW.Code, uploadW.Body.String())
+		}
+
+		var uploadResp map[string]interface{}
+		_ = json.Unmarshal(uploadW.Body.Bytes(), &uploadResp)
+		uploadedFilename, ok := uploadResp["filename"].(string)
+		if !ok || uploadedFilename == "" {
+			t.Fatalf("expected uploaded filename in response")
+		}
+
+		// Verify listed
+		listReq := httptest.NewRequest(http.MethodGet, "/api/photos", nil)
+		listW := httptest.NewRecorder()
+		srv.ServeHTTP(listW, listReq)
+		if listW.Code != http.StatusOK {
+			t.Fatalf("expected 200 for /api/photos, got %d", listW.Code)
+		}
+		if !bytes.Contains(listW.Body.Bytes(), []byte(uploadedFilename)) {
+			t.Errorf("expected photo list to contain %s", uploadedFilename)
+		}
+
+		// Delete photo
+		deleteReq := httptest.NewRequest(http.MethodDelete, "/api/photos/"+uploadedFilename, nil)
+		deleteReq.AddCookie(cookie)
+		deleteW := httptest.NewRecorder()
+		srv.ServeHTTP(deleteW, deleteReq)
+		if deleteW.Code != http.StatusOK {
+			t.Fatalf("expected 200 for photo delete, got %d: %s", deleteW.Code, deleteW.Body.String())
+		}
+	}
+
+	// 11b. Wi-Fi QR onboarding is available to the physical kiosk but not remote unauthenticated clients.
+	{
+		localReq := httptest.NewRequest(http.MethodGet, "/api/system/wifi/qrcode", nil)
+		localReq.RemoteAddr = "127.0.0.1:1234"
+		localW := httptest.NewRecorder()
+		srv.ServeHTTP(localW, localReq)
+		if localW.Code != http.StatusOK {
+			t.Errorf("expected 200 for local Wi-Fi QR code, got %d", localW.Code)
+		}
+		if got := localW.Header().Get("Content-Type"); got != "image/png" {
+			t.Errorf("expected image/png QR response, got %q", got)
+		}
+
+		remoteReq := httptest.NewRequest(http.MethodGet, "/api/system/wifi/qrcode", nil)
+		remoteReq.RemoteAddr = "192.0.2.25:1234"
+		remoteW := httptest.NewRecorder()
+		srv.ServeHTTP(remoteW, remoteReq)
+		if remoteW.Code != http.StatusUnauthorized {
+			t.Errorf("expected remote Wi-Fi QR request to require authorization, got %d", remoteW.Code)
 		}
 	}
 

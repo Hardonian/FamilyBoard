@@ -165,3 +165,97 @@ nmcli device status
 # Inspect Bluetooth controller
 bluetoothctl show
 ```
+
+---
+
+## 8. Standalone Portable SD Card Deployment (Zero-Install)
+
+If you prefer not to install anything into your Radxa OS system root, FamilyBoard can run as a portable, self-contained application directly off any MicroSD card or USB drive.
+
+### Preparing the SD Card
+
+1. On your development PC, build or copy the standalone release:
+
+   ```powershell
+   # Windows PowerShell
+   .\scripts\prepare_radxa_sd.ps1 -DriveLetter "E:"
+   ```
+
+   Or on Linux/macOS:
+
+   ```bash
+   ./scripts/prepare_radxa_sd.sh -d /media/user/SDCARD
+   ```
+
+2. The script copies the pre-built `dist/familyboard-sd-standalone` bundle onto the SD card.
+
+### Running Portably on the Radxa Dragon
+
+1. Insert the MicroSD card into the Radxa Dragon.
+2. In the terminal:
+
+   ```bash
+   cd /media/user/SDCARD/familyboard
+   chmod +x *.sh familyboard familyboardctl
+   ./run-standalone.sh
+   ```
+
+3. The server boots immediately from the local folder, writing database, photos, and configurations directly to the SD card.
+
+---
+
+## 9. One-Click SD-to-NVMe SSD Live Migration
+
+MicroSD cards are convenient for initial bootstrapping, but high-speed M.2 NVMe SSDs offer up to 3,000 MB/s sequential throughput, 100x random IOPS, and indefinite flash endurance.
+
+FamilyBoard includes an automated live migration engine:
+
+### Method A: Admin Web Portal (1-Click)
+
+1. Power off your Radxa Dragon, insert an M.2 2280 or 2242 PCIe NVMe SSD into the M.2 slot, and boot up.
+2. Navigate to **Admin** &rarr; **Hardware &amp; Network** &rarr; **Storage Media &amp; High-Speed NVMe SSD**.
+3. Verify that the NVMe drive is detected (model name and capacity in GB).
+4. Click **🚀 Clone &amp; Port System to NVMe SSD**.
+5. The system partitions the SSD (GPT), creates an ext4 filesystem, rsyncs the live rootfs with full file capabilities, updates `/etc/fstab` with the new NVMe filesystem UUID, and configures U-Boot/extlinux boot parameters.
+6. Once complete, shut down, remove the MicroSD card, and power on. The Radxa Dragon boots directly from NVMe in ~4 seconds!
+
+### Method B: Terminal Command
+
+```bash
+sudo /usr/local/bin/familyboard-migrate-nvme
+```
+
+---
+
+## 10. FotoCube Ambient Digital Photo Frame Screensaver
+
+FamilyBoard replaces commercial ambient smart frames like FotoCube and Skylight Calendar without subscription fees.
+
+### Ambient Screensaver Features
+
+* **Idle Watchdog:** Kicks in automatically after 5 minutes of inactivity (or tap the **🖼️ Frame** button in the header anytime).
+* **Ken Burns Pan & Zoom:** Subtle, smooth hardware-accelerated CSS animations.
+* **Ambient Kitchen HUD:** High-contrast time, day, date, and weather slot.
+* **NEXT UP Schedule Pill:** Surfaces the next upcoming family activity with personal color dot and countdown.
+* **Instant Touch Wake:** Any tap on the screen immediately restores the calendar view with zero latency.
+
+### Managing Family Photos
+
+1. Navigate to **Admin** &rarr; **Hardware &amp; Network** &rarr; **FotoCube Ambient Photo Frame**.
+2. Drag and drop family pictures (JPEG, PNG, WebP) directly into the upload dropzone.
+3. Uploaded photos are stored locally in `/var/lib/familyboard/photos` (or `./photos` in standalone mode) and immediately enter the screensaver rotation.
+4. Remove unwanted photos at any time with the one-click **🗑️ Delete** button.
+
+---
+
+## 11. Zero-Touch Mobile Phone QR Code Onboarding
+
+When setting up a new Radxa Dragon without a keyboard or monitor nearby:
+
+1. Power on the Radxa Dragon. If unconfigured, the fallback Wi-Fi hotspot **`FamilyBoard-Setup`** activates automatically.
+2. The touchscreen displays a scannable **Wi-Fi QR Code**.
+3. Point any iPhone or Android camera at the QR code:
+   * The phone prompts: **Join 'FamilyBoard-Setup' Network**.
+   * Tap to join without typing passwords.
+4. Open `http://192.168.4.1:8080/admin` on your phone to connect the board to your household Wi-Fi.
+5. Tap the Wi-Fi icon on the kiosk display anytime to view the QR code or manage networks on-screen.

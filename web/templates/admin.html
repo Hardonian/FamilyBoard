@@ -366,6 +366,35 @@
         {{end}}
       </div>
 
+      {{if .WifiStatus.HotspotActive}}
+      <div class="admin-hotspot-onboarding-card">
+        <div class="hotspot-qr-section">
+          <div class="hotspot-qr-box">
+            <img src="/api/system/wifi/qrcode" alt="Wi-Fi Hotspot Setup QR Code" class="hotspot-qr-img" width="160" height="160">
+          </div>
+          <div class="hotspot-qr-meta">
+            <span class="badge-subtle">📱 Zero-Touch Phone Onboarding</span>
+            <h4 class="hotspot-title">Scan to Join Setup Wi-Fi</h4>
+            <p class="hotspot-sub">Point your iPhone or Android camera at this QR code to connect automatically without typing passwords.</p>
+            <div class="hotspot-credentials-grid">
+              <div class="cred-item">
+                <span class="cred-label">Wi-Fi Network (SSID):</span>
+                <code class="cred-val">{{if .WifiStatus.HotspotSSID}}{{.WifiStatus.HotspotSSID}}{{else}}FamilyBoard-Setup{{end}}</code>
+              </div>
+              <div class="cred-item">
+                <span class="cred-label">Wi-Fi Password:</span>
+                <code class="cred-val">familyboard123</code>
+              </div>
+              <div class="cred-item">
+                <span class="cred-label">Setup URL:</span>
+                <code class="cred-val">http://192.168.4.1:8080/admin</code>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {{end}}
+
       <h3 class="admin-subheading">Available Wireless Networks</h3>
       <div id="wifi-networks-container">
         <table class="admin-table">
@@ -553,6 +582,34 @@
           </tbody>
         </table>
       </details>
+    </div>
+
+    <!-- FotoCube Ambient Photo Frame & Screensaver Management -->
+    <div class="admin-card">
+      <div class="admin-card-header-flex">
+        <div>
+          <h2 class="admin-section-heading">FotoCube Ambient Photo Frame</h2>
+          <p class="admin-section-sub">Family slideshow screensaver that turns the Radxa Dragon touchscreen into an ambient kitchen photo frame during idle periods. Features ambient clock, weather, and upcoming schedule countdown.</p>
+        </div>
+        <span class="status-badge status-badge-home" id="photo-count-badge">
+          Loading Photos…
+        </span>
+      </div>
+
+      <!-- Photo Upload Dropzone -->
+      <div id="photo-dropzone" class="photo-manager-dropzone" tabindex="0" role="button" aria-label="Upload photos by drag and drop or clicking">
+        <input type="file" id="photo-file-input" accept="image/jpeg,image/png,image/webp" multiple class="hidden">
+        <div class="dropzone-icon">📸</div>
+        <div class="dropzone-text"><strong>Drag &amp; drop family photos here</strong> or <span class="dropzone-link">browse files</span></div>
+        <div class="dropzone-hint">Supports JPEG, PNG, and WebP (up to 32MB each). Photos automatically rotate on the kiosk screensaver.</div>
+        <div id="photo-upload-spinner" class="photo-upload-spinner hidden">Uploading photos…</div>
+      </div>
+
+      <!-- Uploaded Photos Grid -->
+      <h3 class="admin-subheading">Current Slideshow Photos</h3>
+      <div id="photo-gallery-grid" class="photo-manager-grid">
+        <div class="admin-empty-cell photo-empty-state">Loading photo library…</div>
+      </div>
     </div>
 
     <!-- Storage & NVMe SSD Migration -->

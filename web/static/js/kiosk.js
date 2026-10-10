@@ -150,6 +150,11 @@
               elWifiBadge.title = 'Wi-Fi Disconnected';
               elWifiStatusText.textContent = 'Offline';
             }
+
+            if (wifi.hotspot_active && !wifi.connected && !hasAutoPromptedSetup) {
+              hasAutoPromptedSetup = true;
+              setTimeout(() => openKioskWifiModal(), 2500);
+            }
           }
         }
       } catch (_) {}
@@ -174,8 +179,180 @@
       } catch (_) {}
     }
 
+    let hasAutoPromptedSetup = false;
+
+    if (elWifiBadge) {
+      elWifiBadge.addEventListener('click', function(e) {
+        e.preventDefault();
+        openKioskWifiModal();
+      });
+    }
+
     pollHardware();
     setInterval(pollHardware, 30000);
+  }
+
+  function openKioskWifiModal() {
+    const modal = document.getElementById('modal-wifi-setup');
+    const btnClose = document.getElementById('btn-close-wifi-modal');
+    const btnCloseFooter = document.getElementById('btn-close-wifi-modal-footer');
+    const btnScan = document.getElementById('btn-kiosk-scan-wifi');
+    const listContainer = document.getElementById('kiosk-wifi-list-container');
+    const connectBox = document.getElementById('kiosk-wifi-connect-box');
+    const selectedSsidLabel = document.getElementById('kiosk-selected-ssid-label');
+    const passInput = document.getElementById('kiosk-wifi-password-input');
+    const btnSubmitConnect = document.getElementById('btn-kiosk-submit-connect');
+    const btnCancelConnect = document.getElementById('btn-kiosk-cancel-connect');
+    const connectStatus = document.getElementById('kiosk-connect-status');
+    const currentStatusText = document.getElementById('kiosk-current-wifi-status');
+    const hotspotSsid = document.getElementById('kiosk-hotspot-ssid');
+    const hotspotPass = document.getElementById('kiosk-hotspot-pass');
+
+    if (!modal) return;
+
+    modal.classList.remove('hidden');
+
+    function closeModal() {
+      modal.classList.add('hidden');
+      if (connectBox) connectBox.classList.add('hidden');
+    }
+
+    if (btnClose) btnClose.onclick = closeModal;
+    if (btnCloseFooter) btnCloseFooter.onclick = closeModal;
+
+    let selectedSSID = '';
+
+    async function refreshStatusAndScan() {
+      try {
+        const statusResp = await fetch('/api/system/wifi');
+        if (statusResp.ok) {
+          const st = await statusResp.json();
+          if (hotspotSsid && st.hotspot_ssid) hotspotSsid.textContent = st.hotspot_ssid;
+          if (hotspotPass && st.hotspot_password) hotspotPass.textContent = st.hotspot_password;
+          if (currentStatusText) {
+            if (st.connected) {
+              currentStatusText.innerHTML = `Connected to <strong>${escapeKioskText(st.ssid)}</strong> (${st.signal_percent}%, IP: ${st.ip_address || '--'})`;
+            } else if (st.hotspot_active) {
+              currentStatusText.innerHTML = `Setup Hotspot Active: <strong>${escapeKioskText(st.hotspot_ssid || 'FamilyBoard-Setup')}</strong> (192.168.4.1)`;
+            } else {
+              currentStatusText.innerHTML = `Status: <strong>Disconnected</strong>`;
+            }
+          }
+        }
+      } catch (_) {}
+
+      if (listContainer) {
+        listContainer.innerHTML = '<div class="kiosk-wifi-empty">Scanning for wireless networks…</div>';
+      }
+      try {
+        const scanResp = await fetch('/api/system/wifi/scan');
+        if (!scanResp.ok) throw new Error('Scan failed');
+        const aps = await scanResp.json();
+        renderNetworks(aps);
+      } catch (err) {
+        if (listContainer) {
+          listContainer.innerHTML = `<div class="kiosk-wifi-empty">Could not scan: ${escapeKioskText(err.message)}</div>`;
+        }
+      }
+    }
+
+    function renderNetworks(aps) {
+      if (!listContainer) return;
+      if (!aps || aps.length === 0) {
+        listContainer.innerHTML = '<div class="kiosk-wifi-empty">No Wi-Fi networks found. Try clicking Scan again.</div>';
+        return;
+      }
+
+      let html = '';
+      aps.forEach(ap => {
+        const isCurrent = ap.is_current ? '<span class="status-badge status-badge-home">Connected</span>' : '';
+        html += `
+          <div class="kiosk-wifi-item ${ap.is_current ? 'active' : ''}" data-ssid="${escapeKioskText(ap.ssid)}">
+            <div class="kiosk-wifi-item-info">
+              <span class="kiosk-wifi-item-ssid">${escapeKioskText(ap.ssid)}</span>
+              <span class="kiosk-wifi-item-meta">${ap.signal_percent}% · ${escapeKioskText(ap.security || 'Open')}</span>
+            </div>
+            <div class="kiosk-wifi-item-action">
+              ${isCurrent || `<button type="button" class="btn btn-primary btn-sm btn-select-wifi" data-ssid="${escapeKioskText(ap.ssid)}">Join</button>`}
+            </div>
+          </div>
+        `;
+      });
+      listContainer.innerHTML = html;
+    }
+
+    if (listContainer) {
+      listContainer.onclick = function(e) {
+        const btn = e.target.closest('.btn-select-wifi') || e.target.closest('.kiosk-wifi-item');
+        if (btn) {
+          const ssid = btn.dataset.ssid;
+          if (!ssid) return;
+          selectedSSID = ssid;
+          if (selectedSsidLabel) selectedSsidLabel.textContent = 'Connect to ' + ssid;
+          if (connectBox) connectBox.classList.remove('hidden');
+          if (passInput) {
+            passInput.value = '';
+            passInput.focus();
+          }
+          if (connectStatus) connectStatus.classList.add('hidden');
+        }
+      };
+    }
+
+    if (btnCancelConnect) {
+      btnCancelConnect.onclick = function() {
+        if (connectBox) connectBox.classList.add('hidden');
+        selectedSSID = '';
+      };
+    }
+
+    if (btnSubmitConnect) {
+      btnSubmitConnect.onclick = async function() {
+        if (!selectedSSID) return;
+        const password = passInput ? passInput.value : '';
+        btnSubmitConnect.disabled = true;
+        btnSubmitConnect.textContent = 'Joining…';
+        if (connectStatus) {
+          connectStatus.classList.remove('hidden');
+          connectStatus.className = 'kiosk-connect-status info';
+          connectStatus.textContent = 'Connecting to ' + selectedSSID + '…';
+        }
+
+        try {
+          const resp = await fetch('/api/system/wifi/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ssid: selectedSSID, password: password })
+          });
+          const res = await resp.json();
+          if (!resp.ok || res.error) {
+            throw new Error(res.error || 'Failed to connect');
+          }
+          if (connectStatus) {
+            connectStatus.className = 'kiosk-connect-status success';
+            connectStatus.textContent = 'Connected successfully to ' + selectedSSID + '!';
+          }
+          setTimeout(() => {
+            if (connectBox) connectBox.classList.add('hidden');
+            refreshStatusAndScan();
+          }, 1500);
+        } catch (err) {
+          if (connectStatus) {
+            connectStatus.className = 'kiosk-connect-status danger';
+            connectStatus.textContent = 'Error: ' + err.message;
+          }
+        } finally {
+          btnSubmitConnect.disabled = false;
+          btnSubmitConnect.textContent = 'Connect';
+        }
+      };
+    }
+
+    if (btnScan) {
+      btnScan.onclick = refreshStatusAndScan;
+    }
+
+    refreshStatusAndScan();
   }
 
   // --- Navigation & View Switching ---
@@ -552,7 +729,7 @@
         pill.className = 'event-pill ' + getEventColorClass(ev);
         makeInteractive(pill, () => openEventDetailSheet(ev), `${ev.title}, ${ev.all_day ? 'all day' : formatTimeShort(new Date(ev.start_at))}`);
 
-        const isBirthday = ev.title.toLowerCase().includes('birthday');
+        const isBirthday = (ev.title || '').toLowerCase().includes('birthday');
         const icon = isBirthday ? '🎂 ' : '';
         const timeStr = ev.all_day ? '' : formatTimeShort(new Date(ev.start_at)) + ' ';
 
@@ -1588,7 +1765,7 @@
       if (isNLTab) {
         const parsedTitle = document.getElementById('nl-parsed-title')?.textContent;
         if (!parsedTitle || parsedTitle === '--') {
-          alert('Please enter a clearer event description.');
+          showToast('Add a clearer day and time', false);
           return;
         }
         title = parsedTitle;
@@ -1626,12 +1803,12 @@
       }
 
       if (!title) {
-        alert('Please enter an event title.');
+        showToast('Add a title for the event', false);
         return;
       }
 
       if (!calendarID) {
-        alert('Please select a calendar for this event.');
+        showToast('Choose a calendar first', false);
         return;
       }
 

@@ -156,6 +156,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/system/wifi/scan", s.handleAPIScanWifi)
 	s.mux.HandleFunc("POST /api/system/wifi/connect", s.requireKioskWriteAccess(s.handleAPIConnectWifi))
 	s.mux.HandleFunc("POST /api/system/wifi/hotspot", s.requireKioskWriteAccess(s.handleAPIToggleHotspot))
+	s.mux.HandleFunc("GET /api/system/wifi/qrcode", s.requireKioskWriteAccess(s.handleAPIGetWifiQRCode))
 	s.mux.HandleFunc("GET /api/system/bluetooth", s.handleAPIGetBluetooth)
 	s.mux.HandleFunc("POST /api/system/bluetooth/power", s.requireKioskWriteAccess(s.handleAPISetBluetoothPower))
 	s.mux.HandleFunc("GET /api/system/bluetooth/scan", s.handleAPIScanBluetooth)
@@ -166,6 +167,8 @@ func (s *Server) routes() {
 
 	// FotoCube Ambient Photo Frame & NVMe Migration
 	s.mux.HandleFunc("GET /api/photos", s.handleAPIGetPhotos)
+	s.mux.HandleFunc("POST /api/photos/upload", s.requireKioskWriteAccess(s.handleAPIUploadPhoto))
+	s.mux.HandleFunc("DELETE /api/photos/{filename}", s.requireKioskWriteAccess(s.handleAPIDeletePhoto))
 	photosDir := filepath.Join(filepath.Dir(s.cfg.Database.Path), "photos")
 	_ = os.MkdirAll(photosDir, 0755)
 	s.mux.Handle("GET /photos/", http.StripPrefix("/photos/", http.FileServer(http.Dir(photosDir))))

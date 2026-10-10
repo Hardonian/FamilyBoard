@@ -14,10 +14,10 @@
       <span id="presence-members-container"></span>
     </div>
 
-    <a href="/admin?tab=hardware" id="wifi-badge" class="wifi-badge" title="Appliance Wi-Fi status" aria-label="Wi-Fi status">
+    <button type="button" id="wifi-badge" class="wifi-badge" title="Appliance Wi-Fi status &amp; Onboarding" aria-label="Wi-Fi status">
       <span class="wifi-icon" aria-hidden="true">📶</span>
       <span id="wifi-status-text">Wi-Fi</span>
-    </a>
+    </button>
 
     <div id="status-badge" class="status-badge" title="Appliance sync status" role="status" aria-live="polite">
       <span class="status-dot"></span>
@@ -357,6 +357,74 @@
       <button type="button" id="btn-detail-delete" class="btn btn-danger kiosk-btn-delete-left">Delete</button>
       <button type="button" id="btn-detail-edit" class="btn btn-secondary">Edit</button>
       <button type="button" id="btn-detail-ok" class="btn btn-primary">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Wi-Fi & Hotspot Onboarding Modal -->
+<div id="modal-wifi-setup" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="wifi-modal-title">
+  <div class="modal-card modal-card-wide">
+    <div class="modal-header">
+      <div class="modal-title-group">
+        <h3 id="wifi-modal-title" class="modal-title">📶 Wireless &amp; Phone Onboarding</h3>
+        <p class="modal-sub">Scan the code below to join setup hotspot from your phone, or pick a home network.</p>
+      </div>
+      <button type="button" class="btn-close-modal" id="btn-close-wifi-modal" aria-label="Close Wi-Fi settings">✕</button>
+    </div>
+
+    <div class="wifi-modal-split-grid">
+      <!-- Phone QR Code Onboarding Side -->
+      <div class="wifi-modal-panel wifi-modal-qr-panel">
+        <span class="badge-subtle">📱 Zero-Touch Setup</span>
+        <h4 class="wifi-panel-heading">Scan with Phone</h4>
+        <p class="wifi-panel-sub">Point your iPhone or Android camera at this code to join automatically:</p>
+        
+        <div class="kiosk-qr-container">
+          <img src="/api/system/wifi/qrcode" alt="Wi-Fi Hotspot Setup QR Code" class="kiosk-qr-image" width="180" height="180">
+        </div>
+
+        <div class="kiosk-hotspot-creds">
+          <div><small>Network:</small> <strong id="kiosk-hotspot-ssid">FamilyBoard-Setup</strong></div>
+          <div><small>Password:</small> <code id="kiosk-hotspot-pass">familyboard123</code></div>
+          <div><small>Browser:</small> <span class="kiosk-portal-link">http://192.168.4.1:8080</span></div>
+        </div>
+      </div>
+
+      <!-- Touchscreen Wi-Fi Connection Side -->
+      <div class="wifi-modal-panel wifi-modal-scan-panel">
+        <div class="wifi-scan-header-row">
+          <h4 class="wifi-panel-heading">Connect On-Screen</h4>
+          <button type="button" id="btn-kiosk-scan-wifi" class="btn btn-secondary btn-sm">🔄 Scan</button>
+        </div>
+        <p class="wifi-panel-sub">Select your home Wi-Fi network from the list:</p>
+
+        <div class="kiosk-wifi-list-container" id="kiosk-wifi-list-container">
+          <div class="kiosk-wifi-empty">Scanning for wireless networks…</div>
+        </div>
+
+        <!-- Inline Password Connect Form -->
+        <div id="kiosk-wifi-connect-box" class="kiosk-wifi-connect-box hidden">
+          <div class="kiosk-connect-header">
+            <strong id="kiosk-selected-ssid-label">Connect to network</strong>
+            <button type="button" id="btn-kiosk-cancel-connect" class="btn-text-sm">Cancel</button>
+          </div>
+          <div class="kiosk-connect-input-group">
+            <input type="password" id="kiosk-wifi-password-input" class="form-input" placeholder="Wi-Fi Password" aria-label="Wi-Fi Password">
+            <button type="button" id="btn-kiosk-submit-connect" class="btn btn-primary">Connect</button>
+          </div>
+          <div id="kiosk-connect-status" class="kiosk-connect-status hidden"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer modal-footer-between">
+      <div id="kiosk-current-wifi-status" class="kiosk-current-status-text">
+        Status: Checking connection…
+      </div>
+      <div class="modal-footer-actions">
+        <a href="/admin?tab=hardware" class="btn btn-secondary btn-sm">Full Admin Portal</a>
+        <button type="button" id="btn-close-wifi-modal-footer" class="btn btn-primary btn-sm">Done</button>
+      </div>
     </div>
   </div>
 </div>

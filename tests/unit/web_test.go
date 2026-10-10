@@ -472,5 +472,3 @@ func TestWeb_KioskGoogleCalendarPolishAndViews(t *testing.T) {
 		}
 	}
 }
-
-

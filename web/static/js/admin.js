@@ -283,6 +283,180 @@
         }
       });
     }
+
+    setupFotoCubePhotoManager();
+  }
+
+  function setupFotoCubePhotoManager() {
+    const dropzone = document.getElementById('photo-dropzone');
+    const fileInput = document.getElementById('photo-file-input');
+    const galleryGrid = document.getElementById('photo-gallery-grid');
+    const countBadge = document.getElementById('photo-count-badge');
+    const spinner = document.getElementById('photo-upload-spinner');
+
+    if (!dropzone || !galleryGrid) return;
+
+    loadPhotos();
+
+    // Click to upload
+    dropzone.addEventListener('click', function() {
+      if (fileInput) fileInput.click();
+    });
+
+    dropzone.addEventListener('keydown', function(e) {
+      if ((e.key === 'Enter' || e.key === ' ') && fileInput) {
+        e.preventDefault();
+        fileInput.click();
+      }
+    });
+
+    // File input selection
+    if (fileInput) {
+      fileInput.addEventListener('change', function() {
+        if (fileInput.files && fileInput.files.length > 0) {
+          uploadFiles(Array.from(fileInput.files));
+          fileInput.value = '';
+        }
+      });
+    }
+
+    // Drag and drop events
+    ['dragenter', 'dragover'].forEach(function(eventName) {
+      dropzone.addEventListener(eventName, function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        dropzone.classList.add('drag-over');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(function(eventName) {
+      dropzone.addEventListener(eventName, function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        dropzone.classList.remove('drag-over');
+      });
+    });
+
+    dropzone.addEventListener('drop', function(e) {
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        uploadFiles(Array.from(e.dataTransfer.files));
+      }
+    });
+
+    // Delete photo click handler (delegated)
+    galleryGrid.addEventListener('click', async function(e) {
+      const deleteBtn = e.target.closest('.btn-delete-photo');
+      if (!deleteBtn) return;
+
+      const filename = deleteBtn.dataset.filename;
+      if (!filename) return;
+
+      if (!confirm('Remove "' + filename + '" from the FotoCube slideshow?')) {
+        return;
+      }
+
+      deleteBtn.disabled = true;
+      deleteBtn.textContent = '…';
+
+      try {
+        const resp = await fetch('/api/photos/' + encodeURIComponent(filename), {
+          method: 'DELETE'
+        });
+        const res = await resp.json();
+        if (!resp.ok || res.error) {
+          throw new Error(res.error || 'Failed to delete photo');
+        }
+        await loadPhotos();
+      } catch (err) {
+        alert('Could not remove photo: ' + err.message);
+        deleteBtn.disabled = false;
+        deleteBtn.textContent = '🗑️';
+      }
+    });
+
+    async function loadPhotos() {
+      try {
+        const resp = await fetch('/api/photos');
+        if (!resp.ok) throw new Error('Failed to fetch photos');
+        const data = await resp.json();
+        const photos = data.photos || [];
+
+        if (countBadge) {
+          countBadge.textContent = photos.length + (photos.length === 1 ? ' Photo' : ' Photos');
+        }
+
+        if (photos.length === 0) {
+          galleryGrid.innerHTML = `
+            <div class="photo-empty-state">
+              <p>No custom photos uploaded yet.</p>
+              <small class="admin-text-muted">FotoCube is currently displaying default atmospheric backgrounds. Drop your family photos above to personalize your board!</small>
+            </div>
+          `;
+          return;
+        }
+
+        let html = '';
+        photos.forEach(function(photoUrl) {
+          const filename = photoUrl.split('/').pop();
+          const displayName = filename.replace(/^\\d+_/, '');
+          html += `
+            <div class="photo-manager-card">
+              <div class="photo-manager-thumb-box">
+                <img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(displayName)}" class="photo-manager-thumb" loading="lazy">
+              </div>
+              <div class="photo-manager-meta">
+                <span class="photo-manager-name" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</span>
+                <button type="button" class="btn btn-danger btn-sm btn-delete-photo" data-filename="${escapeHtml(filename)}" aria-label="Delete ${escapeHtml(displayName)}">
+                  🗑️
+                </button>
+              </div>
+            </div>
+          `;
+        });
+        galleryGrid.innerHTML = html;
+      } catch (err) {
+        galleryGrid.innerHTML = `<div class="admin-empty-cell">Could not load photos: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    async function uploadFiles(files) {
+      if (spinner) spinner.classList.remove('hidden');
+      let uploadedCount = 0;
+      let errorMessages = [];
+
+      for (const file of files) {
+        const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!validTypes.includes(file.type)) {
+          errorMessages.push(file.name + ': Unsupported image format (use JPG, PNG, or WebP)');
+          continue;
+        }
+
+        const formData = new FormData();
+        formData.append('photo', file);
+
+        try {
+          const resp = await fetch('/api/photos/upload', {
+            method: 'POST',
+            body: formData
+          });
+          const res = await resp.json();
+          if (!resp.ok || res.error) {
+            throw new Error(res.error || 'Upload failed');
+          }
+          uploadedCount++;
+        } catch (err) {
+          errorMessages.push(file.name + ': ' + err.message);
+        }
+      }
+
+      if (spinner) spinner.classList.add('hidden');
+
+      if (errorMessages.length > 0) {
+        alert('Upload notices:\n' + errorMessages.join('\n'));
+      }
+
+      await loadPhotos();
+    }
   }
 
   function openWifiConnectBox(ssid) {

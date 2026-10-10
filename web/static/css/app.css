@@ -1109,6 +1109,63 @@ body.kiosk-ambient-dim {
   margin-bottom: 8px;
 }
 
+.empty-state-detail {
+  margin-top: 6px;
+  font-size: 0.94rem;
+  line-height: 1.45;
+}
+
+.rail-section-label {
+  margin: 16px 0 4px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.destination-empty-state {
+  grid-column: 1 / -1;
+  padding: 16px;
+  color: var(--text-secondary);
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--radius-md);
+}
+
+.dest-default-mark {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.week-event-title {
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.schedule-event-meta {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.today-full-card.card-member-1,
+.schedule-event-card.card-member-1 { border-left-color: var(--color-member-1); }
+.today-full-card.card-member-2,
+.schedule-event-card.card-member-2 { border-left-color: var(--color-member-2); }
+.today-full-card.card-home,
+.schedule-event-card.card-home { border-left-color: var(--color-home); }
+.today-full-card.card-family,
+.schedule-event-card.card-family { border-left-color: var(--color-family); }
+.today-full-card.card-kids,
+.schedule-event-card.card-kids { border-left-color: var(--color-kids); }
+.today-full-card.card-birthday,
+.schedule-event-card.card-birthday { border-left-color: var(--color-birthday); }
+
 /* Quick Templates Strip in Rail */
 .rail-quick-templates {
   padding: 14px 16px;
@@ -2985,4 +3042,374 @@ body.kiosk-ambient-dim {
   font-weight: 700;
 }
 
+/* =========================================================================
+   Hotspot QR Onboarding & Admin Styles
+   ========================================================================= */
+
+.admin-hotspot-onboarding-card {
+  margin: 16px 0 24px 0;
+  padding: 20px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.12) 0%, rgba(30, 41, 59, 0.7) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  border-radius: 14px;
+}
+
+.hotspot-qr-section {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.hotspot-qr-box {
+  background: #ffffff;
+  padding: 10px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.hotspot-qr-img {
+  display: block;
+  width: 160px;
+  height: 160px;
+  image-rendering: pixelated;
+}
+
+.hotspot-qr-meta {
+  flex: 1;
+  min-width: 260px;
+}
+
+.hotspot-title {
+  margin: 8px 0 6px 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.hotspot-sub {
+  margin: 0 0 16px 0;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.45;
+}
+
+.hotspot-credentials-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.cred-item {
+  background: rgba(15, 23, 42, 0.6);
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cred-label {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 4px;
+}
+
+.cred-val {
+  font-size: 0.95rem;
+  color: #38bdf8;
+  font-family: monospace;
+  font-weight: 600;
+}
+
+/* =========================================================================
+   FotoCube Photo Manager (Admin)
+   ========================================================================= */
+
+.photo-manager-dropzone {
+  border: 2px dashed rgba(255, 255, 255, 0.22);
+  border-radius: 14px;
+  padding: 32px 20px;
+  text-align: center;
+  background: rgba(15, 23, 42, 0.4);
+  cursor: pointer;
+  transition: all 0.25s ease;
+  margin: 16px 0 24px 0;
+}
+
+.photo-manager-dropzone:hover,
+.photo-manager-dropzone.drag-over {
+  border-color: #3b82f6;
+  background: rgba(37, 99, 235, 0.1);
+  transform: translateY(-1px);
+}
+
+.dropzone-icon {
+  font-size: 2.2rem;
+  margin-bottom: 8px;
+}
+
+.dropzone-text {
+  font-size: 1.05rem;
+  color: #f1f5f9;
+  margin-bottom: 6px;
+}
+
+.dropzone-link {
+  color: #60a5fa;
+  text-decoration: underline;
+}
+
+.dropzone-hint {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.photo-upload-spinner {
+  margin-top: 12px;
+  color: #38bdf8;
+  font-weight: 600;
+  animation: pulse-hint 1.5s infinite;
+}
+
+.photo-manager-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.photo-manager-card {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.photo-manager-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.photo-manager-thumb-box {
+  width: 100%;
+  height: 120px;
+  overflow: hidden;
+  background: #090d16;
+}
+
+.photo-manager-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.photo-manager-meta {
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.photo-manager-name {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.photo-empty-state {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 36px 20px;
+  background: rgba(15, 23, 42, 0.3);
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* =========================================================================
+   Kiosk Wi-Fi Setup & Phone Onboarding Modal
+   ========================================================================= */
+
+.wifi-modal-split-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 24px;
+  padding: 16px 0;
+}
+
+@media (max-width: 768px) {
+  .wifi-modal-split-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wifi-modal-panel {
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 20px;
+}
+
+.wifi-modal-qr-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.1) 0%, rgba(15, 23, 42, 0.6) 100%);
+}
+
+.wifi-panel-heading {
+  margin: 8px 0 4px 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.wifi-panel-sub {
+  margin: 0 0 16px 0;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.kiosk-qr-container {
+  background: #ffffff;
+  padding: 12px;
+  border-radius: 12px;
+  margin: 8px 0 16px 0;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+}
+
+.kiosk-qr-image {
+  display: block;
+  width: 170px;
+  height: 170px;
+  image-rendering: pixelated;
+}
+
+.kiosk-hotspot-creds {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.8);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.kiosk-portal-link {
+  color: #38bdf8;
+  font-family: monospace;
+}
+
+.wifi-scan-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.kiosk-wifi-list-container {
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  margin-bottom: 16px;
+}
+
+.kiosk-wifi-empty {
+  padding: 24px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.9rem;
+}
+
+.kiosk-wifi-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.kiosk-wifi-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.kiosk-wifi-item.active {
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.kiosk-wifi-item-ssid {
+  font-weight: 600;
+  color: #f8fafc;
+  display: block;
+}
+
+.kiosk-wifi-item-meta {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.kiosk-wifi-connect-box {
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: 10px;
+  padding: 14px;
+  margin-top: 12px;
+}
+
+.kiosk-connect-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.kiosk-connect-input-group {
+  display: flex;
+  gap: 10px;
+}
+
+.kiosk-connect-status {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.kiosk-connect-status.info {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+}
+
+.kiosk-connect-status.success {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+}
+
+.kiosk-connect-status.danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.kiosk-current-status-text {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+}
 
