@@ -602,9 +602,11 @@
         </span>
       </div>
 
+      <!-- Photo Upload Input -->
+      <input type="file" id="photo-file-input" accept="image/jpeg,image/png,image/webp" multiple class="hidden" title="Upload family photos" aria-label="Upload family photos">
+
       <!-- Photo Upload Dropzone -->
       <div id="photo-dropzone" class="photo-manager-dropzone" tabindex="0" role="button" aria-label="Upload photos by drag and drop or clicking">
-        <input type="file" id="photo-file-input" accept="image/jpeg,image/png,image/webp" multiple class="hidden">
         <div class="dropzone-icon">📸</div>
         <div class="dropzone-text"><strong>Drag &amp; drop family photos here</strong> or <span class="dropzone-link">browse files</span></div>
         <div class="dropzone-hint">Supports JPEG, PNG, and WebP (up to 32MB each). Photos automatically rotate on the kiosk screensaver.</div>
