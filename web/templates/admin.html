@@ -94,12 +94,12 @@
                 Connect Google Workspace
               </a>
               {{end}}
-              <details class="admin-inline-details" style="margin-top: 6px;">
+              <details class="admin-inline-details">
                 <summary>Other providers</summary>
-                <div style="display: flex; flex-direction: column; gap: 4px; padding-top: 4px;">
-                  <a href="/admin/oauth/start?person_id={{.ID}}&amp;provider=google&amp;flow=calendar" class="btn btn-secondary btn-sm" style="font-size: 0.75rem;">Google Workspace</a>
-                  <a href="/admin/oauth/start?person_id={{.ID}}&amp;provider=microsoft&amp;flow=calendar" class="btn btn-secondary btn-sm" style="font-size: 0.75rem;">Microsoft Exchange</a>
-                  <button type="button" class="btn btn-secondary btn-sm" style="font-size: 0.75rem;" onclick="openAppleModal('{{.ID}}')">Apple iCloud / CalDAV</button>
+                <div class="admin-provider-dropdown">
+                  <a href="/admin/oauth/start?person_id={{.ID}}&amp;provider=google&amp;flow=calendar" class="btn btn-secondary btn-sm btn-provider-choice">Google Workspace</a>
+                  <a href="/admin/oauth/start?person_id={{.ID}}&amp;provider=microsoft&amp;flow=calendar" class="btn btn-secondary btn-sm btn-provider-choice">Microsoft Exchange</a>
+                  <button type="button" class="btn btn-secondary btn-sm btn-provider-choice" onclick="openAppleModal('{{.ID}}')">Apple iCloud / CalDAV</button>
                 </div>
               </details>
             </td>
@@ -110,7 +110,7 @@
                 Connect Outlook Mail
               </a>
               {{else if eq $prov "apple"}}
-              <span class="status-badge status-badge-compact" style="opacity: 0.7;">Calendar Only</span>
+              <span class="status-badge status-badge-compact status-badge-muted">Calendar Only</span>
               {{else}}
               <a href="/admin/oauth/start?person_id={{.ID}}&amp;provider=google&amp;flow=mail" class="btn btn-secondary btn-table-action">
                 Connect Gmail Intake
@@ -124,28 +124,28 @@
     </div>
 
     <!-- Universal Calendar & Mail Ecosystem Guide -->
-    <div class="admin-card" style="margin-top: 20px;">
+    <div class="admin-card admin-ecosystem-card">
       <div class="admin-card-header">
         <div>
           <h2>Universal Calendar &amp; Mail Ecosystems</h2>
           <p class="admin-section-sub">FamilyBoard seamlessly unifies Google Workspace, Microsoft Exchange, and Apple iCloud into one real-time family kiosk.</p>
         </div>
       </div>
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; padding: 20px;">
-        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 12px; padding: 16px;">
-          <h4 style="margin: 0 0 6px 0; font-size: 0.95rem; color: #38bdf8;">🌐 Google Workspace &amp; Gmail</h4>
-          <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0 0 8px 0; line-height: 1.45;">Supports personal @gmail.com and custom Google Workspace domains with automatic Google Meet link integration and secondary group calendar discovery.</p>
-          <small style="font-size: 0.75rem; color: #94a3b8; display: block;">G Suite Tip: If 3rd-party access is restricted in your domain, go to <em>Google Admin Console &gt; Security &gt; API Controls</em> to trust FamilyBoard.</small>
+      <div class="admin-ecosystem-grid">
+        <div class="admin-ecosystem-col admin-ecosystem-google">
+          <h4>🌐 Google Workspace &amp; Gmail</h4>
+          <p class="admin-ecosystem-desc">Supports personal @gmail.com and custom Google Workspace domains with automatic Google Meet link integration and secondary group calendar discovery.</p>
+          <small class="admin-ecosystem-tip">G Suite Tip: If 3rd-party access is restricted in your domain, go to <em>Google Admin Console &gt; Security &gt; API Controls</em> to trust FamilyBoard.</small>
         </div>
-        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(129, 140, 248, 0.25); border-radius: 12px; padding: 16px;">
-          <h4 style="margin: 0 0 6px 0; font-size: 0.95rem; color: #818cf8;">🏢 Microsoft Exchange &amp; 365</h4>
-          <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0 0 8px 0; line-height: 1.45;">Syncs Outlook, Hotmail, and work/school Exchange Online accounts with high-performance delta tokens, Teams meeting links, and conflict locking.</p>
-          <small style="font-size: 0.75rem; color: #94a3b8; display: block;">Exchange Tip: For enterprise tenants blocking consumer multi-tenant apps, configure your <code>tenant_id</code> in <code>config.toml</code>.</small>
+        <div class="admin-ecosystem-col admin-ecosystem-ms">
+          <h4>🏢 Microsoft Exchange &amp; 365</h4>
+          <p class="admin-ecosystem-desc">Syncs Outlook, Hotmail, and work/school Exchange Online accounts with high-performance delta tokens, Teams meeting links, and conflict locking.</p>
+          <small class="admin-ecosystem-tip">Exchange Tip: For enterprise tenants blocking consumer multi-tenant apps, configure your <code>tenant_id</code> in <code>config.toml</code>.</small>
         </div>
-        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(52, 211, 153, 0.25); border-radius: 12px; padding: 16px;">
-          <h4 style="margin: 0 0 6px 0; font-size: 0.95rem; color: #34d399;">🍏 Apple iCloud &amp; CalDAV</h4>
-          <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0 0 8px 0; line-height: 1.45;">Connect via shared Public Calendar links (webcal://) with zero passwords, or Apple ID + App-Specific Password for bidirectional sync and FaceTime links.</p>
-          <small style="font-size: 0.75rem; color: #94a3b8; display: block;">Apple Tip: Generate an App-Specific Password at <a href="https://appleid.apple.com" target="_blank" rel="noopener" style="color: #34d399;">appleid.apple.com</a> for full two-way editing.</small>
+        <div class="admin-ecosystem-col admin-ecosystem-apple">
+          <h4>🍏 Apple iCloud &amp; CalDAV</h4>
+          <p class="admin-ecosystem-desc">Connect via shared Public Calendar links (webcal://) with zero passwords, or Apple ID + App-Specific Password for bidirectional sync and FaceTime links.</p>
+          <small class="admin-ecosystem-tip">Apple Tip: Generate an App-Specific Password at <a href="https://appleid.apple.com" target="_blank" rel="noopener">appleid.apple.com</a> for full two-way editing.</small>
         </div>
       </div>
     </div>
@@ -763,13 +763,13 @@
 <dialog id="modal-apple-connect" class="modal-dialog">
   <div class="modal-card">
     <div class="modal-header">
-      <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #fff;">Connect Apple iCloud Calendar</h3>
+      <h3 class="modal-apple-title">Connect Apple iCloud Calendar</h3>
       <button type="button" class="btn-close" onclick="document.getElementById('modal-apple-connect').close()">&times;</button>
     </div>
     <form method="POST" action="/admin/apple/connect">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <div class="modal-body" style="padding: 16px 20px; display: flex; flex-direction: column; gap: 14px;">
-        <p class="admin-section-sub" style="margin: 0;">Connect Apple iCloud via shared Public Calendar link (zero password) or Apple ID with an App-Specific Password for two-way synchronization.</p>
+      <div class="modal-body modal-apple-body">
+        <p class="admin-section-sub modal-apple-sub">Connect Apple iCloud via shared Public Calendar link (zero password) or Apple ID with an App-Specific Password for two-way synchronization.</p>
         <div class="form-group">
           <label class="form-label" for="apple_person_id">Family Member</label>
           <select id="apple_person_id" name="person_id" class="form-input" required>
@@ -788,9 +788,9 @@
         <div id="apple-webcal-fields" class="form-group">
           <label class="form-label" for="apple_webcal_url">Apple Calendar Share Link</label>
           <input type="text" id="apple_webcal_url" name="webcal_url" class="form-input" placeholder="webcal://pXX-caldav.icloud.com/published/2/..." autocorrect="off" spellcheck="false">
-          <p class="setup-section-desc" style="font-size: 0.8rem; margin: 4px 0 0 0; color: var(--text-muted);">In the Apple Calendar app on iPhone, iPad, or Mac, tap the (i) info icon next to your family calendar, turn on <strong>Public Calendar</strong>, and tap <strong>Share Link</strong>.</p>
+          <p class="setup-section-desc modal-apple-help">In the Apple Calendar app on iPhone, iPad, or Mac, tap the (i) info icon next to your family calendar, turn on <strong>Public Calendar</strong>, and tap <strong>Share Link</strong>.</p>
         </div>
-        <div id="apple-caldav-fields" style="display: none; display: flex; flex-direction: column; gap: 12px;">
+        <div id="apple-caldav-fields" class="modal-apple-caldav-group hidden">
           <div class="form-group">
             <label class="form-label" for="apple_id">Apple ID (Email)</label>
             <input type="email" id="apple_id" name="apple_id" class="form-input" placeholder="user@icloud.com" autocorrect="off" spellcheck="false">
@@ -798,11 +798,11 @@
           <div class="form-group">
             <label class="form-label" for="apple_app_password">App-Specific Password</label>
             <input type="password" id="apple_app_password" name="app_password" class="form-input" placeholder="xxxx-xxxx-xxxx-xxxx" autocomplete="off">
-            <p class="setup-section-desc" style="font-size: 0.8rem; margin: 4px 0 0 0; color: var(--text-muted);">Generate an App-Specific Password at <a href="https://appleid.apple.com" target="_blank" rel="noopener" style="color: var(--accent);">appleid.apple.com</a>.</p>
+            <p class="setup-section-desc modal-apple-help">Generate an App-Specific Password at <a href="https://appleid.apple.com" target="_blank" rel="noopener">appleid.apple.com</a>.</p>
           </div>
         </div>
       </div>
-      <div class="modal-footer" style="padding: 12px 20px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+      <div class="modal-footer modal-apple-footer">
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal-apple-connect').close()">Cancel</button>
         <button type="submit" class="btn btn-primary">Connect Calendar</button>
       </div>

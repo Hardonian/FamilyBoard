@@ -568,11 +568,11 @@
     const webcal = document.getElementById('apple-webcal-fields');
     const caldav = document.getElementById('apple-caldav-fields');
     if (val === 'caldav') {
-      if (webcal) webcal.style.display = 'none';
-      if (caldav) caldav.style.display = 'block';
+      if (webcal) webcal.classList.add('hidden');
+      if (caldav) caldav.classList.remove('hidden');
     } else {
-      if (webcal) webcal.style.display = 'block';
-      if (caldav) caldav.style.display = 'none';
+      if (webcal) webcal.classList.remove('hidden');
+      if (caldav) caldav.classList.add('hidden');
     }
   };
 

@@ -4159,6 +4159,10 @@ body.kiosk-ambient-dim {
   color: #34d399;
 }
 
+.hidden {
+  display: none !important;
+}
+
 .modal-apple-title {
   margin: 0;
   font-size: 1.15rem;
