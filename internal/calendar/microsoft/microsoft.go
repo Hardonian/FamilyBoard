@@ -180,10 +180,10 @@ func (c *CalendarClient) ListCalendars(ctx context.Context, accessToken string) 
 
 type msEventsResponse struct {
 	Value []struct {
-		ID          string `json:"id"`
-		ICalUID     string `json:"iCalUId"`
-		Subject     string `json:"subject"`
-		Body        struct {
+		ID      string `json:"id"`
+		ICalUID string `json:"iCalUId"`
+		Subject string `json:"subject"`
+		Body    struct {
 			ContentType string `json:"contentType"`
 			Content     string `json:"content"`
 		} `json:"body"`
@@ -198,8 +198,8 @@ type msEventsResponse struct {
 			DateTime string `json:"dateTime"`
 			TimeZone string `json:"timeZone"`
 		} `json:"end"`
-		IsAllDay    bool   `json:"isAllDay"`
-		IsCancelled bool   `json:"isCancelled"`
+		IsAllDay         bool   `json:"isAllDay"`
+		IsCancelled      bool   `json:"isCancelled"`
 		ChangeKey        string `json:"changeKey"`
 		IsOnlineMeeting  bool   `json:"isOnlineMeeting"`
 		OnlineMeetingURL string `json:"onlineMeetingUrl"`
@@ -384,8 +384,8 @@ func (c *CalendarClient) SyncEvents(ctx context.Context, accessToken string, cal
 }
 
 type msEventCreatePayload struct {
-	Subject  string `json:"subject"`
-	Body     struct {
+	Subject string `json:"subject"`
+	Body    struct {
 		ContentType string `json:"contentType"`
 		Content     string `json:"content"`
 	} `json:"body"`
@@ -407,7 +407,7 @@ func (c *CalendarClient) CreateEvent(ctx context.Context, accessToken string, ca
 	endpoint := fmt.Sprintf("%s/calendars/%s/events", c.baseURL, url.PathEscape(calendarID))
 
 	payload := msEventCreatePayload{
-		Subject: event.Title,
+		Subject:  event.Title,
 		IsAllDay: event.AllDay,
 	}
 	payload.Body.ContentType = "text"
@@ -469,7 +469,7 @@ func (c *CalendarClient) UpdateEvent(ctx context.Context, accessToken string, ca
 	endpoint := fmt.Sprintf("%s/events/%s", c.baseURL, url.PathEscape(event.ProviderEventID))
 
 	payload := msEventCreatePayload{
-		Subject: event.Title,
+		Subject:  event.Title,
 		IsAllDay: event.AllDay,
 	}
 	payload.Body.ContentType = "text"

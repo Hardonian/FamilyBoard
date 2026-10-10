@@ -45,12 +45,11 @@ type FamilyBeacon struct {
 
 // BluetoothManager interfaces with BlueZ (bluetoothctl) on the Radxa Dragon.
 type BluetoothManager struct {
-	mu           sync.RWMutex
-	isMock       bool
-	mockPowered  bool
-	beacons      map[string]*FamilyBeacon
-	recentScan   map[string]BluetoothDevice
-	lastScanTime time.Time
+	mu          sync.RWMutex
+	isMock      bool
+	mockPowered bool
+	beacons     map[string]*FamilyBeacon
+	recentScan  map[string]BluetoothDevice
 }
 
 // NewBluetoothManager creates a Bluetooth controller.

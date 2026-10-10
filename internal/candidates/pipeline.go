@@ -84,6 +84,9 @@ func (p *Pipeline) ProcessRawEmail(ctx context.Context, raw mail.RawEmail, mailS
 
 	// 3. Resolve target calendar
 	defaultCal, err := p.store.GetDefaultWriteCalendar(ctx)
+	if err != nil {
+		return fmt.Errorf("get default write calendar: %w", err)
+	}
 	targetCalendarID := ""
 	if defaultCal != nil {
 		targetCalendarID = defaultCal.ID

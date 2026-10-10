@@ -221,8 +221,8 @@ func (c *AppleCalendarClient) discoverCollections(ctx context.Context, homeURL, 
 
 	type propstat struct {
 		Prop struct {
-			DisplayName   string `xml:"displayname"`
-			ResourceType  struct {
+			DisplayName  string `xml:"displayname"`
+			ResourceType struct {
 				Calendar *struct{} `xml:"calendar"`
 			} `xml:"resourcetype"`
 			CalendarColor string `xml:"calendar-color"`

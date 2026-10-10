@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Hardonian/FamilyBoard/internal/backup"
 	"github.com/Hardonian/FamilyBoard/internal/db"
@@ -58,10 +59,10 @@ func RestoreBackup(ctx context.Context, archivePath, targetDBPath, targetConfigP
 			return fmt.Errorf("read tar entry: %w", err)
 		}
 
-		cleanName := filepath.Clean(header.Name)
-		if stringsContainsDotDot(cleanName) {
+		if stringsContainsDotDot(header.Name) {
 			continue // Prevent path traversal
 		}
+		cleanName := filepath.Clean(header.Name)
 
 		destPath := filepath.Join(stageDir, cleanName)
 
@@ -173,5 +174,7 @@ func copyFile(src, dst string) error {
 }
 
 func stringsContainsDotDot(s string) bool {
-	return filepath.Clean(s) != s || filepath.IsAbs(s) || filepath.HasPrefix(s, "..")
+	clean := filepath.Clean(s)
+	return clean != s || filepath.IsAbs(clean) || clean == ".." ||
+		strings.HasPrefix(clean, ".."+string(filepath.Separator))
 }

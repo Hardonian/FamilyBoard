@@ -8,8 +8,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
-	"time"
 )
 
 // SystemInfo holds appliance hardware metrics and platform identity.
@@ -38,11 +36,9 @@ type SystemInfo struct {
 
 // Manager coordinates hardware interactions including Wi-Fi, Bluetooth, and device power.
 type Manager struct {
-	mu           sync.RWMutex
-	wifi         *WifiManager
-	bluetooth    *BluetoothManager
-	isMock       bool
-	lastScanTime time.Time
+	wifi      *WifiManager
+	bluetooth *BluetoothManager
+	isMock    bool
 }
 
 // NewManager creates an appliance hardware coordinator.

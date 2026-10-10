@@ -242,7 +242,7 @@ func VerifyAccountIsolation(expectedEmail, authenticatedEmail string) error {
 	actual := strings.TrimSpace(strings.ToLower(authenticatedEmail))
 
 	if expected != actual {
-		return fmt.Errorf("%w: authenticated as %q, but expected %q. Cross-assignment prevented.",
+		return fmt.Errorf("%w: authenticated as %q, but expected %q; cross-assignment prevented",
 			ErrAccountMismatch, actual, expected)
 	}
 	return nil

@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hardonian/FamilyBoard/internal/auth"
 	appleCal "github.com/Hardonian/FamilyBoard/internal/calendar/apple"
 	"github.com/Hardonian/FamilyBoard/internal/calendar/google"
 	msCal "github.com/Hardonian/FamilyBoard/internal/calendar/microsoft"
-	"github.com/Hardonian/FamilyBoard/internal/auth"
 	"github.com/Hardonian/FamilyBoard/internal/config"
 	"github.com/Hardonian/FamilyBoard/internal/db"
 	"github.com/Hardonian/FamilyBoard/internal/models"
@@ -504,4 +504,3 @@ END:VCALENDAR`
 		t.Errorf("expected Location 'Online Meeting', got %q", ev.Location)
 	}
 }
-
