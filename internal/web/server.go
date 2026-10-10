@@ -2,6 +2,8 @@ package web
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -9,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,6 +39,7 @@ type Server struct {
 	queueEngine  *queue.Engine
 	nlParser     *parser.NaturalLanguageParser
 	templates    map[string]*template.Template
+	tokenMu      sync.Mutex
 	sseMu        sync.Mutex
 	sseClients   map[chan string]struct{}
 	mux          *http.ServeMux
@@ -99,6 +103,7 @@ func (s *Server) initTemplates() error {
 		"mul": func(a, b float64) float64 {
 			return a * b
 		},
+		"asset": assetURL,
 	}
 
 	pages := []string{"kiosk.html", "login.html", "setup.html", "admin.html"}
@@ -113,6 +118,18 @@ func (s *Server) initTemplates() error {
 	return nil
 }
 
+// assetURL fingerprints embedded assets so long-lived kiosk browsers can cache
+// aggressively without serving stale code after an appliance update.
+func assetURL(path string) string {
+	contentPath := strings.TrimPrefix(path, "/")
+	data, err := webassets.Content.ReadFile(contentPath)
+	if err != nil {
+		return path
+	}
+	sum := sha256.Sum256(data)
+	return path + "?v=" + hex.EncodeToString(sum[:8])
+}
+
 func (s *Server) routes() {
 	// Embedded static assets with versioned immutable caching
 	staticFS, err := fs.Sub(webassets.Content, "static")
@@ -120,7 +137,7 @@ func (s *Server) routes() {
 		panic(err)
 	}
 	staticHandler := http.StripPrefix("/static/", http.FileServer(http.FS(staticFS)))
-	s.mux.Handle("GET /static/", withStaticCache("1.0.0", staticHandler))
+	s.mux.Handle("GET /static/", withStaticCache(staticHandler))
 
 	// Health Endpoints
 	s.mux.HandleFunc("GET /health/live", s.handleHealthLive)
@@ -177,6 +194,14 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /api/system/presence/beacon/{id}", s.requireKioskWriteAccess(s.handleAPIDeleteBeacon))
 	s.mux.HandleFunc("POST /api/system/power", s.requireAuth(s.requireCSRF(s.handleAPISystemPower)))
 
+	// Web App Manifest and Service Worker for Cross-Platform Mobile PWA (iPhone & Android)
+	s.mux.HandleFunc("GET /manifest.webmanifest", s.handleManifest)
+	s.mux.HandleFunc("GET /sw.js", s.handleServiceWorker)
+
+	// Mobile Phone Pairing Endpoints (QR camera pairing)
+	s.mux.HandleFunc("GET /api/system/mobile-pair", s.requireApplianceAccess(s.handleAPIGetMobilePair))
+	s.mux.HandleFunc("GET /api/system/mobile-pair/qrcode", s.requireApplianceAccess(s.handleAPIGetMobilePairQRCode))
+
 	// FotoCube Ambient Photo Frame & NVMe Migration
 	s.mux.HandleFunc("GET /api/photos", s.requireApplianceAccess(s.handleAPIGetPhotos))
 	s.mux.HandleFunc("POST /api/photos/upload", s.requireKioskWriteAccess(s.handleAPIUploadPhoto))
@@ -185,6 +210,29 @@ func (s *Server) routes() {
 	photoHandler := http.StripPrefix("/photos/", http.FileServer(http.Dir(photosDir)))
 	s.mux.HandleFunc("GET /photos/", s.requireApplianceAccess(photoHandler.ServeHTTP))
 	s.mux.HandleFunc("POST /api/system/storage/migrate-nvme", s.requireAuth(s.requireCSRF(s.handleAPIMigrateNVMe)))
+}
+
+func (s *Server) handleManifest(w http.ResponseWriter, r *http.Request) {
+	data, err := webassets.Content.ReadFile("static/manifest.webmanifest")
+	if err != nil {
+		http.Error(w, "manifest not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/manifest+json")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write(data)
+}
+
+func (s *Server) handleServiceWorker(w http.ResponseWriter, r *http.Request) {
+	data, err := webassets.Content.ReadFile("static/sw.js")
+	if err != nil {
+		http.Error(w, "service worker not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Service-Worker-Allowed", "/")
+	w.Header().Set("Cache-Control", "no-cache")
+	_, _ = w.Write(data)
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -240,6 +288,11 @@ func (s *Server) render(w http.ResponseWriter, page string, data interface{}) {
 
 // GetValidAccessToken fulfills queue.TokenProvider interface for background sync and queue engines.
 func (s *Server) GetValidAccessToken(ctx context.Context, personID, provider string) (string, error) {
+	// Refresh tokens may rotate. Serialize the load/refresh/save sequence so the
+	// sync and mutation workers cannot both redeem the same credential.
+	s.tokenMu.Lock()
+	defer s.tokenMu.Unlock()
+
 	account, err := s.store.GetOAuthAccount(ctx, personID, provider)
 	if err != nil || account == nil {
 		return "", fmt.Errorf("oauth account not found for person %s provider %s", personID, provider)
@@ -262,8 +315,38 @@ func (s *Server) GetValidAccessToken(ctx context.Context, personID, provider str
 			if newTok.RefreshToken != "" {
 				stored.RefreshToken = newTok.RefreshToken
 			}
-			_ = s.tokenStorage.Save(account.ID, stored)
+			if err := s.tokenStorage.Save(account.ID, stored); err != nil {
+				return "", fmt.Errorf("save refreshed google token: %w", err)
+			}
+			account.ExpiresAt = stored.Expiry
+			account.Status = "active"
+			if err := s.store.UpsertOAuthAccount(ctx, account); err != nil {
+				return "", fmt.Errorf("update google token metadata: %w", err)
+			}
+		} else if provider == "microsoft" && s.msOAuth != nil {
+			newTok, err := s.msOAuth.RefreshToken(ctx, stored.RefreshToken)
+			if err != nil {
+				return "", fmt.Errorf("refresh microsoft token: %w", err)
+			}
+			stored.AccessToken = newTok.AccessToken
+			stored.Expiry = newTok.Expiry
+			if newTok.RefreshToken != "" {
+				stored.RefreshToken = newTok.RefreshToken
+			}
+			if err := s.tokenStorage.Save(account.ID, stored); err != nil {
+				return "", fmt.Errorf("save refreshed microsoft token: %w", err)
+			}
+			account.ExpiresAt = stored.Expiry
+			account.Status = "active"
+			if err := s.store.UpsertOAuthAccount(ctx, account); err != nil {
+				return "", fmt.Errorf("update microsoft token metadata: %w", err)
+			}
+		} else {
+			return "", fmt.Errorf("%w: no refresh client configured for provider %s", oauth.ErrTokenExpired, provider)
 		}
+	}
+	if stored.AccessToken == "" || (!stored.Expiry.IsZero() && time.Now().After(stored.Expiry)) {
+		return "", oauth.ErrTokenExpired
 	}
 
 	return stored.AccessToken, nil

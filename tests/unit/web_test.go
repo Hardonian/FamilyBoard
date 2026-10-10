@@ -140,7 +140,7 @@ func TestWeb_CSRFRedirectAndSecurityHeaders(t *testing.T) {
 }
 
 func TestWeb_HealthEndpoints(t *testing.T) {
-	srv, _, cleanup := setupTestServer(t)
+	srv, store, cleanup := setupTestServer(t)
 	defer cleanup()
 
 	// Live probe
@@ -163,6 +163,70 @@ func TestWeb_HealthEndpoints(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &status)
 	if status.Status != "ready" || status.Database != "healthy" {
 		t.Errorf("unexpected ready status: %+v", status)
+	}
+
+	// A database behind the binary's embedded migrations must not be ready.
+	if _, err := store.DB().Exec("DELETE FROM schema_migrations WHERE version = (SELECT MAX(version) FROM schema_migrations)"); err != nil {
+		t.Fatalf("simulate stale schema: %v", err)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/health/ready", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected stale schema readiness to return 503, got %d", w.Code)
+	}
+}
+
+func TestWeb_StaticAssetsUseContentFingerprinting(t *testing.T) {
+	srv, _, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	pageReq := httptest.NewRequest(http.MethodGet, "/login", nil)
+	page := httptest.NewRecorder()
+	srv.ServeHTTP(page, pageReq)
+	body := page.Body.String()
+	marker := `/static/css/app.css?v=`
+	start := strings.Index(body, marker)
+	if start == -1 {
+		t.Fatalf("expected fingerprinted stylesheet URL in rendered page")
+	}
+	end := strings.Index(body[start:], `"`)
+	if end == -1 {
+		t.Fatalf("expected closing quote after fingerprinted stylesheet URL")
+	}
+	assetPath := body[start : start+end]
+
+	assetReq := httptest.NewRequest(http.MethodGet, assetPath, nil)
+	asset := httptest.NewRecorder()
+	srv.ServeHTTP(asset, assetReq)
+	if asset.Code != http.StatusOK {
+		t.Fatalf("expected asset response 200, got %d", asset.Code)
+	}
+	if got := asset.Header().Get("Cache-Control"); !strings.Contains(got, "immutable") {
+		t.Fatalf("expected fingerprinted asset to be immutable, got %q", got)
+	}
+	etag := asset.Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("expected fingerprinted asset ETag")
+	}
+
+	revalidateReq := httptest.NewRequest(http.MethodGet, assetPath, nil)
+	revalidateReq.Header.Set("If-None-Match", etag)
+	revalidateReq.Header.Set("Accept-Encoding", "gzip")
+	revalidate := httptest.NewRecorder()
+	srv.ServeHTTP(revalidate, revalidateReq)
+	if revalidate.Code != http.StatusNotModified {
+		t.Fatalf("expected matching ETag to return 304, got %d", revalidate.Code)
+	}
+	if encoding := revalidate.Header().Get("Content-Encoding"); encoding != "" {
+		t.Fatalf("expected 304 response without content encoding, got %q", encoding)
+	}
+
+	unversionedReq := httptest.NewRequest(http.MethodGet, "/static/css/app.css", nil)
+	unversioned := httptest.NewRecorder()
+	srv.ServeHTTP(unversioned, unversionedReq)
+	if got := unversioned.Header().Get("Cache-Control"); strings.Contains(got, "immutable") {
+		t.Fatalf("expected unversioned asset to require revalidation, got %q", got)
 	}
 }
 

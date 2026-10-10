@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hardonian/FamilyBoard/internal/buildinfo"
 	"github.com/Hardonian/FamilyBoard/internal/db"
 )
 
@@ -60,7 +61,7 @@ func CreateBackup(ctx context.Context, database *db.DB, configPath, outDir strin
 	ver, _ := db.CurrentVersion(ctx, database)
 
 	manifest := Manifest{
-		Version:        "v0.9.0",
+		Version:        buildinfo.Version,
 		CreatedAt:      time.Now(),
 		DeviceName:     "FamilyBoard Appliance",
 		DatabaseSHA256: dbHashHex,

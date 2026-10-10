@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/Hardonian/FamilyBoard/internal/buildinfo"
 	"github.com/Hardonian/FamilyBoard/internal/db"
 )
 
@@ -74,7 +75,7 @@ func Generate(ctx context.Context, store *db.Store, dbPath string) (*DiagnosticR
 	_ = store.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM mutation_queue WHERE state = 'dead_letter';").Scan(&deadLetter)
 
 	report := &DiagnosticReport{
-		Version:      "v0.9.0",
+		Version:      buildinfo.Version,
 		Platform:     runtime.GOOS,
 		Architecture: runtime.GOARCH,
 		Hardware:     hwModel,

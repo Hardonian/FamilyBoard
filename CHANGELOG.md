@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- Fingerprint embedded browser assets so kiosk updates cannot remain stuck on stale JavaScript or CSS.
+- Make readiness checks inexpensive and require the database schema to match the migrations embedded in the running binary.
+- Centralize build metadata across the daemon, CLI, health response, backups, and diagnostics.
+- Align CI and contributor documentation with Go 1.26.3, expand race coverage to every package, and verify tidy module files.
+- Strengthen Raspberry Pi and Radxa systemd sandbox settings.
+
+### Fixed
+
+- Refresh expiring Microsoft OAuth credentials before calendar and mail synchronization.
+- Keep live-update SSE connections open beyond the ordinary HTTP write timeout and send periodic heartbeats.
+
+---
+
 ## [1.1.0] - 2026-10-09
 
 ### Added

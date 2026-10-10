@@ -6,7 +6,7 @@ Thank you for contributing to `FamilyBoard`! This document outlines development 
 
 ## 1. Development Prerequisites
 
-- **Go:** Version 1.22 or higher.
+- **Go:** Version 1.26.3 or higher.
 - **Git:** Modern git client.
 - **Make:** GNU Make (or `mingw32-make` on Windows).
 - **Bash:** Required for testing deployment scripts (`bash -n`).

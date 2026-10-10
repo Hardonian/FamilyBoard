@@ -16,6 +16,15 @@ func (s *Server) handleKiosk(w http.ResponseWriter, r *http.Request) {
 	// Issue physical localhost capability cookie if request is on loopback
 	s.issueKioskCapabilityCookie(w, r)
 
+	// Issue mobile capability cookie if a valid physical pairing token was scanned
+	if pairToken := r.URL.Query().Get("pair"); pairToken != "" {
+		if s.verifyPairingToken(pairToken) {
+			s.issueMobileKioskCapabilityCookie(w, r)
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+	}
+
 	// Check if appliance needs first-run wizard setup
 	meta, err := s.store.GetDeviceMetadata(r.Context())
 	if err != nil || meta == nil {
@@ -520,8 +529,12 @@ func (s *Server) handleSSEStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	// The HTTP server has a finite write timeout for ordinary responses. Clear
+	// it for this intentionally long-lived stream.
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
 
-	clientCh := make(chan string, 5)
+	clientCh := make(chan string, 10)
 
 	s.sseMu.Lock()
 	s.sseClients[clientCh] = struct{}{}
@@ -534,16 +547,29 @@ func (s *Server) handleSSEStream(w http.ResponseWriter, r *http.Request) {
 		close(clientCh)
 	}()
 
-	// Send initial ping
+	// Send retry interval (2.5 seconds) and initial connected event
+	fmt.Fprintf(w, "retry: 2500\n\n")
 	fmt.Fprintf(w, "data: connected\n\n")
 	flusher.Flush()
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
 
 	for {
 		select {
 		case <-r.Context().Done():
 			return
-		case msg := <-clientCh:
-			fmt.Fprintf(w, "data: %s\n\n", msg)
+		case msg, ok := <-clientCh:
+			if !ok {
+				return
+			}
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", msg); err != nil {
+				return
+			}
+			flusher.Flush()
+		case <-heartbeat.C:
+			if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
+				return
+			}
 			flusher.Flush()
 		}
 	}

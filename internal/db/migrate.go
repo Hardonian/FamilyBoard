@@ -62,6 +62,18 @@ func LoadMigrations() ([]Migration, error) {
 	return migrations, nil
 }
 
+// LatestVersion returns the highest schema version embedded in this binary.
+func LatestVersion() (int, error) {
+	migrations, err := LoadMigrations()
+	if err != nil {
+		return 0, err
+	}
+	if len(migrations) == 0 {
+		return 0, nil
+	}
+	return migrations[len(migrations)-1].Version, nil
+}
+
 // CurrentVersion returns the highest applied migration version.
 func CurrentVersion(ctx context.Context, db *DB) (int, error) {
 	var exists int

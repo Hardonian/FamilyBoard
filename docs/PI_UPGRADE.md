@@ -16,7 +16,7 @@ Upgrades on an embedded home appliance must be completely reliable. A failed upg
 3. **Atomic Schema Migrations:**
    Embedded database migrations run in forward-only, transactional blocks. If a migration statement errors, the database rolls back to its exact pre-migration state.
 4. **Health Check & Auto-Rollback:**
-   After starting the new version, `update.sh` polls `http://127.0.0.1:8080/api/health` for 30 seconds. If the endpoint fails to return `HTTP 200 OK`, the script immediately:
+   After starting the new version, `update.sh` polls `http://127.0.0.1:8080/health/ready` for 30 seconds. If the endpoint fails to return `HTTP 200 OK`, the script immediately:
    - Stops the failed service.
    - Restores the `.old` binaries.
    - Restores the pre-upgrade database backup.

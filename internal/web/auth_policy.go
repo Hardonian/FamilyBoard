@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Hardonian/FamilyBoard/internal/auth"
@@ -87,6 +88,49 @@ func (s *Server) issueKioskCapabilityCookie(w http.ResponseWriter, r *http.Reque
 			Secure:   s.cfg.Security.CookieSecure,
 		})
 	}
+}
+
+// generatePairingToken creates an HMAC-signed, time-bounded pairing token for mobile QR pairing.
+func (s *Server) generatePairingToken(ttl time.Duration) string {
+	exp := time.Now().Add(ttl).Unix()
+	msg := fmt.Sprintf("pair:%d", exp)
+	h := hmac.New(sha256.New, []byte(s.cfg.Security.SessionSecret))
+	h.Write([]byte(msg))
+	sig := hex.EncodeToString(h.Sum(nil))
+	return fmt.Sprintf("%d.%s", exp, sig)
+}
+
+// verifyPairingToken validates the mobile pairing token signature and ensures it has not expired.
+func (s *Server) verifyPairingToken(token string) bool {
+	parts := strings.Split(token, ".")
+	if len(parts) != 2 {
+		return false
+	}
+	var exp int64
+	if _, err := fmt.Sscanf(parts[0], "%d", &exp); err != nil {
+		return false
+	}
+	if time.Now().Unix() > exp {
+		return false
+	}
+	msg := fmt.Sprintf("pair:%d", exp)
+	h := hmac.New(sha256.New, []byte(s.cfg.Security.SessionSecret))
+	h.Write([]byte(msg))
+	expected := hex.EncodeToString(h.Sum(nil))
+	return hmac.Equal([]byte(parts[1]), []byte(expected))
+}
+
+// issueMobileKioskCapabilityCookie grants trusted household write capability to a paired smartphone.
+func (s *Server) issueMobileKioskCapabilityCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     kioskCapabilityCookieName,
+		Value:    s.generateKioskToken(),
+		Path:     "/",
+		MaxAge:   86400 * 365, // 1 year trusted household phone
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode, // Lax allows top-level navigation from camera QR scan / PWA icon
+		Secure:   s.cfg.Security.CookieSecure,
+	})
 }
 
 // isAuthenticatedAdmin verifies if the request carries an active, non-expired admin session.

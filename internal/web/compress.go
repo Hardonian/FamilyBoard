@@ -21,6 +21,7 @@ type gzipResponseWriter struct {
 	http.ResponseWriter
 	writer      *gzip.Writer
 	wroteHeader bool
+	compress    bool
 }
 
 func (w *gzipResponseWriter) WriteHeader(status int) {
@@ -28,6 +29,11 @@ func (w *gzipResponseWriter) WriteHeader(status int) {
 		return
 	}
 	w.wroteHeader = true
+	if status < http.StatusOK || status == http.StatusNoContent || status == http.StatusNotModified {
+		w.compress = false
+		w.ResponseWriter.WriteHeader(status)
+		return
+	}
 	w.Header().Del("Content-Length")
 	w.Header().Set("Content-Encoding", "gzip")
 	w.Header().Set("Vary", "Accept-Encoding")
@@ -38,6 +44,9 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 	if !w.wroteHeader {
 		w.WriteHeader(http.StatusOK)
 	}
+	if !w.compress {
+		return w.ResponseWriter.Write(b)
+	}
 	return w.writer.Write(b)
 }
 
@@ -45,7 +54,7 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 func withGzip(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Do not compress SSE event streams or websocket requests
-		if r.Header.Get("Accept") == "text/event-stream" || strings.Contains(r.URL.Path, "/stream") {
+		if r.Method == http.MethodHead || r.Header.Get("Accept") == "text/event-stream" || strings.Contains(r.URL.Path, "/stream") {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -56,23 +65,42 @@ func withGzip(next http.Handler) http.Handler {
 		}
 
 		gz := gzipPool.Get().(*gzip.Writer)
-		defer gzipPool.Put(gz)
 		gz.Reset(w)
-		defer gz.Close()
 
 		gw := &gzipResponseWriter{
 			ResponseWriter: w,
 			writer:         gz,
+			compress:       true,
 		}
+		defer func() {
+			if gw.compress {
+				if !gw.wroteHeader {
+					gw.WriteHeader(http.StatusOK)
+				}
+				_ = gz.Close()
+			} else {
+				gz.Reset(io.Discard)
+			}
+			gzipPool.Put(gz)
+		}()
 		next.ServeHTTP(gw, r)
 	})
 }
 
 // withStaticCache sets long-term immutable caching and ETag headers for static versioned assets.
-func withStaticCache(contentVersion string, next http.Handler) http.Handler {
-	etag := `"` + computeETag(contentVersion) + `"`
-
+func withStaticCache(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		version := r.URL.Query().Get("v")
+		if version == "" {
+			// Unversioned URLs must revalidate so deployments cannot strand an
+			// appliance on stale JavaScript or CSS.
+			w.Header().Set("Cache-Control", "public, max-age=0, must-revalidate")
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Compression can transform the representation, so use a weak validator.
+		etag := `W/"` + computeETag(version) + `"`
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		w.Header().Set("ETag", etag)
 

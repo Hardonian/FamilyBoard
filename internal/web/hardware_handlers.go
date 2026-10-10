@@ -521,3 +521,50 @@ func (s *Server) handleAPIMigrateNVMe(w http.ResponseWriter, r *http.Request) {
 		"output":  out,
 	})
 }
+
+// handleAPIGetMobilePair returns mobile onboarding pairing info, token, and target URLs.
+func (s *Server) handleAPIGetMobilePair(w http.ResponseWriter, r *http.Request) {
+	token := s.generatePairingToken(24 * time.Hour)
+	pairURL := s.buildPairingURL(r, token)
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"pair_url":    pairURL,
+		"qr_url":      "/api/system/mobile-pair/qrcode",
+		"device_name": s.cfg.Server.DeviceName,
+		"token":       token,
+	})
+}
+
+// handleAPIGetMobilePairQRCode renders a high-contrast PNG QR code for camera pairing.
+func (s *Server) handleAPIGetMobilePairQRCode(w http.ResponseWriter, r *http.Request) {
+	token := s.generatePairingToken(24 * time.Hour)
+	pairURL := s.buildPairingURL(r, token)
+
+	pngBytes, err := qrcode.Encode(pairURL, qrcode.Medium, 280)
+	if err != nil {
+		writeHardwareError(w, http.StatusInternalServerError, "failed to generate pairing QR code")
+		return
+	}
+
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "no-cache, no-store")
+	_, _ = w.Write(pngBytes)
+}
+
+func (s *Server) buildPairingURL(r *http.Request, token string) string {
+	scheme := "http"
+	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	host := r.Host
+	if s.isLocalhost(r) {
+		status := s.hwMgr.Wifi().GetStatus(r.Context())
+		if status.IPAddress != "" {
+			host = fmt.Sprintf("%s:%d", status.IPAddress, s.cfg.Server.Port)
+		} else {
+			host = fmt.Sprintf("familyboard.local:%d", s.cfg.Server.Port)
+		}
+	}
+	return fmt.Sprintf("%s://%s/?pair=%s", scheme, host, token)
+}

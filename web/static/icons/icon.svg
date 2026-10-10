@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="50%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#090d16"/>
+    </linearGradient>
+    <linearGradient id="header-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0284c7"/>
+      <stop offset="50%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+    <linearGradient id="glow-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- Background App Tile -->
+  <rect width="512" height="512" rx="112" fill="url(#bg-grad)"/>
+  <rect x="4" y="4" width="504" height="504" rx="108" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3"/>
+
+  <!-- Calendar Body -->
+  <g filter="url(#shadow)">
+    <!-- Main Card Body -->
+    <rect x="76" y="116" width="360" height="320" rx="36" fill="#1e293b" stroke="#334155" stroke-width="4"/>
+
+    <!-- Calendar Top Bar -->
+    <path d="M 76 152 C 76 132.1 92.1 116 112 116 L 400 116 C 419.9 116 436 132.1 436 152 L 436 196 L 76 196 Z" fill="url(#header-grad)"/>
+
+    <!-- Binder Loops -->
+    <rect x="144" y="92" width="24" height="48" rx="12" fill="#f8fafc" stroke="#0f172a" stroke-width="4"/>
+    <rect x="344" y="92" width="24" height="48" rx="12" fill="#f8fafc" stroke="#0f172a" stroke-width="4"/>
+
+    <!-- Home Icon inside Header -->
+    <path d="M 256 132 L 232 152 L 238 152 L 238 176 L 250 176 L 250 162 L 262 162 L 262 176 L 274 176 L 274 152 L 280 152 Z" fill="#ffffff" opacity="0.95"/>
+
+    <!-- Calendar Grid Content -->
+    <!-- Row 1: Weekday dots -->
+    <circle cx="126" cy="236" r="14" fill="#38bdf8"/>
+    <circle cx="178" cy="236" r="14" fill="#cbd5e1" opacity="0.4"/>
+    <circle cx="230" cy="236" r="14" fill="#f472b6"/>
+    <circle cx="282" cy="236" r="14" fill="#cbd5e1" opacity="0.4"/>
+    <circle cx="334" cy="236" r="14" fill="#10b981"/>
+    <circle cx="386" cy="236" r="14" fill="#fbbf24"/>
+
+    <!-- Activity Chips: Multi-Member Bars -->
+    <!-- Pill 1: Sky Blue (Alex) -->
+    <rect x="112" y="276" width="136" height="32" rx="16" fill="rgba(56, 189, 248, 0.22)" stroke="#38bdf8" stroke-width="2.5"/>
+    <circle cx="128" cy="292" r="6" fill="#38bdf8"/>
+    <rect x="142" y="288" width="88" height="8" rx="4" fill="#f8fafc"/>
+
+    <!-- Pill 2: Warm Coral Pink (Jordan) -->
+    <rect x="264" y="276" width="136" height="32" rx="16" fill="rgba(244, 114, 182, 0.22)" stroke="#f472b6" stroke-width="2.5"/>
+    <circle cx="280" cy="292" r="6" fill="#f472b6"/>
+    <rect x="294" y="288" width="88" height="8" rx="4" fill="#f8fafc"/>
+
+    <!-- Pill 3: Emerald Green (Home / Family) -->
+    <rect x="112" y="324" width="288" height="34" rx="17" fill="rgba(16, 185, 129, 0.22)" stroke="#10b981" stroke-width="2.5"/>
+    <circle cx="132" cy="341" r="7" fill="#10b981"/>
+    <rect x="150" y="337" width="180" height="8" rx="4" fill="#f8fafc"/>
+
+    <!-- Pill 4: Amber (Kids Practice) -->
+    <rect x="112" y="374" width="168" height="32" rx="16" fill="rgba(251, 191, 36, 0.22)" stroke="#fbbf24" stroke-width="2.5"/>
+    <circle cx="128" cy="390" r="6" fill="#fbbf24"/>
+    <rect x="142" y="386" width="112" height="8" rx="4" fill="#f8fafc"/>
+
+    <!-- Live Sync Pulsing Dot (Bottom Right) -->
+    <circle cx="376" cy="390" r="10" fill="#10b981"/>
+    <circle cx="376" cy="390" r="16" fill="none" stroke="#10b981" stroke-width="2" opacity="0.6"/>
+  </g>
+</svg>

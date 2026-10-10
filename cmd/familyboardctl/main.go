@@ -13,16 +13,11 @@ import (
 	"time"
 
 	"github.com/Hardonian/FamilyBoard/internal/backup"
+	"github.com/Hardonian/FamilyBoard/internal/buildinfo"
 	"github.com/Hardonian/FamilyBoard/internal/config"
 	"github.com/Hardonian/FamilyBoard/internal/db"
 	"github.com/Hardonian/FamilyBoard/internal/diagnostics"
 	"github.com/Hardonian/FamilyBoard/internal/restore"
-)
-
-var (
-	version   = "0.9.0"
-	commit    = "none"
-	buildDate = "unknown"
 )
 
 func main() {
@@ -38,7 +33,7 @@ func main() {
 	case "health":
 		runHealth()
 	case "version":
-		fmt.Printf("FamilyBoard v%s (commit: %s, date: %s, arch: %s/%s)\n", version, commit, buildDate, runtime.GOOS, runtime.GOARCH)
+		fmt.Printf("FamilyBoard v%s (commit: %s, date: %s, arch: %s/%s)\n", buildinfo.Version, buildinfo.Commit, buildinfo.Date, runtime.GOOS, runtime.GOARCH)
 	case "sync-now":
 		runSyncNow()
 	case "backup":
@@ -94,7 +89,7 @@ func runStatus() {
 		defer database.Close()
 	}
 
-	fmt.Printf("FamilyBoard v%s\n\n", version)
+	fmt.Printf("FamilyBoard v%s\n\n", buildinfo.Version)
 	fmt.Printf("Application: %s\n", checkLive(cfg))
 	fmt.Printf("Database:    %s (WAL)\n", dbStatus)
 	fmt.Printf("Kiosk:       %s\n\n", checkKiosk())

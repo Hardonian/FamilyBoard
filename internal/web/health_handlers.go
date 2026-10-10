@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/Hardonian/FamilyBoard/internal/buildinfo"
 	"github.com/Hardonian/FamilyBoard/internal/db"
 )
 
@@ -28,23 +29,27 @@ func (s *Server) handleHealthReady(w http.ResponseWriter, r *http.Request) {
 	status := ReadyStatus{
 		Status:           "ready",
 		Database:         "healthy",
-		ApplianceVersion: "v0.9.0",
+		ApplianceVersion: buildinfo.Version,
 	}
 
-	// 1. Verify database integrity
-	if err := s.store.DB().QuickCheck(); err != nil {
+	// Readiness should be cheap enough to poll frequently. Full integrity checks
+	// run at startup and via familyboardctl db-check.
+	if err := s.store.DB().PingContext(r.Context()); err != nil {
 		status.Status = "not_ready"
-		status.Database = "corrupted: " + err.Error()
+		status.Database = "unavailable"
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_ = json.NewEncoder(w).Encode(status)
 		return
 	}
 
-	// 2. Verify migration version
+	// Verify that the live database matches the migrations embedded in this
+	// binary. A stale schema must never be reported as ready.
 	ver, err := db.CurrentVersion(r.Context(), s.store.DB())
-	if err != nil || ver < 2 {
+	latest, latestErr := db.LatestVersion()
+	if err != nil || latestErr != nil || ver != latest {
 		status.Status = "not_ready"
 		status.Database = "pending_migrations"
+		status.MigrationVersion = ver
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_ = json.NewEncoder(w).Encode(status)
 		return
@@ -52,11 +57,24 @@ func (s *Server) handleHealthReady(w http.ResponseWriter, r *http.Request) {
 	status.MigrationVersion = ver
 
 	// 3. Queue health
-	pending, _ := s.store.CountPendingMutations(r.Context())
+	pending, err := s.store.CountPendingMutations(r.Context())
+	if err != nil {
+		status.Status = "not_ready"
+		status.Database = "unavailable"
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(status)
+		return
+	}
 	status.PendingMutations = pending
 
 	var deadLetters int
-	_ = s.store.DB().QueryRowContext(r.Context(), "SELECT COUNT(*) FROM mutation_queue WHERE state = 'dead_letter';").Scan(&deadLetters)
+	if err := s.store.DB().QueryRowContext(r.Context(), "SELECT COUNT(*) FROM mutation_queue WHERE state = 'dead_letter';").Scan(&deadLetters); err != nil {
+		status.Status = "not_ready"
+		status.Database = "unavailable"
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(status)
+		return
+	}
 	status.DeadLetterCount = deadLetters
 
 	if deadLetters > 0 {

@@ -17,7 +17,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.26.3'
           cache: true
 
       - name: Verify Formatting
@@ -35,6 +35,9 @@ jobs:
       - name: Verify Dependencies
         run: go mod verify
 
+      - name: Verify Module Files Are Tidy
+        run: go mod tidy -diff
+
       - name: Validate Browser JavaScript
         run: |
           node --check web/static/js/kiosk.js
@@ -44,7 +47,7 @@ jobs:
         run: go test -v ./...
 
       - name: Run Race Detector Tests
-        run: go test -race -v ./tests/...
+        run: go test -race -v ./...
 
       - name: Cross-Compile Linux ARM64 Binaries
         run: |

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Hardonian/FamilyBoard/internal/buildinfo"
 	"github.com/Hardonian/FamilyBoard/internal/calendar/google"
 	"github.com/Hardonian/FamilyBoard/internal/config"
 	"github.com/Hardonian/FamilyBoard/internal/db"
@@ -20,12 +21,6 @@ import (
 	"github.com/Hardonian/FamilyBoard/internal/web"
 )
 
-var (
-	version   = "0.9.0"
-	commit    = "none"
-	buildDate = "unknown"
-)
-
 func main() {
 	configPath := flag.String("config", "", "Path to configuration TOML file")
 	portFlag := flag.Int("port", 0, "Port override for web server")
@@ -33,7 +28,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("FamilyBoard v%s (commit: %s, date: %s)\n", version, commit, buildDate)
+		fmt.Printf("FamilyBoard v%s (commit: %s, date: %s)\n", buildinfo.Version, buildinfo.Commit, buildinfo.Date)
 		os.Exit(0)
 	}
 
@@ -42,7 +37,7 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
-	slog.Info("Starting FamilyBoard appliance daemon", "version", version, "commit", commit)
+	slog.Info("Starting FamilyBoard appliance daemon", "version", buildinfo.Version, "commit", buildinfo.Commit)
 
 	// 1. Load Configuration
 	cfg, loadedPath, err := config.Load(*configPath)

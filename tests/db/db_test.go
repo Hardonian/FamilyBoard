@@ -53,8 +53,12 @@ func TestDB_MigrationsAndInitialSeeds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get current version: %v", err)
 	}
-	if ver < 3 {
-		t.Errorf("expected migration version >= 3, got %d", ver)
+	latest, err := db.LatestVersion()
+	if err != nil {
+		t.Fatalf("failed to get latest embedded migration: %v", err)
+	}
+	if ver != latest {
+		t.Errorf("expected migration version %d, got %d", latest, ver)
 	}
 
 	// Verify Quick Templates seeded

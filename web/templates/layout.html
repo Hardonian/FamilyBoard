@@ -2,13 +2,24 @@
 <html lang="en" data-theme="{{.Theme}}">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="FamilyBoard — your private, local-first family calendar.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0">
+  <meta name="description" content="FamilyBoard — your private, sovereign, local-first family calendar.">
   <meta name="theme-color" content="#0f172a">
   <meta name="color-scheme" content="dark light">
+  <!-- Apple iPhone / iOS Safari PWA tags -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FamilyBoard">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <!-- Android (Poco F7 / Chrome) & Cross-Platform PWA -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="application-name" content="FamilyBoard">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/icon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
   {{with .CSRFToken}}<meta name="csrf-token" content="{{.}}">{{end}}
   <title>{{.Title}} - FamilyBoard</title>
-  <link rel="stylesheet" href="/static/css/app.css">
+  <link rel="stylesheet" href="{{asset "/static/css/app.css"}}">
 </head>
 <body>
   {{template "content" .}}
