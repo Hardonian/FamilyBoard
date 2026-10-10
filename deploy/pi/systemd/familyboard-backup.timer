@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly verified FamilyBoard appliance backup
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+RandomizedDelaySec=15m
+Persistent=true
+Unit=familyboard-backup.service
+
+[Install]
+WantedBy=timers.target

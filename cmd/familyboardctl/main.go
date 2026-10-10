@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/Hardonian/FamilyBoard/internal/backup"
@@ -70,7 +72,7 @@ func printHelp() {
 	fmt.Println("  db-check      Execute SQLite integrity check and table counts")
 	fmt.Println("  diagnostics   Generate privacy-scrubbed appliance diagnostics report")
 	fmt.Println("  repair        Verify and repair permissions, directories, and DB indexes")
-	fmt.Println("  update        Safely update binary with staged health verification")
+	fmt.Println("  update        Atomically replace the daemon and retain a rollback copy")
 	fmt.Println("  os-update     Perform supported same-major OS package maintenance")
 }
 
@@ -130,11 +132,14 @@ func runStatus() {
 func checkLive(cfg *config.Config) string {
 	client := http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/health/live", cfg.Server.Port))
-	if err == nil && resp.StatusCode == http.StatusOK {
-		resp.Body.Close()
-		return "healthy"
+	if err != nil {
+		return "service inactive or unreachable"
 	}
-	return "service inactive or unreachable"
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Sprintf("unhealthy (HTTP %d)", resp.StatusCode)
+	}
+	return "healthy"
 }
 
 func checkKiosk() string {
@@ -150,26 +155,49 @@ func checkKiosk() string {
 }
 
 func runHealth() {
-	cfg, _, _ := config.Load("")
+	cfg, _, err := config.Load("")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Load config: %v\n", err)
+		os.Exit(1)
+	}
 	client := http.Client{Timeout: 3 * time.Second}
 	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/health/ready", cfg.Server.Port))
-	if err != nil || resp.StatusCode != http.StatusOK {
-		fmt.Println("NOT READY")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "NOT READY: %v\n", err)
 		os.Exit(1)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		fmt.Fprintf(os.Stderr, "NOT READY: HTTP %d %s\n", resp.StatusCode, strings.TrimSpace(string(body)))
+		os.Exit(1)
+	}
 	fmt.Println("READY")
 }
 
 func runSyncNow() {
-	cfg, _, _ := config.Load("")
-	client := http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Post(fmt.Sprintf("http://127.0.0.1:%d/admin/sync-now", cfg.Server.Port), "application/x-www-form-urlencoded", nil)
+	cfg, _, err := config.Load("")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Load config: %v\n", err)
+		os.Exit(1)
+	}
+	client := http.Client{
+		Timeout: 30 * time.Second,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	resp, err := client.Post(fmt.Sprintf("http://127.0.0.1:%d/api/control/sync-now", cfg.Server.Port), "application/json", nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Trigger sync failed: %v\n", err)
 		os.Exit(1)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		fmt.Fprintf(os.Stderr, "Trigger sync failed: HTTP %d %s\n", resp.StatusCode, strings.TrimSpace(string(body)))
+		os.Exit(1)
+	}
 	fmt.Println("Sync command sent successfully.")
 }
 
@@ -308,40 +336,36 @@ func runRepair() {
 }
 
 func runUpdate(args []string) {
-	if len(args) < 1 {
-		fmt.Println("Usage: familyboardctl update <binary-path>")
-		os.Exit(1)
-	}
-	newBinary := args[0]
-	fmt.Printf("Updating FamilyBoard binary from %s...\n", newBinary)
-
-	destPath, err := os.Executable()
+	defaultTarget, err := defaultDaemonPath()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Resolve executable path: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Resolve daemon path: %v\n", err)
+		os.Exit(1)
+	}
+	fs := flag.NewFlagSet("update", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	targetPath := fs.String("target", defaultTarget, "Installed FamilyBoard daemon path")
+	if err := fs.Parse(args); err != nil {
+		os.Exit(1)
+	}
+	if fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "Usage: familyboardctl update [--target <daemon-path>] <binary-path>")
 		os.Exit(1)
 	}
 
-	// Staged replacement
-	backupPath := destPath + ".old"
-	_ = os.Rename(destPath, backupPath)
-
-	in, err := os.Open(newBinary)
+	newBinary := fs.Arg(0)
+	fmt.Printf("Validating and installing FamilyBoard daemon from %s...\n", newBinary)
+	version, err := installDaemonBinary(newBinary, *targetPath)
 	if err != nil {
-		_ = os.Rename(backupPath, destPath) // Rollback
-		fmt.Fprintf(os.Stderr, "Open new binary: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Update failed without replacing the installed daemon: %v\n", err)
 		os.Exit(1)
 	}
-	defer in.Close()
 
-	out, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
-	if err != nil {
-		_ = os.Rename(backupPath, destPath) // Rollback
-		fmt.Fprintf(os.Stderr, "Create destination binary: %v\n", err)
-		os.Exit(1)
+	fmt.Printf("Daemon updated successfully: %s\n", version)
+	fmt.Printf("Installed: %s\n", *targetPath)
+	fmt.Printf("Rollback:  %s.old\n", *targetPath)
+	if runtime.GOOS == "linux" {
+		fmt.Println("Restart with: sudo systemctl restart familyboard.service")
 	}
-	defer out.Close()
-
-	fmt.Println("Binary updated successfully.")
 }
 
 func runOSUpdate() {

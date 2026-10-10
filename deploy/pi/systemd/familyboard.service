@@ -3,6 +3,8 @@ Description=FamilyBoard Sovereign Calendar Appliance
 Documentation=https://github.com/Hardonian/FamilyBoard
 After=network.target local-fs.target time-sync.target
 Wants=time-sync.target
+StartLimitIntervalSec=60s
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -12,8 +14,14 @@ WorkingDirectory=/var/lib/familyboard
 ExecStart=/usr/local/bin/familyboard --config /etc/familyboard/config.toml
 Restart=on-failure
 RestartSec=5s
-StartLimitIntervalSec=60s
-StartLimitBurst=5
+TimeoutStartSec=45s
+TimeoutStopSec=30s
+RuntimeDirectory=familyboard
+RuntimeDirectoryMode=0750
+StateDirectory=familyboard
+StateDirectoryMode=0750
+CacheDirectory=familyboard
+CacheDirectoryMode=0750
 
 # Hardening measures
 NoNewPrivileges=true
@@ -34,6 +42,11 @@ UMask=0027
 ReadWritePaths=/var/lib/familyboard /var/cache/familyboard /run/familyboard /etc/familyboard
 CapabilityBoundingSet=
 AmbientCapabilities=
+ProtectProc=invisible
+ProcSubset=pid
+RemoveIPC=true
+TasksMax=128
+LimitNOFILE=8192
 
 # Resource limits for Raspberry Pi 3B (1 GB RAM)
 MemoryMax=350M

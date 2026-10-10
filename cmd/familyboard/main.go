@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -173,27 +174,51 @@ func main() {
 		MaxHeaderBytes:    1 << 20,
 	}
 
+	serveErrCh := make(chan error, 1)
 	go func() {
 		slog.Info("FamilyBoard listening", "address", addr, "kiosk_url", fmt.Sprintf("http://%s/", addr))
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("HTTP server failed", "err", err)
-			os.Exit(1)
+		err := httpServer.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
 		}
+		serveErrCh <- err
 	}()
 
-	// 10. Graceful Shutdown on Signals
+	// 10. Graceful Shutdown on Signals or a listener failure.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	<-sigCh
+	defer signal.Stop(sigCh)
+
+	var serveFailure error
+	select {
+	case sig := <-sigCh:
+		slog.Info("Received shutdown signal", "signal", sig.String())
+	case serveFailure = <-serveErrCh:
+		if serveFailure != nil {
+			slog.Error("HTTP server failed", "err", serveFailure)
+		}
+	}
 
 	slog.Info("Shutting down FamilyBoard appliance...")
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelShutdown()
 
-	_ = httpServer.Shutdown(shutdownCtx)
+	if serveFailure == nil {
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			slog.Warn("HTTP server shutdown did not complete cleanly", "err", err)
+		}
+	}
+	cancelApp()
 	queueEngine.Stop()
 	syncEngine.Stop()
 
-	_ = database.Checkpoint()
+	if err := database.Checkpoint(); err != nil {
+		slog.Warn("Database checkpoint failed during shutdown", "err", err)
+	}
 	slog.Info("FamilyBoard stopped cleanly")
+	if serveFailure != nil {
+		// Explicitly close before os.Exit, which does not run deferred calls.
+		_ = database.Close()
+		os.Exit(1)
+	}
 }

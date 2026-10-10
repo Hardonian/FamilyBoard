@@ -3,6 +3,8 @@ Description=FamilyBoard Appliance Daemon (Radxa Dragon Native)
 Documentation=https://github.com/Hardonian/FamilyBoard
 After=network.target time-sync.target NetworkManager.service bluetooth.service
 Wants=time-sync.target NetworkManager.service bluetooth.service
+StartLimitIntervalSec=60s
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -12,8 +14,14 @@ WorkingDirectory=/var/lib/familyboard
 ExecStart=/usr/local/bin/familyboard --config /etc/familyboard/config.toml
 Restart=on-failure
 RestartSec=3s
-StartLimitIntervalSec=60s
-StartLimitBurst=5
+TimeoutStartSec=45s
+TimeoutStopSec=30s
+RuntimeDirectory=familyboard
+RuntimeDirectoryMode=0750
+StateDirectory=familyboard
+StateDirectoryMode=0750
+CacheDirectory=familyboard
+CacheDirectoryMode=0750
 
 # Hardening measures
 NoNewPrivileges=true
@@ -32,6 +40,13 @@ RestrictSUIDSGID=true
 SystemCallArchitectures=native
 UMask=0027
 ReadWritePaths=/var/lib/familyboard /var/cache/familyboard /run/familyboard /etc/familyboard
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectProc=invisible
+ProcSubset=pid
+RemoveIPC=true
+TasksMax=256
+LimitNOFILE=8192
 
 # Resource limits tuned for Radxa Dragon Q64 (Snapdragon QCS6490 8-core SoC)
 MemoryMax=1G

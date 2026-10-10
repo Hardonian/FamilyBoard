@@ -1,0 +1,30 @@
+[Unit]
+Description=Create a verified FamilyBoard appliance backup
+Documentation=https://github.com/Hardonian/FamilyBoard/blob/main/docs/BACKUP_RESTORE.md
+After=local-fs.target familyboard.service
+
+[Service]
+Type=oneshot
+User=familyboard
+Group=familyboard
+UMask=0077
+ExecStart=/usr/local/libexec/familyboard/create-migration-bundle --destination /var/lib/familyboard/backups --prefix familyboard-backup --keep 7
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+LockPersonality=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+ReadWritePaths=/var/lib/familyboard/backups
+CapabilityBoundingSet=
+AmbientCapabilities=
+
