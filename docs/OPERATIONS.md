@@ -12,12 +12,13 @@ All routine maintenance is handled through `familyboardctl`:
 
 | Task | Command | Expected Output |
 | :--- | :--- | :--- |
-| **Check Health** | `familyboardctl health` | `{"status":"healthy","database":"connected",...}` |
+| **Check Health** | `familyboardctl health` | `READY` |
 | **System Status** | `familyboardctl status` | Active calendars, pending queue count, sync state |
 | **Trigger Live Sync** | `familyboardctl sync-now` | `Triggered sync across all accounts` |
 | **Integrity Check** | `familyboardctl db-check` | `Database integrity check: ok` |
-| **Create Backup** | `familyboardctl backup` | Snapshot created in `/var/lib/familyboard/backups/` |
-| **Collect Diagnostics** | `familyboardctl diagnostics` | Sanitized bundle in `/var/log/familyboard/diagnostics/` |
+| **Create Backup** | `familyboardctl backup --to /var/backups/familyboard` | Verified snapshot archive |
+| **Verify Backup** | `familyboardctl verify-backup /path/to/backup.tar.gz` | Checksum and SQLite integrity pass |
+| **Collect Diagnostics** | `familyboardctl diagnostics --out /tmp/familyboard-diagnostics.json` | Private JSON report |
 | **Verify Hardware & OS** | `sudo /opt/familyboard/deploy/pi/verify.sh` | Report across Hardware, OS, DB, Network, Display |
 
 ---
@@ -78,11 +79,12 @@ The SQLite database uses Write-Ahead Logging (WAL) at `/var/lib/familyboard/fami
 # 1. Check database size and WAL status
 ls -lh /var/lib/familyboard/familyboard.db*
 
-# 2. Perform online snapshot backup
-familyboardctl backup
+# 2. Perform an online snapshot backup and verify it before storing it elsewhere
+familyboardctl backup --to /var/backups/familyboard
+familyboardctl verify-backup /var/backups/familyboard/<backup-file>.tar.gz
 
 # 3. List existing backups
-ls -lh /var/lib/familyboard/backups/
+ls -lh /var/backups/familyboard/
 
 # 4. Check integrity
 familyboardctl db-check

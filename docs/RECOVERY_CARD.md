@@ -46,7 +46,7 @@ $ sudo systemctl restart    $ sudo pkill -f chromium
     $ familyboardctl repair
     (quarantines corrupt DB, restarts with fresh schema)
   - Restore latest snapshot:
-    $ familyboardctl restore /var/lib/familyboard/backups/<LATEST_BACKUP>.db
+    $ familyboardctl restore /var/lib/familyboard/backups/<LATEST_BACKUP>.tar.gz
                      │
                      ▼
             6. SYSTEM REBOOT

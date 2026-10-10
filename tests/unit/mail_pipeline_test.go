@@ -118,6 +118,7 @@ func TestNLParser_PracticalFamilyMessages(t *testing.T) {
 		wantStartM int
 		wantAllDay bool
 		wantLoc    string
+		wantTitle  string
 	}{
 		{
 			input:      "Soccer September 18 at 6 PM",
@@ -151,6 +152,15 @@ func TestNLParser_PracticalFamilyMessages(t *testing.T) {
 			wantMonth:  time.October,
 			wantDay:    2,
 			wantAllDay: true,
+			wantTitle:  "School picture day",
+		},
+		{
+			input:      "Dentist next Tuesday at 3pm",
+			subject:    "",
+			wantStartH: 15,
+			wantStartM: 0,
+			wantAllDay: false,
+			wantTitle:  "Dentist",
 		},
 	}
 
@@ -179,6 +189,9 @@ func TestNLParser_PracticalFamilyMessages(t *testing.T) {
 			}
 			if tc.wantLoc != "" && !strings.Contains(res.Location, tc.wantLoc) {
 				t.Errorf("expected location containing %q, got %q", tc.wantLoc, res.Location)
+			}
+			if tc.wantTitle != "" && res.Title != tc.wantTitle {
+				t.Errorf("expected title %q, got %q", tc.wantTitle, res.Title)
 			}
 			if res.Confidence < 0.5 {
 				t.Errorf("expected confidence >= 0.5, got %f", res.Confidence)

@@ -1,103 +1,70 @@
-# Backup & Restore Operations
+# Backup and Restore
 
-This guide covers disaster-proof backup procedures, automated nightly snapshots, off-appliance replication, and recovery drill verification.
+FamilyBoard creates online SQLite snapshots with `VACUUM INTO`, so the kiosk and
+sync workers can keep running while a backup is made. Each snapshot is checked
+with `PRAGMA integrity_check` before it is packaged.
 
----
+## Create a backup
 
-## 1. Hot Backup Engine (`VACUUM INTO`)
-
-Backing up a live SQLite database in WAL mode using standard Linux file copy (`cp`) while writers are active can produce corrupt, mismatched journal copies.
-
-`FamilyBoard` uses SQLite's native online hot snapshot command:
-
-```sql
-VACUUM INTO '/tmp/familyboard_snapshot.db';
-```
-
-- **Zero Downtime:** Operates concurrently while the kiosk and sync workers read and write.
-- **Self-Contained:** Flushes dirty WAL pages into a single, defragmented, consistent database file.
-- **Verification:** Automatically executes `PRAGMA integrity_check;` on the resulting snapshot before packaging.
-
----
-
-## 2. Manual Backup Creation
-
-To create an immediate backup archive:
+Use a directory and let FamilyBoard name the archive:
 
 ```bash
-sudo familyboardctl backup /var/backups/familyboard/familyboard-backup-$(date +%Y%m%d_%H%M%S).tar.gz
+sudo familyboardctl backup --to /var/backups/familyboard
 ```
 
-### Archive Contents
+Or choose an exact new archive path:
+
+```bash
+sudo familyboardctl backup --to /var/backups/familyboard/familyboard-2026-10-10.tar.gz
+```
+
+The command refuses to overwrite an existing archive. It writes to a private
+temporary file and atomically publishes the completed archive.
+
+## Verify a backup drill
+
+Verification never changes the live database or configuration. It validates the
+database SHA-256 recorded in the manifest and runs SQLite `integrity_check` on
+an isolated staged copy:
+
+```bash
+sudo familyboardctl verify-backup /var/backups/familyboard/familyboard-2026-10-10.tar.gz
+```
+
+Run this after creating a backup and after copying it to a NAS or another
+computer. A successful drill prints that both the checksum and SQLite integrity
+check passed.
+
+## Archive contents
 
 ```text
-familyboard-backup-20261015_030000.tar.gz
-├── manifest.json            # Timestamps, versions, and SHA-256 checksums
-├── database/
-│   └── familyboard.db       # Vacuumed SQLite database
-├── config/
-│   └── config.toml          # System configuration
-└── tokens/
-    ├── acc-member-1.json    # OAuth token stores (0600)
-    └── acc-member-2.json
+familyboard-backup-YYYYMMDD-HHMMSS.tar.gz
+├── manifest.json  # creation time, application/schema versions, SHA-256
+├── database.db    # self-contained SQLite snapshot
+└── config.toml    # included when the active configuration file exists
 ```
 
----
+OAuth tokens are intentionally not included in the archive. Reconnect provider
+accounts after restoring on replacement hardware.
 
-## 3. Automated Nightly Cron Snapshots
+## Restore safely
 
-The bootstrap installer configures a nightly cron job at 3:00 AM:
+Stop the service first so no process has the live database open:
 
 ```bash
-# /etc/cron.d/familyboard-backup
-0 3 * * * root /usr/local/bin/familyboardctl backup /var/backups/familyboard/daily-$(date +\%u).tar.gz --keep 7
+sudo systemctl stop familyboard.service
+sudo familyboardctl verify-backup /var/backups/familyboard/familyboard-2026-10-10.tar.gz
+sudo familyboardctl restore /var/backups/familyboard/familyboard-2026-10-10.tar.gz
+sudo systemctl start familyboard.service
+sudo familyboardctl health
 ```
 
-- Keeps a 7-day rolling rotation on the appliance storage.
+Before replacing the database, restore validates the archived checksum and
+SQLite integrity. The previous database is retained beside it with the suffix
+`.bak-prerestore`, allowing a manual rollback if required.
 
-### Off-Device Replication
+## Optional nightly schedule
 
-To ensure protection against physical microSD or hardware loss, replicate the nightly backup to a home NAS, Raspberry Pi server, or personal computer via `rsync`:
-
-```bash
-# Example rsync job running on a home server:
-rsync -avz pi@familyboard.local:/var/backups/familyboard/ /volume1/backups/familyboard/
-```
-
----
-
-## 4. Restore Procedure
-
-To restore the appliance to a previous backup snapshot:
-
-```bash
-sudo familyboardctl restore /var/backups/familyboard/familyboard-backup-20261015_030000.tar.gz
-```
-
-### Automatic Safety Steps During Restore
-
-1. Stops the `familyboard` daemon to release database file locks.
-2. Validates the SHA-256 hash of every file in the tarball against `manifest.json`.
-3. Backs up the current database to `/var/lib/familyboard/familyboard.db.pre-restore` in case of accidental invocation.
-4. Stages restored files to `/var/lib/familyboard/`.
-5. Enforces strict file permissions (`0640` for DB/config, `0600` for tokens, owner `familyboard:familyboard`).
-6. Executes `PRAGMA integrity_check;` on the restored database.
-7. Restarts the service and verifies system status.
-
----
-
-## 5. Verification Drill (Testing Backups)
-
-To verify the integrity of a backup without overwriting production data:
-
-```bash
-# Extract to a scratch directory and test integrity
-mkdir /tmp/drill && cd /tmp/drill
-tar -xzf /var/backups/familyboard/daily-1.tar.gz
-sha256sum -c manifest.json
-sqlite3 database/familyboard.db "PRAGMA integrity_check;"
-sqlite3 database/familyboard.db "SELECT count(*) FROM events;"
-rm -rf /tmp/drill
-```
-
-If `ok` is returned and event counts match expectations, the backup is certified valid.
+FamilyBoard does not create a scheduler automatically. If you want one, add a
+systemd timer or cron job that runs `familyboardctl backup --to
+/var/backups/familyboard`, then replicate that directory off the appliance.

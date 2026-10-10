@@ -239,9 +239,9 @@ func (p *NaturalLanguageParser) Parse(text, referenceSubject string, now time.Ti
 	}
 
 	// 5. Clean Title extraction
-	title := cleanTitle(fullText)
+	title := cleanTitle(text)
 	if title == "" && referenceSubject != "" {
-		title = referenceSubject
+		title = cleanTitle(referenceSubject)
 	}
 	result.Title = title
 
@@ -355,12 +355,30 @@ func normalize12Hour(hour int, meridiem string) int {
 	return hour
 }
 
-var stripDateJunkRegex = regexp.MustCompile(`(?i)(?:on|at|from|starts?|scheduled for)\s+` + monthRegex + `\s+\d{1,2}.*`)
+var (
+	stripDateJunkRegex     = regexp.MustCompile(`(?i)\b(?:on|at|from|starts?|scheduled for)\s+` + monthRegex + `\s+\d{1,2}.*`)
+	stripBareMonthDayRegex = regexp.MustCompile(`(?i)\b` + monthRegex + `\s+\d{1,2}(?:st|nd|rd|th)?(?:\s*,?\s*\d{4})?.*`)
+	stripWeekdayTimeRegex  = regexp.MustCompile(`(?i)\b(?:on\s+)?(?:(this|next)\s+)?` + weekdayRegex + `(?:\s+(?:at\s+)?(?:\d{1,2}(?::\d{2})?\s*(?:am|pm)?|noon|midnight))?.*`)
+	stripRelativeDayRegex  = regexp.MustCompile(`(?i)\b(?:today|tomorrow|tonight)(?:\s+(?:at\s+)?(?:\d{1,2}(?::\d{2})?\s*(?:am|pm)?|noon|midnight))?.*`)
+	stripTrailingTimeRegex = regexp.MustCompile(`(?i)\b(?:at|from)\s+(?:\d{1,2}(?::\d{2})?\s*(?:am|pm)?|noon|midnight)\b.*`)
+	stripTimeRangeRegex    = regexp.MustCompile(`(?i)\b\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*(?:-|to)\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b.*`)
+)
 
 func cleanTitle(raw string) string {
 	cleaned := strings.Split(raw, "\n")[0]
+	original := strings.TrimSpace(cleaned)
+
 	cleaned = stripDateJunkRegex.ReplaceAllString(cleaned, "")
-	cleaned = strings.TrimSpace(cleaned)
+	cleaned = stripBareMonthDayRegex.ReplaceAllString(cleaned, "")
+	cleaned = stripWeekdayTimeRegex.ReplaceAllString(cleaned, "")
+	cleaned = stripRelativeDayRegex.ReplaceAllString(cleaned, "")
+	cleaned = stripTrailingTimeRegex.ReplaceAllString(cleaned, "")
+	cleaned = stripTimeRangeRegex.ReplaceAllString(cleaned, "")
+
+	cleaned = strings.Trim(cleaned, " \t\r\n-,:.;")
+	if cleaned == "" {
+		cleaned = original
+	}
 	if len(cleaned) > 80 {
 		cleaned = cleaned[:80]
 	}

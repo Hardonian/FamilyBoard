@@ -212,6 +212,86 @@ func (s *Server) handleAPIScanBluetooth(w http.ResponseWriter, r *http.Request) 
 	_ = json.NewEncoder(w).Encode(devices)
 }
 
+type bluetoothDeviceActionRequest struct {
+	MACAddress string `json:"mac_address"`
+}
+
+// handleAPIConnectBluetooth pairs, trusts, and connects a Bluetooth device (e.g. keyboard).
+func (s *Server) handleAPIConnectBluetooth(w http.ResponseWriter, r *http.Request) {
+	var req bluetoothDeviceActionRequest
+	if !decodeRequestJSON(w, r, &req) {
+		return
+	}
+	req.MACAddress = strings.TrimSpace(req.MACAddress)
+	if req.MACAddress == "" {
+		writeHardwareError(w, http.StatusBadRequest, "mac_address is required")
+		return
+	}
+
+	if err := s.hwMgr.Bluetooth().PairAndConnectDevice(r.Context(), req.MACAddress); err != nil {
+		writeHardwareError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":     true,
+		"mac_address": req.MACAddress,
+		"connected":   true,
+		"paired":      true,
+	})
+}
+
+// handleAPIDisconnectBluetooth disconnects an active Bluetooth device connection.
+func (s *Server) handleAPIDisconnectBluetooth(w http.ResponseWriter, r *http.Request) {
+	var req bluetoothDeviceActionRequest
+	if !decodeRequestJSON(w, r, &req) {
+		return
+	}
+	req.MACAddress = strings.TrimSpace(req.MACAddress)
+	if req.MACAddress == "" {
+		writeHardwareError(w, http.StatusBadRequest, "mac_address is required")
+		return
+	}
+
+	if err := s.hwMgr.Bluetooth().DisconnectDevice(r.Context(), req.MACAddress); err != nil {
+		writeHardwareError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":     true,
+		"mac_address": req.MACAddress,
+		"connected":   false,
+	})
+}
+
+// handleAPIRemoveBluetooth unpairs and forgets a Bluetooth device.
+func (s *Server) handleAPIRemoveBluetooth(w http.ResponseWriter, r *http.Request) {
+	var req bluetoothDeviceActionRequest
+	if !decodeRequestJSON(w, r, &req) {
+		return
+	}
+	req.MACAddress = strings.TrimSpace(req.MACAddress)
+	if req.MACAddress == "" {
+		writeHardwareError(w, http.StatusBadRequest, "mac_address is required")
+		return
+	}
+
+	if err := s.hwMgr.Bluetooth().RemoveDevice(r.Context(), req.MACAddress); err != nil {
+		writeHardwareError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":     true,
+		"mac_address": req.MACAddress,
+		"removed":     true,
+	})
+}
+
 // handleAPIGetPresence returns household presence beacons for family members.
 func (s *Server) handleAPIGetPresence(w http.ResponseWriter, r *http.Request) {
 	scanCtx, cancel := context.WithTimeout(r.Context(), 6*time.Second)

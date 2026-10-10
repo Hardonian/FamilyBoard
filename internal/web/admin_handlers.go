@@ -202,12 +202,13 @@ func (s *Server) handleSetupGet(w http.ResponseWriter, r *http.Request) {
 
 	csrfToken := s.issueCSRFToken(w, r)
 	s.render(w, "setup.html", map[string]interface{}{
-		"Title":          "First-Run Setup",
-		"Theme":          "dark",
-		"CSRFToken":      csrfToken,
-		"DeviceName":     s.cfg.Server.DeviceName,
-		"Timezone":       s.cfg.Server.Timezone,
-		"GoogleClientID": s.cfg.Google.ClientID,
+		"Title":             "First-Run Setup",
+		"Theme":             "dark",
+		"CSRFToken":         csrfToken,
+		"DeviceName":        s.cfg.Server.DeviceName,
+		"Timezone":          s.cfg.Server.Timezone,
+		"GoogleClientID":    s.cfg.Google.ClientID,
+		"GoogleRedirectURL": s.cfg.Google.RedirectURL,
 	})
 }
 
@@ -236,7 +237,7 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 	if password != passwordConfirm {
 		s.render(w, "setup.html", map[string]interface{}{
 			"Title": "First-Run Setup", "Theme": "dark", "Error": "Passwords do not match",
-			"DeviceName": deviceName, "Timezone": tz, "GoogleClientID": googleClientID,
+			"DeviceName": deviceName, "Timezone": tz, "GoogleClientID": googleClientID, "GoogleRedirectURL": s.cfg.Google.RedirectURL,
 			"CSRFToken": r.FormValue("csrf_token"),
 		})
 		return
@@ -245,7 +246,7 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 	if len(password) < 8 {
 		s.render(w, "setup.html", map[string]interface{}{
 			"Title": "First-Run Setup", "Theme": "dark", "Error": "Password must be at least 8 characters",
-			"DeviceName": deviceName, "Timezone": tz, "GoogleClientID": googleClientID,
+			"DeviceName": deviceName, "Timezone": tz, "GoogleClientID": googleClientID, "GoogleRedirectURL": s.cfg.Google.RedirectURL,
 			"CSRFToken": r.FormValue("csrf_token"),
 		})
 		return
@@ -339,6 +340,47 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Provision default sovereign local family calendar if no calendars exist yet.
+	// This ensures the kitchen touchscreen and mobile devices have a fully functional,
+	// zero-cloud private calendar available immediately upon completion.
+	existingCals, _ := s.store.ListCalendars(ctx)
+	if len(existingCals) == 0 && member1Email != "" {
+		localAccount := &models.OAuthAccount{
+			ID:                  "acc-local-household",
+			PersonID:            "person-1",
+			Provider:            "local",
+			ProviderAccountID:   "household",
+			VerifiedEmail:       member1Email,
+			Scopes:              "local",
+			CredentialReference: "none",
+			ExpiresAt:           now.AddDate(100, 0, 0),
+			Status:              "active",
+			CreatedAt:           now,
+			UpdatedAt:           now,
+		}
+		if err := s.store.UpsertOAuthAccount(ctx, localAccount); err != nil {
+			slog.Warn("Failed to provision default household account during setup", "err", err)
+		} else {
+			defaultCal := &models.Calendar{
+				ID:                 "cal-family-default",
+				OAuthAccountID:     localAccount.ID,
+				Provider:           "local",
+				ProviderCalendarID: "local-family",
+				Name:               "Family",
+				Timezone:           tz,
+				DisplayColor:       "#3b82f6",
+				EnabledForDisplay:  true,
+				Writable:           true,
+				DefaultWriteTarget: true,
+				CreatedAt:          now,
+				UpdatedAt:          now,
+			}
+			if err := s.store.UpsertCalendar(ctx, defaultCal); err != nil {
+				slog.Warn("Failed to provision default family calendar during setup", "err", err)
+			}
+		}
+	}
+
 	// Create initial admin session
 	token, err := auth.GenerateSecureToken(32)
 	if err != nil {
@@ -371,6 +413,7 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 		Secure:   s.cfg.Security.CookieSecure,
 	})
 
+	s.issueKioskCapabilityCookie(w, r)
 	http.Redirect(w, r, "/admin?tab=accounts", http.StatusSeeOther)
 }
 

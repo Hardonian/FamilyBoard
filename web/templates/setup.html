@@ -63,7 +63,8 @@
     <!-- Step 3: Google OAuth Configuration -->
     <div class="admin-card">
       <h3 class="setup-section-title">3. Google Cloud OAuth Credentials</h3>
-      <p class="setup-section-desc">Optional. Add your Google Cloud OAuth 2.0 Web Application credentials now, or configure providers later from Admin.</p>
+      <p class="setup-section-desc">Optional. Add Google Cloud OAuth 2.0 Web Application credentials now, or configure providers later from Admin.</p>
+      <p class="setup-member-note">In Google Cloud Console, add this exact authorized redirect URI: <code>{{.GoogleRedirectURL}}</code>. You can safely skip this step; after setup, Admin → Accounts guides Google, Microsoft, and Apple calendar connections.</p>
       <div class="form-group">
         <label class="form-label" for="google_client_id">Google Client ID</label>
         <input type="text" id="google_client_id" name="google_client_id" class="form-input" value="{{.GoogleClientID}}" placeholder="apps.googleusercontent.com" autocorrect="off" spellcheck="false">

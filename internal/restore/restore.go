@@ -21,6 +21,7 @@ import (
 var (
 	ErrChecksumMismatch = errors.New("backup database checksum does not match manifest")
 	ErrCorruptBackup    = errors.New("backup database failed integrity verification")
+	ErrMissingManifest  = errors.New("backup archive is missing a valid manifest")
 )
 
 // VerifyBackup validates a backup archive without modifying the active
@@ -118,18 +119,19 @@ func RestoreBackup(ctx context.Context, archivePath, targetDBPath, targetConfigP
 	if stagedDBPath == "" {
 		return errors.New("archive missing database.db")
 	}
+	if manifest == nil || manifest.DatabaseSHA256 == "" {
+		return ErrMissingManifest
+	}
 
 	// 2. Validate Checksum against manifest
-	if manifest != nil && manifest.DatabaseSHA256 != "" {
-		dbBytes, err := os.ReadFile(stagedDBPath)
-		if err != nil {
-			return err
-		}
-		sum := sha256.Sum256(dbBytes)
-		sumHex := hex.EncodeToString(sum[:])
-		if sumHex != manifest.DatabaseSHA256 {
-			return fmt.Errorf("%w: expected %s, got %s", ErrChecksumMismatch, manifest.DatabaseSHA256, sumHex)
-		}
+	dbBytes, err := os.ReadFile(stagedDBPath)
+	if err != nil {
+		return err
+	}
+	sum := sha256.Sum256(dbBytes)
+	sumHex := hex.EncodeToString(sum[:])
+	if sumHex != manifest.DatabaseSHA256 {
+		return fmt.Errorf("%w: expected %s, got %s", ErrChecksumMismatch, manifest.DatabaseSHA256, sumHex)
 	}
 
 	// 3. Verify SQLite integrity on staged copy before touching active database

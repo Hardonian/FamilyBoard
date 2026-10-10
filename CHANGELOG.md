@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `familyboardctl verify-backup` performs an isolated recovery drill by checking the archive manifest checksum and SQLite integrity before any restore.
+- Backup creation accepts either a destination directory or an explicit `.tar.gz` path, verifies the SQLite snapshot before packaging, and publishes archives atomically without overwriting an existing requested file.
+- `familyboardctl diagnostics --out <path>` writes a private JSON diagnostics report for support and recovery work.
+- `familyboardctl status` now reports per-calendar provider, enabled state, last successful sync time, and dead-letter mutation count.
+
+### Changed
+
+- First-run setup now shows the exact Google OAuth redirect URI and explains that provider connections can be completed after the appliance is online.
+- Backup, recovery, operations, troubleshooting, and CLI documentation now match the implemented archive format and recovery workflow.
+
 ## [1.4.0] - 2026-10-10
 
 ### Added

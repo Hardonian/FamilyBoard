@@ -123,10 +123,30 @@ func runStatus() {
 		pendingMut, _ := store.CountPendingMutations(ctx)
 		pendingCand, _ := store.CountPendingCandidates(ctx)
 		activeEvents, _ := store.CountActiveEvents(ctx)
+		calendars, _ := store.ListCalendars(ctx)
+		var deadLetters int
+		_ = database.QueryRowContext(ctx, "SELECT COUNT(*) FROM mutation_queue WHERE state = 'dead_letter';").Scan(&deadLetters)
 
 		fmt.Printf("Active Events:      %d\n", activeEvents)
 		fmt.Printf("Pending Candidates: %d\n", pendingCand)
-		fmt.Printf("Queued Mutations:   %d\n\n", pendingMut)
+		fmt.Printf("Queued Mutations:   %d\n", pendingMut)
+		fmt.Printf("Dead Letters:       %d\n", deadLetters)
+
+		if len(calendars) > 0 {
+			fmt.Println("\nCalendar Sync:")
+			for _, cal := range calendars {
+				lastSync := "never"
+				if cal.LastSyncedAt != nil {
+					lastSync = cal.LastSyncedAt.Local().Format(time.RFC3339)
+				}
+				state := "enabled"
+				if !cal.EnabledForDisplay {
+					state = "disabled"
+				}
+				fmt.Printf("  %-24s %-10s %s (last sync: %s)\n", cal.Name, cal.Provider, state, lastSync)
+			}
+		}
+		fmt.Println()
 	}
 
 	fmt.Printf("Platform: %s/%s\n", runtime.GOOS, runtime.GOARCH)

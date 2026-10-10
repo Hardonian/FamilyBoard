@@ -174,16 +174,16 @@ familyboardctl db-check
 familyboardctl sync-now
 
 # Create a hot, consistent snapshot backup
-sudo familyboardctl backup /var/backups/familyboard/backup.tar.gz
+sudo familyboardctl backup --to /var/backups/familyboard/backup.tar.gz
+
+# Verify the archive without changing the appliance
+sudo familyboardctl verify-backup /var/backups/familyboard/backup.tar.gz
 
 # Restore from a backup archive
 sudo familyboardctl restore /var/backups/familyboard/backup.tar.gz
 
-# Reset administrator password
-sudo familyboardctl repair --reset-admin-password
-
 # Generate privacy-scrubbed diagnostic report
-sudo familyboardctl diagnostics /tmp/diag.tar.gz
+sudo familyboardctl diagnostics --out /tmp/diag.json
 ```
 
 ---

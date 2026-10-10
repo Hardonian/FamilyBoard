@@ -29,6 +29,9 @@ type BluetoothDevice struct {
 	RSSI       int       `json:"rssi"`
 	Connected  bool      `json:"connected"`
 	Paired     bool      `json:"paired"`
+	Trusted    bool      `json:"trusted"`
+	DeviceType string    `json:"device_type"` // "keyboard", "mouse", "audio", "phone", "other"
+	IsKeyboard bool      `json:"is_keyboard"`
 	LastSeen   time.Time `json:"last_seen"`
 }
 
@@ -45,20 +48,24 @@ type FamilyBeacon struct {
 
 // BluetoothManager interfaces with BlueZ (bluetoothctl) on the Radxa Dragon.
 type BluetoothManager struct {
-	mu          sync.RWMutex
-	isMock      bool
-	mockPowered bool
-	beacons     map[string]*FamilyBeacon
-	recentScan  map[string]BluetoothDevice
+	mu            sync.RWMutex
+	isMock        bool
+	mockPowered   bool
+	mockPaired    map[string]bool
+	mockConnected map[string]bool
+	beacons       map[string]*FamilyBeacon
+	recentScan    map[string]BluetoothDevice
 }
 
 // NewBluetoothManager creates a Bluetooth controller.
 func NewBluetoothManager(isMock bool) *BluetoothManager {
 	bm := &BluetoothManager{
-		isMock:      isMock,
-		mockPowered: true,
-		beacons:     make(map[string]*FamilyBeacon),
-		recentScan:  make(map[string]BluetoothDevice),
+		isMock:        isMock,
+		mockPowered:   true,
+		mockPaired:    make(map[string]bool),
+		mockConnected: make(map[string]bool),
+		beacons:       make(map[string]*FamilyBeacon),
+		recentScan:    make(map[string]BluetoothDevice),
 	}
 
 	// Development previews use sample presence data. Real appliances start empty
@@ -161,18 +168,57 @@ func (b *BluetoothManager) ScanDevices(ctx context.Context) ([]BluetoothDevice, 
 	if b.isMock || runtime.GOOS != "linux" {
 		now := time.Now()
 		devices := []BluetoothDevice{
-			{MACAddress: "DC:A6:32:01:4F:18", Name: "Alex's Phone", RSSI: -62, LastSeen: now},
-			{MACAddress: "F4:0F:24:88:B1:09", Name: "Jordan's Watch", RSSI: -88, LastSeen: now.Add(-10 * time.Minute)},
-			{MACAddress: "70:EE:50:23:44:11", Name: "Kitchen Soundbar", RSSI: -54, Paired: true, Connected: false, LastSeen: now},
-			{MACAddress: "C8:38:70:99:A2:41", Name: "Smart Thermostat", RSSI: -72, LastSeen: now},
+			{
+				MACAddress: "E4:5F:01:A2:33:99",
+				Name:       "Logitech K380 Wireless Keyboard",
+				RSSI:       -58,
+				Paired:     b.mockPaired["E4:5F:01:A2:33:99"],
+				Connected:  b.mockConnected["E4:5F:01:A2:33:99"],
+				Trusted:    b.mockPaired["E4:5F:01:A2:33:99"],
+				DeviceType: "keyboard",
+				IsKeyboard: true,
+				LastSeen:   now,
+			},
+			{
+				MACAddress: "DC:A6:32:01:4F:18",
+				Name:       "Alex's Phone",
+				RSSI:       -62,
+				DeviceType: "phone",
+				IsKeyboard: false,
+				LastSeen:   now,
+			},
+			{
+				MACAddress: "F4:0F:24:88:B1:09",
+				Name:       "Jordan's Watch",
+				RSSI:       -88,
+				DeviceType: "phone",
+				IsKeyboard: false,
+				LastSeen:   now.Add(-10 * time.Minute),
+			},
+			{
+				MACAddress: "70:EE:50:23:44:11",
+				Name:       "Kitchen Soundbar",
+				RSSI:       -54,
+				Paired:     true,
+				Connected:  false,
+				DeviceType: "audio",
+				IsKeyboard: false,
+				LastSeen:   now,
+			},
+			{
+				MACAddress: "C8:38:70:99:A2:41",
+				Name:       "Smart Thermostat",
+				RSSI:       -72,
+				DeviceType: "other",
+				IsKeyboard: false,
+				LastSeen:   now,
+			},
 		}
 		b.updateBeaconSightings(devices)
 		return devices, nil
 	}
 
 	// Ask BlueZ for a bounded discovery pass, then read the resulting device list.
-	// Discovery can fail when the adapter is unavailable; the devices command below
-	// returns a useful error without leaving an unbounded scan process behind.
 	scanOut, _ := exec.CommandContext(ctx, "bluetoothctl", "--timeout", "5", "scan", "on").CombinedOutput()
 	sightings := parseBluetoothScan(string(scanOut), time.Now())
 
@@ -190,10 +236,38 @@ func (b *BluetoothManager) ScanDevices(ctx context.Context) ([]BluetoothDevice, 
 		if len(fields) >= 3 && fields[0] == "Device" {
 			mac := fields[1]
 			name := strings.Join(fields[2:], " ")
+			devType, isKb := classifyBluetoothDevice(name)
+
+			// Check device info for paired/connected status if available
+			paired := false
+			connected := false
+			trusted := false
+			if infoOut, infoErr := exec.CommandContext(ctx, "bluetoothctl", "info", mac).Output(); infoErr == nil {
+				infoStr := string(infoOut)
+				if strings.Contains(infoStr, "Paired: yes") {
+					paired = true
+				}
+				if strings.Contains(infoStr, "Connected: yes") {
+					connected = true
+				}
+				if strings.Contains(infoStr, "Trusted: yes") {
+					trusted = true
+				}
+				if strings.Contains(infoStr, "Icon: input-keyboard") {
+					devType = "keyboard"
+					isKb = true
+				}
+			}
+
 			devices = append(devices, BluetoothDevice{
 				MACAddress: mac,
 				Name:       name,
 				RSSI:       -70,
+				Paired:     paired,
+				Connected:  connected,
+				Trusted:    trusted,
+				DeviceType: devType,
+				IsKeyboard: isKb,
 				LastSeen:   time.Now(),
 			})
 		}
@@ -316,4 +390,123 @@ func (b *BluetoothManager) RemoveBeacon(id string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	delete(b.beacons, id)
+}
+
+func classifyBluetoothDevice(name string) (deviceType string, isKeyboard bool) {
+	n := strings.ToLower(name)
+	if strings.Contains(n, "keyboard") || strings.Contains(n, "keychron") ||
+		strings.Contains(n, "k380") || strings.Contains(n, "k480") || strings.Contains(n, "k780") ||
+		strings.Contains(n, "mx keys") || strings.Contains(n, "magic keyboard") ||
+		strings.Contains(n, "wireless kb") {
+		return "keyboard", true
+	}
+	if strings.Contains(n, "mouse") || strings.Contains(n, "trackpad") || strings.Contains(n, "mx master") {
+		return "mouse", false
+	}
+	if strings.Contains(n, "headphone") || strings.Contains(n, "earbuds") || strings.Contains(n, "speaker") || strings.Contains(n, "soundbar") || strings.Contains(n, "airpods") {
+		return "audio", false
+	}
+	if strings.Contains(n, "phone") || strings.Contains(n, "watch") || strings.Contains(n, "pixel") || strings.Contains(n, "iphone") || strings.Contains(n, "poco") {
+		return "phone", false
+	}
+	return "other", false
+}
+
+// PairAndConnectDevice pairs, trusts, and connects a Bluetooth device (e.g. wireless keyboard).
+func (b *BluetoothManager) PairAndConnectDevice(ctx context.Context, mac string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	parsedMAC, err := net.ParseMAC(mac)
+	if err != nil {
+		return fmt.Errorf("invalid MAC address %q: %w", mac, err)
+	}
+	cleanMAC := strings.ToUpper(parsedMAC.String())
+
+	if b.isMock || runtime.GOOS != "linux" {
+		b.mockPaired[cleanMAC] = true
+		b.mockConnected[cleanMAC] = true
+		if dev, ok := b.recentScan[cleanMAC]; ok {
+			dev.Paired = true
+			dev.Connected = true
+			dev.Trusted = true
+			b.recentScan[cleanMAC] = dev
+		}
+		return nil
+	}
+
+	// 1. Trust device so it reconnects automatically on reboot/power
+	_ = exec.CommandContext(ctx, "bluetoothctl", "trust", cleanMAC).Run()
+
+	// 2. Pair with device
+	if out, err := exec.CommandContext(ctx, "bluetoothctl", "pair", cleanMAC).CombinedOutput(); err != nil {
+		outStr := string(out)
+		if !strings.Contains(outStr, "AlreadyExists") && !strings.Contains(outStr, "already paired") {
+			return fmt.Errorf("bluetoothctl pair %s failed: %s (%w)", cleanMAC, strings.TrimSpace(outStr), err)
+		}
+	}
+
+	// 3. Connect device
+	if out, err := exec.CommandContext(ctx, "bluetoothctl", "connect", cleanMAC).CombinedOutput(); err != nil {
+		return fmt.Errorf("bluetoothctl connect %s failed: %s (%w)", cleanMAC, strings.TrimSpace(string(out)), err)
+	}
+
+	return nil
+}
+
+// DisconnectDevice disconnects an active Bluetooth device connection.
+func (b *BluetoothManager) DisconnectDevice(ctx context.Context, mac string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	parsedMAC, err := net.ParseMAC(mac)
+	if err != nil {
+		return fmt.Errorf("invalid MAC address %q: %w", mac, err)
+	}
+	cleanMAC := strings.ToUpper(parsedMAC.String())
+
+	if b.isMock || runtime.GOOS != "linux" {
+		b.mockConnected[cleanMAC] = false
+		if dev, ok := b.recentScan[cleanMAC]; ok {
+			dev.Connected = false
+			b.recentScan[cleanMAC] = dev
+		}
+		return nil
+	}
+
+	if out, err := exec.CommandContext(ctx, "bluetoothctl", "disconnect", cleanMAC).CombinedOutput(); err != nil {
+		return fmt.Errorf("bluetoothctl disconnect %s failed: %s (%w)", cleanMAC, strings.TrimSpace(string(out)), err)
+	}
+
+	return nil
+}
+
+// RemoveDevice removes and unpairs a remembered Bluetooth device.
+func (b *BluetoothManager) RemoveDevice(ctx context.Context, mac string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	parsedMAC, err := net.ParseMAC(mac)
+	if err != nil {
+		return fmt.Errorf("invalid MAC address %q: %w", mac, err)
+	}
+	cleanMAC := strings.ToUpper(parsedMAC.String())
+
+	if b.isMock || runtime.GOOS != "linux" {
+		delete(b.mockPaired, cleanMAC)
+		delete(b.mockConnected, cleanMAC)
+		if dev, ok := b.recentScan[cleanMAC]; ok {
+			dev.Paired = false
+			dev.Connected = false
+			dev.Trusted = false
+			b.recentScan[cleanMAC] = dev
+		}
+		return nil
+	}
+
+	if out, err := exec.CommandContext(ctx, "bluetoothctl", "remove", cleanMAC).CombinedOutput(); err != nil {
+		return fmt.Errorf("bluetoothctl remove %s failed: %s (%w)", cleanMAC, strings.TrimSpace(string(out)), err)
+	}
+
+	return nil
 }

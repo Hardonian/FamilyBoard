@@ -185,7 +185,7 @@ func (s *Store) ListCalendars(ctx context.Context) ([]models.Calendar, error) {
 	}
 	defer rows.Close()
 
-	var calendars []models.Calendar
+	calendars := []models.Calendar{}
 	for rows.Next() {
 		var c models.Calendar
 		var enabled, writable, defaultTarget int
@@ -208,7 +208,7 @@ func (s *Store) ListDisplayCalendars(ctx context.Context) ([]models.Calendar, er
 	}
 	defer rows.Close()
 
-	var calendars []models.Calendar
+	calendars := []models.Calendar{}
 	for rows.Next() {
 		var c models.Calendar
 		var enabled, writable, defaultTarget int

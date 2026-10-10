@@ -26,7 +26,7 @@ vcgencmd get_throttled
 vcgencmd measure_temp
 
 # Generate a privacy-scrubbed diagnostic bundle
-sudo familyboardctl diagnostics /tmp/familyboard-diag.tar.gz
+sudo familyboardctl diagnostics --out /tmp/familyboard-diag.json
 ```
 
 ---
