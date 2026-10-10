@@ -32,6 +32,7 @@
     </div>
 
     <button type="button" id="btn-toggle-photo-frame" class="btn btn-secondary btn-frame-toggle" title="FotoCube Ambient Photo Frame" aria-label="Toggle ambient photo frame">🖼️ Frame</button>
+    <button type="button" id="btn-pair-phone" class="btn btn-secondary btn-pair-phone" title="Connect Apple iPhone or Poco F7 Android phone" aria-label="Connect smartphone">📱 Phone</button>
     <a href="/admin" class="btn-admin-link" id="link-admin" title="Appliance Settings">Admin</a>
     <button id="btn-add-event" class="btn btn-create" title="Create new event">
       <svg class="google-create-icon" viewBox="0 0 36 36" width="22" height="22" aria-hidden="true">
@@ -123,6 +124,46 @@
     </div>
   </aside>
 </main>
+
+<!-- Mobile Floating Action Button (FAB) for 1-Thumb Add on iPhone & Poco F7 -->
+<button type="button" id="btn-mobile-fab-add" class="mobile-fab-add" title="Create Event" aria-label="Create Event">
+  <span class="mobile-fab-plus">+</span>
+</button>
+
+<!-- Mobile Bottom Navigation Dock (Pinned with Safe Area Insets) -->
+<nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="Mobile Navigation">
+  <button type="button" class="mobile-nav-btn active" data-view="hybrid" id="btn-m-month" aria-label="Month View">
+    <span class="mobile-nav-icon">📅</span>
+    <span class="mobile-nav-label">Month</span>
+  </button>
+  <button type="button" class="mobile-nav-btn" data-view="week" id="btn-m-week" aria-label="Week View">
+    <span class="mobile-nav-icon">📆</span>
+    <span class="mobile-nav-label">Week</span>
+  </button>
+  <button type="button" class="mobile-nav-btn" data-view="schedule" id="btn-m-schedule" aria-label="Schedule Agenda View">
+    <span class="mobile-nav-icon">📋</span>
+    <span class="mobile-nav-label">Schedule</span>
+  </button>
+  <button type="button" class="mobile-nav-btn" data-view="today" id="btn-m-today" aria-label="Day View">
+    <span class="mobile-nav-icon">☀️</span>
+    <span class="mobile-nav-label">Day</span>
+  </button>
+</nav>
+
+<!-- Mobile PWA Home Screen Install Banner -->
+<div id="mobile-pwa-banner" class="mobile-pwa-banner hidden" role="region" aria-label="Install App">
+  <div class="mobile-pwa-banner-content">
+    <span class="mobile-pwa-icon">📲</span>
+    <div class="mobile-pwa-text">
+      <strong>Install FamilyBoard</strong>
+      <span>Add to Home Screen for fast offline access</span>
+    </div>
+  </div>
+  <div class="mobile-pwa-actions">
+    <button type="button" id="btn-pwa-install-how" class="btn btn-primary btn-xs">How To</button>
+    <button type="button" id="btn-pwa-dismiss" class="btn-text-sm" aria-label="Dismiss banner">✕</button>
+  </div>
+</div>
 
 <!-- Slide-Over Day Drawer (Tapping any day in Month view) -->
 <div id="day-drawer-overlay" class="day-drawer-overlay" aria-hidden="true">
