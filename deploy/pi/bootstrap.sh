@@ -224,6 +224,11 @@ fi
 echo "\n--- Step 6: Installing FamilyBoard Application ---"
 "$SCRIPT_DIR/install.sh"
 
+INSTALLED_VERSION="$(/usr/local/bin/familyboard --version 2>/dev/null | awk '{print $2}' | sed 's/^v//' || true)"
+if [ -z "$INSTALLED_VERSION" ]; then
+  INSTALLED_VERSION="unknown"
+fi
+
 # 10. Check Reboot Requirement
 mkdir -p "$(dirname "$STATE_FILE")"
 cat <<EOF > "$STATE_FILE"
@@ -231,7 +236,7 @@ cat <<EOF > "$STATE_FILE"
   "bootstrap_stage": "installed",
   "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
   "pi_model": "$PI_MODEL",
-  "version": "1.0.0-rc.1"
+  "version": "$INSTALLED_VERSION"
 }
 EOF
 

@@ -41,6 +41,7 @@ type Server struct {
 	nlParser     *parser.NaturalLanguageParser
 	templates    map[string]*template.Template
 	tokenMu      sync.Mutex
+	setupMu      sync.Mutex
 	sseMu        sync.Mutex
 	sseClients   map[chan string]struct{}
 	mux          *http.ServeMux

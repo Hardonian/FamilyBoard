@@ -6,6 +6,13 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	internaltimezone "github.com/Hardonian/FamilyBoard/internal/timezone"
+)
+
+const (
+	defaultTimezone   = "America/Toronto"
+	maxICSPropertyLen = 1 << 20
 )
 
 type Event struct {
@@ -35,10 +42,12 @@ type Calendar struct {
 func Parse(data []byte) (*Calendar, error) {
 	unfolded := unfoldLines(data)
 	scanner := bufio.NewScanner(bytes.NewReader(unfolded))
+	scanner.Buffer(make([]byte, 64*1024), maxICSPropertyLen)
 
 	cal := &Calendar{Method: "REQUEST"}
 	var currentEvent *Event
 	inEvent := false
+	calendarTimezone := defaultTimezone
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -69,7 +78,7 @@ func Parse(data []byte) (*Calendar, error) {
 			inEvent = true
 			currentEvent = &Event{
 				Status:   "confirmed",
-				Timezone: "America/Toronto",
+				Timezone: calendarTimezone,
 			}
 			continue
 		}
@@ -89,6 +98,10 @@ func Parse(data []byte) (*Calendar, error) {
 		if !inEvent {
 			if key == "METHOD" {
 				cal.Method = strings.ToUpper(strings.TrimSpace(val))
+			} else if key == "X-WR-TIMEZONE" {
+				if _, canonical, err := internaltimezone.Resolve(val); err == nil {
+					calendarTimezone = canonical
+				}
 			}
 			continue
 		}
@@ -120,16 +133,19 @@ func Parse(data []byte) (*Calendar, error) {
 			_, _ = fmt.Sscanf(val, "%d", &seq)
 			currentEvent.Sequence = seq
 		case "DTSTART":
-			t, allDay, tz := parseICSDateTime(val, params)
+			t, allDay, tz := parseICSDateTime(val, params, calendarTimezone)
 			currentEvent.StartAt = t
 			currentEvent.AllDay = allDay
 			if tz != "" {
 				currentEvent.Timezone = tz
 			}
 		case "DTEND":
-			t, _, _ := parseICSDateTime(val, params)
+			t, _, _ := parseICSDateTime(val, params, calendarTimezone)
 			currentEvent.EndAt = t
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("scan iCalendar data: %w", err)
 	}
 
 	for i := range cal.Events {
@@ -180,16 +196,24 @@ func unescapeText(s string) string {
 	return s
 }
 
-func parseICSDateTime(val string, params map[string]string) (time.Time, bool, string) {
+func parseICSDateTime(val string, params map[string]string, fallbackTimezone string) (time.Time, bool, string) {
 	val = strings.TrimSpace(val)
-	tzID := params["TZID"]
+	tzID := strings.Trim(strings.TrimSpace(params["TZID"]), `"`)
 	valueType := strings.ToUpper(params["VALUE"])
+	if tzID == "" {
+		tzID = fallbackTimezone
+	}
+	loc, canonicalTimezone, err := internaltimezone.Resolve(tzID)
+	if err != nil {
+		loc = time.UTC
+		canonicalTimezone = "UTC"
+	}
 
 	if valueType == "DATE" || len(val) == 8 {
 		// All-day: YYYYMMDD
-		t, err := time.Parse("20060102", val)
+		t, err := time.ParseInLocation("20060102", val, loc)
 		if err == nil {
-			return t, true, "UTC"
+			return t, true, canonicalTimezone
 		}
 	}
 
@@ -201,18 +225,10 @@ func parseICSDateTime(val string, params map[string]string) (time.Time, bool, st
 		}
 	}
 
-	loc := time.UTC
-	if tzID != "" {
-		loadedLoc, err := time.LoadLocation(tzID)
-		if err == nil {
-			loc = loadedLoc
-		}
-	}
-
 	t, err := time.ParseInLocation("20060102T150405", val, loc)
 	if err == nil {
-		return t, false, tzID
+		return t, false, canonicalTimezone
 	}
 
-	return time.Time{}, false, tzID
+	return time.Time{}, false, canonicalTimezone
 }

@@ -111,6 +111,7 @@ if [ ! -f /etc/familyboard/config.toml ]; then
   [ -f "$REPO_ROOT/config.example.toml" ] || die "Missing config.example.toml in release bundle."
   install -m 0640 -o root -g familyboard "$REPO_ROOT/config.example.toml" /etc/familyboard/config.toml
   sed -i \
+    -e 's|^host = "127.0.0.1"$|host = "0.0.0.0"|' \
     -e 's|^path = "familyboard.db"$|path = "/var/lib/familyboard/familyboard.db"|' \
     -e 's|^credentials_dir = "credentials"$|credentials_dir = "/var/lib/familyboard/credentials"|' \
     /etc/familyboard/config.toml

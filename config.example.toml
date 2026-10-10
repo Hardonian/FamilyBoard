@@ -2,6 +2,8 @@
 # Copy to /etc/familyboard/config.toml (appliance) or config.toml (local dev)
 
 [server]
+# Keep loopback for desktop-only use. Appliance installers change this to
+# 0.0.0.0 so the setup wizard and paired family phones can connect over LAN.
 host = "127.0.0.1"
 port = 8080
 base_url = "http://127.0.0.1:8080"

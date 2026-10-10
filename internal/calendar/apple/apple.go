@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -14,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hardonian/FamilyBoard/internal/buildinfo"
 	"github.com/Hardonian/FamilyBoard/internal/calendar"
 	"github.com/Hardonian/FamilyBoard/internal/mail/ics"
 	"github.com/Hardonian/FamilyBoard/internal/models"
@@ -69,7 +69,7 @@ func (c *AppleCalendarClient) ListCalendars(ctx context.Context, accessToken str
 		if err != nil {
 			return nil, fmt.Errorf("create apple calendar feed request: %w", err)
 		}
-		req.Header.Set("User-Agent", "FamilyBoard-Appliance/1.2 (Apple iCloud Sync)")
+		req.Header.Set("User-Agent", fmt.Sprintf("FamilyBoard-Appliance/%s (Apple iCloud Sync)", buildinfo.Version))
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
@@ -306,7 +306,7 @@ func (c *AppleCalendarClient) SyncEvents(ctx context.Context, accessToken string
 		if err != nil {
 			return nil, fmt.Errorf("create apple feed request: %w", err)
 		}
-		req.Header.Set("User-Agent", "FamilyBoard-Appliance/1.2 (Apple iCloud Sync)")
+		req.Header.Set("User-Agent", fmt.Sprintf("FamilyBoard-Appliance/%s (Apple iCloud Sync)", buildinfo.Version))
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
@@ -489,7 +489,8 @@ func (c *AppleCalendarClient) CreateEvent(ctx context.Context, accessToken strin
 	if !strings.HasPrefix(calURL, "http") {
 		calURL = c.caldavBaseURL + calURL
 	}
-	eventURL := fmt.Sprintf("%s/%s.ics", strings.TrimRight(calURL, "/"), uid)
+	eventSlug := strings.TrimSuffix(uid, ".ics") + ".ics"
+	eventURL := fmt.Sprintf("%s/%s", strings.TrimRight(calURL, "/"), eventSlug)
 
 	icsPayload := formatVEventICS(uid, event)
 
@@ -539,7 +540,8 @@ func (c *AppleCalendarClient) UpdateEvent(ctx context.Context, accessToken strin
 	if !strings.HasPrefix(calURL, "http") {
 		calURL = c.caldavBaseURL + calURL
 	}
-	eventURL := fmt.Sprintf("%s/%s.ics", strings.TrimRight(calURL, "/"), uid)
+	eventSlug := strings.TrimSuffix(uid, ".ics") + ".ics"
+	eventURL := fmt.Sprintf("%s/%s", strings.TrimRight(calURL, "/"), eventSlug)
 
 	icsPayload := formatVEventICS(uid, event)
 
@@ -581,7 +583,8 @@ func (c *AppleCalendarClient) DeleteEvent(ctx context.Context, accessToken strin
 	if !strings.HasPrefix(calURL, "http") {
 		calURL = c.caldavBaseURL + calURL
 	}
-	eventURL := fmt.Sprintf("%s/%s.ics", strings.TrimRight(calURL, "/"), providerEventID)
+	eventSlug := strings.TrimSuffix(providerEventID, ".ics") + ".ics"
+	eventURL := fmt.Sprintf("%s/%s", strings.TrimRight(calURL, "/"), eventSlug)
 
 	req, err := http.NewRequestWithContext(ctx, "DELETE", eventURL, nil)
 	if err != nil {
@@ -604,23 +607,27 @@ func (c *AppleCalendarClient) DeleteEvent(ctx context.Context, accessToken strin
 }
 
 func formatVEventICS(uid string, ev *models.Event) string {
-	dtStart := ev.StartAt.UTC().Format("20060102T150405Z")
-	dtEnd := ev.EndAt.UTC().Format("20060102T150405Z")
+	dtStamp := time.Now().UTC().Format("20060102T150405Z")
+	var dtStartLine, dtEndLine string
 	if ev.AllDay {
-		dtStart = ev.StartAt.Format("20060102")
-		dtEnd = ev.EndAt.Format("20060102")
+		endAt := ev.EndAt
+		if !endAt.After(ev.StartAt) {
+			endAt = ev.StartAt.AddDate(0, 0, 1)
+		}
+		dtStartLine = fmt.Sprintf("DTSTART;VALUE=DATE:%s", ev.StartAt.Format("20060102"))
+		dtEndLine = fmt.Sprintf("DTEND;VALUE=DATE:%s", endAt.Format("20060102"))
+	} else {
+		dtStartLine = fmt.Sprintf("DTSTART:%s", ev.StartAt.UTC().Format("20060102T150405Z"))
+		dtEndLine = fmt.Sprintf("DTEND:%s", ev.EndAt.UTC().Format("20060102T150405Z"))
 	}
 
-	return fmt.Sprintf("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//FamilyBoard//EN\r\nBEGIN:VEVENT\r\nUID:%s\r\nDTSTAMP:%s\r\nDTSTART:%s\r\nDTEND:%s\r\nSUMMARY:%s\r\nDESCRIPTION:%s\r\nLOCATION:%s\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+	return fmt.Sprintf("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//FamilyBoard//EN\r\nBEGIN:VEVENT\r\nUID:%s\r\nDTSTAMP:%s\r\n%s\r\n%s\r\nSUMMARY:%s\r\nDESCRIPTION:%s\r\nLOCATION:%s\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
 		uid,
-		time.Now().UTC().Format("20060102T150405Z"),
-		dtStart,
-		dtEnd,
+		dtStamp,
+		dtStartLine,
+		dtEndLine,
 		ev.Title,
 		ev.Description,
 		ev.Location,
 	)
 }
-
-// Suppress unused base64 import if needed
-var _ = base64.StdEncoding

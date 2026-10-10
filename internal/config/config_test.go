@@ -62,3 +62,30 @@ func TestSaveCanSafelyReplaceAndRememberSource(t *testing.T) {
 		t.Fatal("hotspot password changed during save/load")
 	}
 }
+
+func TestLoadUsesEnvironmentConfigForPortableInstall(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "portable.toml")
+	cfg := DefaultConfig()
+	cfg.Server.DeviceName = "Portable FamilyBoard"
+	if err := cfg.Save(target); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	t.Setenv("FAMILYBOARD_CONFIG", target)
+
+	loaded, loadedPath, err := Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loadedPath != target || loaded.Server.DeviceName != "Portable FamilyBoard" {
+		t.Fatalf("environment config was not loaded: path=%q device=%q", loadedPath, loaded.Server.DeviceName)
+	}
+}
+
+func TestLoadRejectsMissingEnvironmentConfig(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing.toml")
+	t.Setenv("FAMILYBOARD_CONFIG", missing)
+
+	if _, _, err := Load(""); err == nil {
+		t.Fatal("expected a missing FAMILYBOARD_CONFIG path to fail")
+	}
+}

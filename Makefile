@@ -8,9 +8,9 @@ else
     BASH_BIN := bash
 endif
 
-.PHONY: all fmt vet lint staticcheck vuln security-check tools-check verify-mod check-js test test-race build build-arm64 pi-bootstrap-check release-check clean
+.PHONY: all fmt vet lint staticcheck vuln security-check tools-check verify-mod check-version check-js test test-race build build-arm64 package-arm64 package-all pi-bootstrap-check release-check release-package clean
 
-VERSION ?= 1.0.0-rc.1
+VERSION ?= $(shell cat VERSION)
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
 DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown")
 LDFLAGS = -s -w -X github.com/Hardonian/FamilyBoard/internal/buildinfo.Version=$(VERSION) -X github.com/Hardonian/FamilyBoard/internal/buildinfo.Commit=$(COMMIT) -X github.com/Hardonian/FamilyBoard/internal/buildinfo.Date=$(DATE)
@@ -26,19 +26,21 @@ vet:
 lint: vet
 
 tools-check:
-	@command -v staticcheck >/dev/null 2>&1 || { echo "Missing staticcheck. Install the pinned release with: go install honnef.co/go/tools/cmd/staticcheck@v0.8.1"; exit 1; }
-	@command -v govulncheck >/dev/null 2>&1 || { echo "Missing govulncheck. Install the pinned release with: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0"; exit 1; }
+	@go version >/dev/null
 
 staticcheck: tools-check
-	staticcheck ./...
+	go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
 
 vuln: tools-check
-	govulncheck ./...
+	go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
 security-check: staticcheck vuln
 
 verify-mod:
 	go mod verify
+
+check-version:
+	@"$(BASH_BIN)" scripts/check_version.sh
 
 check-js:
 	node --check web/static/js/kiosk.js
@@ -49,7 +51,7 @@ test:
 	go test -v ./...
 
 test-race:
-	go test -race ./tests/...
+	go test -race ./...
 
 bench:
 	go test -v -bench=. -benchmem ./tests/...
@@ -67,6 +69,9 @@ build-radxa: build-arm64
 
 package-arm64: build-arm64
 	@"$(BASH_BIN)" scripts/package_release.sh $(VERSION)
+
+package-all:
+	@"$(BASH_BIN)" scripts/package_portable.sh $(VERSION)
 
 package-radxa: build-radxa
 	@mkdir -p dist
@@ -99,13 +104,18 @@ pi-bootstrap-check:
 	@"$(BASH_BIN)" -n familyboard-setup.sh
 	@"$(BASH_BIN)" -n scripts/prepare_sd.sh
 	@"$(BASH_BIN)" -n scripts/package_release.sh
+	@"$(BASH_BIN)" -n scripts/package_portable.sh
+	@"$(BASH_BIN)" -n scripts/check_version.sh
 	@echo "All shell scripts passed syntax checks."
 
 prepare-sd:
 	@"$(BASH_BIN)" scripts/prepare_sd.sh $(SD)
 
-release-check: fmt vet security-check verify-mod check-js test test-race build build-arm64 radxa-check pi-bootstrap-check
+release-check: check-version fmt vet security-check verify-mod check-js test test-race build build-arm64 radxa-check pi-bootstrap-check
 	@echo "=== FamilyBoard Canonical Release Gate PASSED ==="
+
+release-package: release-check package-all
+	@echo "=== FamilyBoard $(VERSION) release artifacts are ready in dist/releases/$(VERSION) ==="
 
 clean:
 	rm -f familyboard familyboardctl familyboard.exe familyboardctl.exe familyboard-linux-arm64 familyboardctl-linux-arm64

@@ -15,6 +15,7 @@ import (
 
 	"github.com/Hardonian/FamilyBoard/internal/calendar"
 	"github.com/Hardonian/FamilyBoard/internal/models"
+	internaltimezone "github.com/Hardonian/FamilyBoard/internal/timezone"
 )
 
 var (
@@ -235,7 +236,7 @@ func parseMSTime(dtStr, tzStr string) (time.Time, error) {
 	}
 	loc := time.UTC
 	if tzStr != "" {
-		if l, err := time.LoadLocation(tzStr); err == nil {
+		if l, _, err := internaltimezone.Resolve(tzStr); err == nil {
 			loc = l
 		}
 	}
@@ -303,18 +304,22 @@ func (c *CalendarClient) SyncEvents(ctx context.Context, accessToken string, cal
 		resp.Body.Close()
 
 		for _, item := range pageResp.Value {
-			startAt, err := parseMSTime(item.Start.DateTime, item.Start.TimeZone)
-			if err != nil {
-				startAt = time.Now()
-			}
-			endAt, err := parseMSTime(item.End.DateTime, item.End.TimeZone)
-			if err != nil {
-				endAt = startAt.Add(time.Hour)
-			}
-
 			status := "confirmed"
 			if item.IsCancelled {
 				status = "cancelled"
+			}
+
+			startAt, err := parseMSTime(item.Start.DateTime, item.Start.TimeZone)
+			if err != nil {
+				if status != "cancelled" {
+					continue
+				}
+			}
+			endAt, err := parseMSTime(item.End.DateTime, item.End.TimeZone)
+			if err != nil {
+				if !startAt.IsZero() {
+					endAt = startAt.Add(time.Hour)
+				}
 			}
 
 			uid := item.ICalUID
@@ -375,10 +380,21 @@ func (c *CalendarClient) SyncEvents(ctx context.Context, accessToken string, cal
 		endpoint = pageResp.NextLink
 	}
 
+	upsertCount := 0
+	deletedCount := 0
+	for _, event := range allEvents {
+		if event.Status == "cancelled" {
+			deletedCount++
+		} else {
+			upsertCount++
+		}
+	}
+
 	return &calendar.SyncResult{
 		CalendarID:    cal.ID,
 		SyncCursor:    nextCursor,
-		UpsertedCount: len(allEvents),
+		UpsertedCount: upsertCount,
+		DeletedCount:  deletedCount,
 		Events:        allEvents,
 	}, nil
 }

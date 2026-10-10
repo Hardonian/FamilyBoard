@@ -203,14 +203,7 @@ func (s *Server) handleAPICreateEvent(w http.ResponseWriter, r *http.Request) {
 	ev.LocalCreatedAt = now
 	ev.LocalUpdatedAt = now
 
-	// 1. Write to local SQLite database
-	if err := s.store.UpsertEvent(r.Context(), &ev); err != nil {
-		slog.Error("Failed to save kiosk event", "err", err)
-		writeHardwareError(w, http.StatusInternalServerError, "failed to save event locally")
-		return
-	}
-
-	// 2. Enqueue into durable outbound mutation queue for Google / Microsoft sync
+	// 1. Transactionally persist to local SQLite database and enqueue outbound mutation
 	payload, _ := json.Marshal(ev)
 	mutation := &models.MutationQueueItem{
 		ID:             fmt.Sprintf("mut-%d", now.UnixNano()),
@@ -227,7 +220,11 @@ func (s *Server) handleAPICreateEvent(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:      now,
 	}
 
-	_ = s.store.EnqueueMutation(r.Context(), mutation)
+	if err := s.store.UpsertEventAndEnqueueMutation(r.Context(), &ev, mutation); err != nil {
+		slog.Error("Failed to save kiosk event", "err", err)
+		writeHardwareError(w, http.StatusInternalServerError, "failed to save event locally")
+		return
+	}
 
 	// 3. Immediately trigger background queue processing & SSE broadcast
 	go func() {
@@ -318,12 +315,6 @@ func (s *Server) handleAPIUpdateEvent(w http.ResponseWriter, r *http.Request) {
 	existing.Source = "kiosk"
 	existing.LocalUpdatedAt = time.Now()
 
-	if err := s.store.UpsertEvent(r.Context(), existing); err != nil {
-		slog.Error("Failed to update kiosk event", "event_id", id, "err", err)
-		writeHardwareError(w, http.StatusInternalServerError, "failed to update event locally")
-		return
-	}
-
 	payload, _ := json.Marshal(existing)
 	mutation := &models.MutationQueueItem{
 		ID:             fmt.Sprintf("mut-%d", time.Now().UnixNano()),
@@ -340,7 +331,11 @@ func (s *Server) handleAPIUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:      time.Now(),
 	}
 
-	_ = s.store.EnqueueMutation(r.Context(), mutation)
+	if err := s.store.UpsertEventAndEnqueueMutation(r.Context(), existing, mutation); err != nil {
+		slog.Error("Failed to update kiosk event", "event_id", id, "err", err)
+		writeHardwareError(w, http.StatusInternalServerError, "failed to update event locally")
+		return
+	}
 
 	go func() {
 		_ = s.queueEngine.ProcessBatch(context.Background(), 5)
@@ -364,12 +359,6 @@ func (s *Server) handleAPIDeleteEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.store.SoftDeleteEvent(r.Context(), id); err != nil {
-		slog.Error("Failed to delete kiosk event", "event_id", id, "err", err)
-		writeHardwareError(w, http.StatusInternalServerError, "failed to delete event locally")
-		return
-	}
-
 	payload, _ := json.Marshal(existing)
 	mutation := &models.MutationQueueItem{
 		ID:             fmt.Sprintf("mut-%d", time.Now().UnixNano()),
@@ -386,7 +375,11 @@ func (s *Server) handleAPIDeleteEvent(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:      time.Now(),
 	}
 
-	_ = s.store.EnqueueMutation(r.Context(), mutation)
+	if err := s.store.SoftDeleteEventAndEnqueueMutation(r.Context(), id, mutation); err != nil {
+		slog.Error("Failed to delete kiosk event", "event_id", id, "err", err)
+		writeHardwareError(w, http.StatusInternalServerError, "failed to delete event locally")
+		return
+	}
 
 	go func() {
 		_ = s.queueEngine.ProcessBatch(context.Background(), 5)
@@ -404,30 +397,32 @@ func (s *Server) handleAPIRestoreEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.store.RestoreEvent(r.Context(), id); err != nil {
-		slog.Error("Failed to restore kiosk event", "event_id", id, "err", err)
-		writeHardwareError(w, http.StatusInternalServerError, "failed to restore event locally")
+	restored, err := s.store.GetEvent(r.Context(), id)
+	if err != nil || restored == nil {
+		http.Error(w, "event not found", http.StatusNotFound)
 		return
 	}
 
-	restored, err := s.store.GetEvent(r.Context(), id)
-	if err == nil && restored != nil {
-		payload, _ := json.Marshal(restored)
-		mutation := &models.MutationQueueItem{
-			ID:             fmt.Sprintf("mut-%d", time.Now().UnixNano()),
-			Operation:      "create",
-			Provider:       restored.Provider,
-			CalendarID:     restored.CalendarID,
-			LocalEventID:   restored.ID,
-			Payload:        string(payload),
-			IdempotencyKey: fmt.Sprintf("idemp-rest-%s-%d", restored.ID, time.Now().UnixNano()),
-			AttemptCount:   0,
-			NextAttemptAt:  time.Now(),
-			State:          models.QueuePending,
-			CreatedAt:      time.Now(),
-			UpdatedAt:      time.Now(),
-		}
-		_ = s.store.EnqueueMutation(r.Context(), mutation)
+	payload, _ := json.Marshal(restored)
+	mutation := &models.MutationQueueItem{
+		ID:             fmt.Sprintf("mut-%d", time.Now().UnixNano()),
+		Operation:      "create",
+		Provider:       restored.Provider,
+		CalendarID:     restored.CalendarID,
+		LocalEventID:   restored.ID,
+		Payload:        string(payload),
+		IdempotencyKey: fmt.Sprintf("idemp-rest-%s-%d", restored.ID, time.Now().UnixNano()),
+		AttemptCount:   0,
+		NextAttemptAt:  time.Now(),
+		State:          models.QueuePending,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+	}
+
+	if err := s.store.RestoreEventAndEnqueueMutation(r.Context(), id, mutation); err != nil {
+		slog.Error("Failed to restore kiosk event", "event_id", id, "err", err)
+		writeHardwareError(w, http.StatusInternalServerError, "failed to restore event locally")
+		return
 	}
 
 	go func() {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Hardonian/FamilyBoard/internal/auth"
+	"github.com/Hardonian/FamilyBoard/internal/buildinfo"
 	"github.com/Hardonian/FamilyBoard/internal/db"
 	"github.com/Hardonian/FamilyBoard/internal/models"
 	_ "modernc.org/sqlite"
@@ -39,7 +40,7 @@ func main() {
 		DeviceName:    "Kitchen Kiosk",
 		Timezone:      "America/Toronto",
 		InitializedAt: now.AddDate(0, -1, 0),
-		Version:       "1.0.0",
+		Version:       buildinfo.Version,
 	}); err != nil {
 		log.Fatalf("set metadata: %v", err)
 	}

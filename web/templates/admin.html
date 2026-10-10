@@ -747,7 +747,7 @@
         </div>
         <div class="admin-diag-card">
           <div class="admin-diag-label">Appliance Version</div>
-          <div class="admin-diag-val">v1.0.0</div>
+          <div class="admin-diag-val">v{{.BuildVersion}}</div>
         </div>
       </div>
 
@@ -788,7 +788,7 @@
         </div>
         <div id="apple-webcal-fields" class="form-group">
           <label class="form-label" for="apple_webcal_url">Apple Calendar Share Link</label>
-          <input type="url" id="apple_webcal_url" name="webcal_url" class="form-input" placeholder="webcal://pXX-caldav.icloud.com/published/2/..." autocapitalize="none" autocorrect="off" spellcheck="false">
+          <input type="url" id="apple_webcal_url" name="webcal_url" class="form-input" placeholder="webcal://pXX-caldav.icloud.com/published/2/..." autocorrect="off" spellcheck="false">
           <p class="setup-section-desc modal-apple-help">In the Apple Calendar app on iPhone, iPad, or Mac, tap the (i) info icon next to your family calendar, turn on <strong>Public Calendar</strong>, and tap <strong>Share Link</strong>.</p>
         </div>
         <div id="apple-caldav-fields" class="modal-apple-caldav-group hidden">

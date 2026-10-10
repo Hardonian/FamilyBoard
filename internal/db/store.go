@@ -518,8 +518,48 @@ func (s *Store) UpsertEventAndEnqueueMutation(ctx context.Context, event *models
 		if err := upsertEvent(ctx, tx, event); err != nil {
 			return fmt.Errorf("upsert event: %w", err)
 		}
-		if err := enqueueMutation(ctx, tx, item); err != nil {
-			return fmt.Errorf("enqueue mutation: %w", err)
+		if item != nil {
+			if err := enqueueMutation(ctx, tx, item); err != nil {
+				return fmt.Errorf("enqueue mutation: %w", err)
+			}
+		}
+		return nil
+	})
+}
+
+// SoftDeleteEventAndEnqueueMutation soft deletes an event locally and commits
+// its outbound delete mutation in a single atomic SQLite transaction.
+func (s *Store) SoftDeleteEventAndEnqueueMutation(ctx context.Context, id string, item *models.MutationQueueItem) error {
+	return s.db.WithTx(ctx, func(tx *sql.Tx) error {
+		now := time.Now()
+		if _, err := tx.ExecContext(ctx, "UPDATE events SET deleted_at = ?, local_updated_at = ?, status = 'cancelled' WHERE id = ?;", now, now, id); err != nil {
+			return fmt.Errorf("soft delete event: %w", err)
+		}
+		if item != nil {
+			if err := enqueueMutation(ctx, tx, item); err != nil {
+				return fmt.Errorf("enqueue mutation: %w", err)
+			}
+		}
+		return nil
+	})
+}
+
+// RestoreEventAndEnqueueMutation restores a soft-deleted event locally, cancels
+// any pending delete mutations, and enqueues an outbound mutation in one atomic transaction.
+func (s *Store) RestoreEventAndEnqueueMutation(ctx context.Context, id string, item *models.MutationQueueItem) error {
+	return s.db.WithTx(ctx, func(tx *sql.Tx) error {
+		now := time.Now()
+		if _, err := tx.ExecContext(ctx, "UPDATE events SET deleted_at = NULL, local_updated_at = ?, status = 'confirmed' WHERE id = ?;", now, id); err != nil {
+			return fmt.Errorf("restore event: %w", err)
+		}
+		// Cancel any pending delete mutations for this event so they do not fire remotely after restore
+		if _, err := tx.ExecContext(ctx, "UPDATE mutation_queue SET state = 'cancelled', updated_at = ? WHERE local_event_id = ? AND operation = 'delete' AND state IN ('pending', 'retry');", now, id); err != nil {
+			return fmt.Errorf("cancel pending delete mutations: %w", err)
+		}
+		if item != nil {
+			if err := enqueueMutation(ctx, tx, item); err != nil {
+				return fmt.Errorf("enqueue mutation: %w", err)
+			}
 		}
 		return nil
 	})

@@ -430,6 +430,77 @@ func TestMicrosoft_TeamsMeetingExtractionAndCustomTenant(t *testing.T) {
 	}
 }
 
+func TestMicrosoft_WindowsTimezoneAndMalformedEventInterop(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"value": []map[string]any{
+				{
+					"id":      "valid-eastern",
+					"subject": "School pickup",
+					"start":   map[string]any{"dateTime": "2026-11-02T09:00:00", "timeZone": "Eastern Standard Time"},
+					"end":     map[string]any{"dateTime": "2026-11-02T09:30:00", "timeZone": "Eastern Standard Time"},
+				},
+				{
+					"id":      "malformed",
+					"subject": "Broken provider event",
+					"start":   map[string]any{"dateTime": "not-a-date", "timeZone": "UTC"},
+					"end":     map[string]any{"dateTime": "also-not-a-date", "timeZone": "UTC"},
+				},
+			},
+		})
+	}))
+	defer mockServer.Close()
+
+	client := msCal.NewCalendarClient(mockServer.URL, mockServer.Client())
+	res, err := client.SyncEvents(context.Background(), "mock-token", models.Calendar{ID: "cal-ms-time", ProviderCalendarID: "primary"}, "")
+	if err != nil {
+		t.Fatalf("SyncEvents: %v", err)
+	}
+	if len(res.Events) != 1 {
+		t.Fatalf("expected malformed active event to be skipped, got %d events", len(res.Events))
+	}
+	if got := res.Events[0].StartAt.UTC().Hour(); got != 14 {
+		t.Fatalf("expected 09:00 Eastern to resolve to 14:00 UTC, got %s", res.Events[0].StartAt)
+	}
+	if res.UpsertedCount != 1 || res.DeletedCount != 0 {
+		t.Fatalf("unexpected sync counts: upserted=%d deleted=%d", res.UpsertedCount, res.DeletedCount)
+	}
+}
+
+func TestGoogle_MalformedActiveEventIsSkipped(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"items": []map[string]any{
+				{
+					"id":      "valid",
+					"summary": "Valid event",
+					"start":   map[string]any{"dateTime": "2026-10-21T18:00:00Z"},
+					"end":     map[string]any{"dateTime": "2026-10-21T19:00:00Z"},
+					"status":  "confirmed",
+				},
+				{
+					"id":      "malformed",
+					"summary": "Malformed event",
+					"start":   map[string]any{"dateTime": "not-a-date"},
+					"status":  "confirmed",
+				},
+			},
+		})
+	}))
+	defer mockServer.Close()
+
+	client := google.NewGoogleCalendarClient(mockServer.URL, mockServer.Client())
+	res, err := client.SyncEvents(context.Background(), "mock-token", models.Calendar{ID: "cal-g-time", ProviderCalendarID: "primary"}, "")
+	if err != nil {
+		t.Fatalf("SyncEvents: %v", err)
+	}
+	if len(res.Events) != 1 || res.Events[0].ProviderEventID != "valid" {
+		t.Fatalf("expected only the valid event, got %+v", res.Events)
+	}
+}
+
 func TestGoogleWorkspace_GoogleMeetExtraction(t *testing.T) {
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

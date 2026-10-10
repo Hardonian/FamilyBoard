@@ -50,6 +50,11 @@ func setupTestServer(t *testing.T) (*web.Server, *db.Store, func()) {
 	cfg := config.DefaultConfig()
 	cfg.Database.Path = filepath.Join(tmpDir, "test.db")
 	cfg.Auth.AdminPasswordHash, _ = auth.HashPassword("correct-horse-battery")
+	if err := cfg.Save(filepath.Join(tmpDir, "config.toml")); err != nil {
+		database.Close()
+		os.RemoveAll(tmpDir)
+		t.Fatalf("save test config: %v", err)
+	}
 
 	queueEngine := queue.NewEngine(store, nil, 3, 10*time.Second)
 	syncEngine := sync.NewEngine(store, nil, 10*time.Minute)
@@ -174,6 +179,104 @@ func TestWeb_HealthEndpoints(t *testing.T) {
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected stale schema readiness to return 503, got %d", w.Code)
+	}
+}
+
+func TestWeb_SetupCannotResetInitializedAppliance(t *testing.T) {
+	srv, store, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	initializedAt := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
+	if err := store.SetDeviceMetadata(ctx, &models.DeviceMetadata{
+		DeviceName:    "Kitchen Board",
+		Timezone:      "America/Toronto",
+		InitializedAt: initializedAt,
+		Version:       "v1.0.0",
+		KioskSettings: "{}",
+	}); err != nil {
+		t.Fatalf("initialize appliance: %v", err)
+	}
+
+	csrfCookie, csrfToken := csrfForTest(t, srv, "/login")
+	setupForm := url.Values{
+		"device_name":            {"Hijacked Board"},
+		"timezone":               {"UTC"},
+		"admin_password":         {"replacement-password"},
+		"admin_password_confirm": {"replacement-password"},
+		"csrf_token":             {csrfToken},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/setup", strings.NewReader(setupForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(csrfCookie)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected initialized setup POST to return 409, got %d", w.Code)
+	}
+
+	meta, err := store.GetDeviceMetadata(ctx)
+	if err != nil {
+		t.Fatalf("read appliance metadata: %v", err)
+	}
+	if meta == nil || meta.DeviceName != "Kitchen Board" || meta.Timezone != "America/Toronto" {
+		t.Fatalf("initialized metadata changed after rejected setup: %+v", meta)
+	}
+}
+
+func TestWeb_FirstRunSetupAppliesGoogleCredentialsImmediately(t *testing.T) {
+	srv, store, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	csrfCookie, csrfToken := csrfForTest(t, srv, "/setup")
+	setupForm := url.Values{
+		"device_name":            {"Kitchen Board"},
+		"timezone":               {"America/Toronto"},
+		"admin_password":         {"new-secure-password"},
+		"admin_password_confirm": {"new-secure-password"},
+		"google_client_id":       {"portable-client-id"},
+		"google_client_secret":   {"portable-client-secret"},
+		"member1_name":           {"Alex"},
+		"member1_email":          {"alex@example.com"},
+		"csrf_token":             {csrfToken},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/setup", strings.NewReader(setupForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(csrfCookie)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/admin?tab=accounts" {
+		t.Fatalf("setup failed: status=%d location=%q body=%q", w.Code, w.Header().Get("Location"), w.Body.String())
+	}
+
+	meta, err := store.GetDeviceMetadata(context.Background())
+	if err != nil || meta == nil || meta.DeviceName != "Kitchen Board" {
+		t.Fatalf("setup metadata was not persisted: meta=%+v err=%v", meta, err)
+	}
+	var sessionCookie *http.Cookie
+	for _, cookie := range w.Result().Cookies() {
+		if cookie.Name == "fb_session" {
+			sessionCookie = cookie
+			break
+		}
+	}
+	if sessionCookie == nil {
+		t.Fatal("setup did not create an admin session")
+	}
+
+	oauthReq := httptest.NewRequest(http.MethodGet, "/admin/oauth/start?person_id=person-1&provider=google&flow=calendar", nil)
+	oauthReq.AddCookie(sessionCookie)
+	oauthW := httptest.NewRecorder()
+	srv.ServeHTTP(oauthW, oauthReq)
+	if oauthW.Code != http.StatusSeeOther {
+		t.Fatalf("OAuth start failed after setup: %d %q", oauthW.Code, oauthW.Body.String())
+	}
+	location, err := url.Parse(oauthW.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("parse OAuth redirect: %v", err)
+	}
+	if got := location.Query().Get("client_id"); got != "portable-client-id" {
+		t.Fatalf("OAuth client was not refreshed after setup: client_id=%q", got)
 	}
 }
 

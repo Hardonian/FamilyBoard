@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Hardonian/FamilyBoard/internal/auth"
+	"github.com/Hardonian/FamilyBoard/internal/buildinfo"
 	"github.com/Hardonian/FamilyBoard/internal/calendar/apple"
 	"github.com/Hardonian/FamilyBoard/internal/hardware"
 	"github.com/Hardonian/FamilyBoard/internal/models"
@@ -212,6 +213,19 @@ func (s *Server) handleSetupGet(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store, private")
+	s.setupMu.Lock()
+	defer s.setupMu.Unlock()
+
+	meta, err := s.store.GetDeviceMetadata(r.Context())
+	if err != nil {
+		http.Error(w, "failed to check appliance setup state", http.StatusInternalServerError)
+		return
+	}
+	if meta != nil {
+		http.Error(w, "appliance setup has already been completed", http.StatusConflict)
+		return
+	}
+
 	deviceName := strings.TrimSpace(r.FormValue("device_name"))
 	tz := strings.TrimSpace(r.FormValue("timezone"))
 	password := r.FormValue("admin_password")
@@ -243,35 +257,35 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update configuration in memory and save
-	s.cfg.Server.DeviceName = deviceName
-	s.cfg.Server.Timezone = tz
-	s.cfg.Auth.AdminPasswordHash = hashedPassword
+	// Validate and persist a copy so a failed save cannot leave the running
+	// server with a partially applied first-run configuration.
+	updatedCfg := *s.cfg
+	updatedCfg.Server.DeviceName = deviceName
+	updatedCfg.Server.Timezone = tz
+	updatedCfg.Auth.AdminPasswordHash = hashedPassword
 	if googleClientID != "" {
-		s.cfg.Google.ClientID = googleClientID
+		updatedCfg.Google.ClientID = googleClientID
 	}
 	if googleSecret != "" {
-		s.cfg.Google.ClientSecret = googleSecret
+		updatedCfg.Google.ClientSecret = googleSecret
 	}
 
-	if err := s.cfg.Save(s.cfg.SourcePath("config.toml")); err != nil {
+	if err := updatedCfg.Save(s.cfg.SourcePath("config.toml")); err != nil {
 		http.Error(w, "failed to save appliance configuration", http.StatusInternalServerError)
 		return
 	}
+	*s.cfg = updatedCfg
+	s.googleOAuth = oauth.NewGoogleClient(
+		updatedCfg.Google.ClientID,
+		updatedCfg.Google.ClientSecret,
+		updatedCfg.Google.RedirectURL,
+	)
 
 	ctx := r.Context()
 	now := time.Now()
 
-	// Mark device initialized in DB
-	_ = s.store.SetDeviceMetadata(ctx, &models.DeviceMetadata{
-		DeviceName:    deviceName,
-		Timezone:      tz,
-		InitializedAt: now,
-		Version:       "v1.0.0",
-		KioskSettings: "{}",
-	})
-
-	// Process dynamic family members and configure calendar sync targets
+	// Process dynamic family members. Provider calendars are discovered only
+	// after OAuth/CalDAV connection, when a valid owning account exists.
 	member1Name := strings.TrimSpace(r.FormValue("member1_name"))
 	member1Email := strings.TrimSpace(r.FormValue("member1_email"))
 	member2Name := strings.TrimSpace(r.FormValue("member2_name"))
@@ -285,51 +299,44 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if member1Email != "" {
-		_ = s.store.UpsertPerson(ctx, &models.Person{
+		if err := s.store.UpsertPerson(ctx, &models.Person{
 			ID:          "person-1",
 			DisplayName: member1Name,
 			Email:       member1Email,
 			Enabled:     true,
 			CreatedAt:   now,
 			UpdatedAt:   now,
-		})
-		prov1 := DetectEmailProvider(member1Email)
-		_ = s.store.UpsertCalendar(ctx, &models.Calendar{
-			ID:                 "cal-member-1",
-			Provider:           prov1,
-			ProviderCalendarID: member1Email,
-			Name:               member1Name,
-			DisplayColor:       "#38bdf8",
-			EnabledForDisplay:  true,
-			Writable:           true,
-			DefaultWriteTarget: true,
-			CreatedAt:          now,
-			UpdatedAt:          now,
-		})
+		}); err != nil {
+			http.Error(w, "failed to save first family member", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	if member2Email != "" {
-		_ = s.store.UpsertPerson(ctx, &models.Person{
+		if err := s.store.UpsertPerson(ctx, &models.Person{
 			ID:          "person-2",
 			DisplayName: member2Name,
 			Email:       member2Email,
 			Enabled:     true,
 			CreatedAt:   now,
 			UpdatedAt:   now,
-		})
-		prov2 := DetectEmailProvider(member2Email)
-		_ = s.store.UpsertCalendar(ctx, &models.Calendar{
-			ID:                 "cal-member-2",
-			Provider:           prov2,
-			ProviderCalendarID: member2Email,
-			Name:               member2Name,
-			DisplayColor:       "#fb7185",
-			EnabledForDisplay:  true,
-			Writable:           true,
-			DefaultWriteTarget: false,
-			CreatedAt:          now,
-			UpdatedAt:          now,
-		})
+		}); err != nil {
+			http.Error(w, "failed to save second family member", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Write the initialized marker last. If an earlier write fails, setup stays
+	// retryable instead of trapping the appliance in a partially initialized state.
+	if err := s.store.SetDeviceMetadata(ctx, &models.DeviceMetadata{
+		DeviceName:    deviceName,
+		Timezone:      tz,
+		InitializedAt: now,
+		Version:       buildinfo.Version,
+		KioskSettings: "{}",
+	}); err != nil {
+		http.Error(w, "failed to finish appliance initialization", http.StatusInternalServerError)
+		return
 	}
 
 	// Create initial admin session
@@ -437,6 +444,7 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		"PendingQueueCount":     pendingQueueCount,
 		"PendingConflictCount":  len(conflicts),
 		"ActiveEventCount":      activeEventCount,
+		"BuildVersion":          buildinfo.Version,
 		"HardwareInfo":          hwInfo,
 		"WifiStatus":            wifiStatus,
 		"WifiAPs":               wifiAPs,

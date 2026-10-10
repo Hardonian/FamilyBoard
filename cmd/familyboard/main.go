@@ -76,6 +76,10 @@ func main() {
 		slog.Info("Generated and saved installation security secrets", "path", savePath)
 	}
 
+	if *portFlag < 0 || *portFlag > 65535 {
+		slog.Error("Invalid port override", "port", *portFlag, "valid_range", "1-65535")
+		os.Exit(1)
+	}
 	if *portFlag > 0 {
 		cfg.Server.Port = *portFlag
 	}

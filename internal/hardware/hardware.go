@@ -62,8 +62,15 @@ func isSupportedApplianceHardware() bool {
 	if err != nil {
 		return false
 	}
-	model := strings.ToLower(strings.TrimRight(string(modelBytes), "\x00\n\r"))
-	return strings.Contains(model, "radxa") || strings.Contains(model, "dragon") || strings.Contains(model, "qcs6490")
+	return isSupportedApplianceModel(string(modelBytes))
+}
+
+func isSupportedApplianceModel(rawModel string) bool {
+	model := strings.ToLower(strings.TrimSpace(strings.TrimRight(rawModel, "\x00")))
+	return strings.Contains(model, "radxa") ||
+		strings.Contains(model, "dragon") ||
+		strings.Contains(model, "qcs6490") ||
+		strings.Contains(model, "raspberry pi")
 }
 
 // Wifi returns the Wi-Fi subsystem manager.

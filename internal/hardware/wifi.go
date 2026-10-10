@@ -98,16 +98,11 @@ func (w *WifiManager) GetStatus(ctx context.Context) WifiStatus {
 
 	activeOut, err := exec.CommandContext(ctx, "nmcli", "-t", "-f", "DEVICE,TYPE,STATE,CONNECTION", "device").Output()
 	if err == nil {
-		lines := strings.Split(string(activeOut), "\n")
-		for _, line := range lines {
-			parts := splitNMTerseLine(line)
-			if len(parts) >= 4 && parts[1] == "wifi" {
-				status.Interface = parts[0]
-				if parts[2] == "connected" {
-					status.Connected = true
-					status.SSID = parts[3]
-				}
-				break
+		if device, state, connection := parseWifiDevice(string(activeOut)); device != "" {
+			status.Interface = device
+			status.Connected = state == "connected"
+			if status.Connected {
+				status.SSID = connection
 			}
 		}
 	}
@@ -287,6 +282,40 @@ func splitNMTerseLine(line string) []string {
 	return fields
 }
 
+func parseWifiDevice(output string) (device, state, connection string) {
+	var firstWifi []string
+	for _, line := range strings.Split(output, "\n") {
+		parts := splitNMTerseLine(line)
+		if len(parts) < 3 || parts[1] != "wifi" || strings.TrimSpace(parts[0]) == "" {
+			continue
+		}
+		if firstWifi == nil {
+			firstWifi = parts
+		}
+		if parts[2] == "connected" {
+			firstWifi = parts
+			break
+		}
+	}
+	if len(firstWifi) == 0 {
+		return "", "", ""
+	}
+	if len(firstWifi) >= 4 {
+		connection = firstWifi[3]
+	}
+	return firstWifi[0], firstWifi[2], connection
+}
+
+func (w *WifiManager) interfaceName(ctx context.Context) string {
+	out, err := exec.CommandContext(ctx, "nmcli", "-t", "-f", "DEVICE,TYPE,STATE,CONNECTION", "device").Output()
+	if err == nil {
+		if device, _, _ := parseWifiDevice(string(out)); device != "" {
+			return device
+		}
+	}
+	return "wlan0"
+}
+
 // ToggleHotspot enables or disables the plug-and-play onboarding hotspot AP.
 func (w *WifiManager) ToggleHotspot(ctx context.Context, enable bool) error {
 	w.mu.Lock()
@@ -299,7 +328,7 @@ func (w *WifiManager) ToggleHotspot(ctx context.Context, enable bool) error {
 
 	if enable {
 		// Launch hotspot: FamilyBoard-Setup
-		cmd := exec.CommandContext(ctx, "nmcli", "device", "wifi", "hotspot", "ifname", "wlan0", "ssid", "FamilyBoard-Setup", "password", w.hotspotPassword)
+		cmd := exec.CommandContext(ctx, "nmcli", "device", "wifi", "hotspot", "ifname", w.interfaceName(ctx), "ssid", "FamilyBoard-Setup", "password", w.hotspotPassword)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("failed to start setup hotspot: %s (%w)", string(out), err)
 		}

@@ -56,7 +56,7 @@
     const caldavGroup = document.getElementById('apple-caldav-fields');
     const webcalInput = document.getElementById('apple_webcal_url');
     const caldavInputs = [
-      document.getElementById('apple_email'),
+      document.getElementById('apple_id') || document.getElementById('apple_email'),
       document.getElementById('apple_app_password')
     ].filter(Boolean);
 

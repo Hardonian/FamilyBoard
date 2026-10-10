@@ -340,6 +340,10 @@ func (c *GoogleCalendarClient) SyncEvents(ctx context.Context, accessToken strin
 func convertGoogleEventToModel(calendarID string, item googleEvent) (models.Event, error) {
 	var startAt, endAt time.Time
 	allDay := false
+	status := item.Status
+	if status == "" {
+		status = "confirmed"
+	}
 	tz := item.Start.TimeZone
 	if tz == "" {
 		tz = "America/Toronto"
@@ -348,27 +352,41 @@ func convertGoogleEventToModel(calendarID string, item googleEvent) (models.Even
 	if item.Start.Date != "" {
 		// All-day event
 		allDay = true
-		loc, _ := time.LoadLocation(tz)
-		if loc == nil {
-			loc = time.Local
+		loc, err := time.LoadLocation(tz)
+		if err != nil {
+			return models.Event{}, fmt.Errorf("load event timezone %q: %w", tz, err)
 		}
-		startAt, _ = time.ParseInLocation("2006-01-02", item.Start.Date, loc)
-		endAt, _ = time.ParseInLocation("2006-01-02", item.End.Date, loc)
+		startAt, err = time.ParseInLocation("2006-01-02", item.Start.Date, loc)
+		if err != nil {
+			return models.Event{}, fmt.Errorf("parse all-day event start %q: %w", item.Start.Date, err)
+		}
+		if item.End.Date != "" {
+			endAt, err = time.ParseInLocation("2006-01-02", item.End.Date, loc)
+			if err != nil {
+				return models.Event{}, fmt.Errorf("parse all-day event end %q: %w", item.End.Date, err)
+			}
+		}
 		if endAt.IsZero() {
 			endAt = startAt.AddDate(0, 0, 1)
 		}
 	} else if item.Start.DateTime != "" {
 		allDay = false
-		startAt, _ = time.Parse(time.RFC3339, item.Start.DateTime)
-		endAt, _ = time.Parse(time.RFC3339, item.End.DateTime)
+		var err error
+		startAt, err = time.Parse(time.RFC3339, item.Start.DateTime)
+		if err != nil {
+			return models.Event{}, fmt.Errorf("parse event start %q: %w", item.Start.DateTime, err)
+		}
+		if item.End.DateTime != "" {
+			endAt, err = time.Parse(time.RFC3339, item.End.DateTime)
+			if err != nil {
+				return models.Event{}, fmt.Errorf("parse event end %q: %w", item.End.DateTime, err)
+			}
+		}
 		if endAt.IsZero() {
 			endAt = startAt.Add(1 * time.Hour)
 		}
-	}
-
-	status := item.Status
-	if status == "" {
-		status = "confirmed"
+	} else if status != "cancelled" {
+		return models.Event{}, errors.New("active event has no start date or dateTime")
 	}
 
 	var deletedAt *time.Time

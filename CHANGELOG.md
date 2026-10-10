@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+## [1.4.0] - 2026-10-10
+
+### Added
+
+- Add `FAMILYBOARD_CONFIG` support for relocatable single-binary installations and management commands.
+- Resolve common Microsoft/Outlook Windows timezone identifiers in Graph and iCalendar events.
+- Transactional SQLite WAL mutations (`UpsertEventAndEnqueueMutation`, `SoftDeleteEventAndEnqueueMutation`, `RestoreEventAndEnqueueMutation`) ensuring all kiosk event mutations commit atomically with their durable outbound queue records.
+- Dedicated unit test suites for `internal/calendar/apple`, `internal/calendar/microsoft`, `internal/calendar/google`, and `internal/oauth`.
+- Multi-ecosystem interoperability integration test suite in `tests/integration/ecosystem_interop_integration_test.go` covering concurrent Google Workspace, Microsoft Exchange, and Apple iCloud discovery, sync, and mutation replay.
+- Reproducible release packaging for Linux AMD64/ARM64, Windows AMD64, and macOS ARM64, with a combined SHA-256 manifest and tag-driven GitHub publishing.
+
+### Fixed
+
+- Recognize Raspberry Pi boards as real appliance hardware so Wi-Fi and setup-hotspot controls are available.
+- Bind new Raspberry Pi appliance installs to the LAN and select the actual NetworkManager Wi-Fi interface instead of assuming `wlan0`.
+- Prevent the first-run setup endpoint from resetting an appliance after initialization, and keep partial setup failures retryable.
+- Preserve calendar-local dates and floating times, accept large bounded vendor properties, skip malformed active provider events, and report correct Microsoft deletion counts.
+- Ensure Apple CalDAV all-day events format with RFC 5545 `;VALUE=DATE:` specification for strict Apple iCloud compatibility.
+- Fix Apple ID input element binding in Admin modal JavaScript so input field validation and toggling work seamlessly between Webcal and CalDAV modes.
+- Remove unsupported autocapitalize attributes on URL and timezone form inputs in admin and setup templates for complete Safari HTML compliance.
+- Clear the pinned formatting and static-analysis release gates.
+
 ## [1.3.0] - 2026-10-10
 
 ### Security

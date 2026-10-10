@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Hardonian/FamilyBoard/actions/workflows/ci.yml/badge.svg)](https://github.com/Hardonian/FamilyBoard/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform: Linux ARM64](https://img.shields.io/badge/Platform-Linux%20ARM64-orange.svg)](#hardware-targets--supported-boards)
+[![Platforms](https://img.shields.io/badge/Platforms-Linux%20%7C%20Windows%20%7C%20macOS-orange.svg)](#portable-local-quick-start)
 [![Go Version](https://img.shields.io/badge/Go-1.26.9-00ADD8.svg)](https://go.dev)
 
 **FamilyBoard** is an appliance-grade, sovereign, local-first digital family calendar and email event ingestion system for dedicated kitchen and refrigerator touchscreens. It targets Linux ARM64 appliances, with first-class Radxa Dragon Q64 support and a low-resource Raspberry Pi 3B profile.
@@ -87,6 +87,29 @@ The bootstrap installer handles everything:
 4. Cross-compiles or installs native ARM64 binaries (`familyboard`, `familyboardctl`).
 5. Configures systemd auto-start and full-screen kiosk display session.
 6. Preserves existing Pi-hole and DNS configurations.
+
+---
+
+## Portable Local Quick Start
+
+FamilyBoard also runs as a single self-contained binary on Windows, macOS, or Linux for evaluation and local use. It has no Node.js, browser CDN, or external database requirement.
+
+```bash
+go build -o familyboard ./cmd/familyboard
+./familyboard
+```
+
+On Windows, build and run `familyboard.exe` instead. Open `http://127.0.0.1:8080`; the first-run wizard creates `config.toml`, generates installation secrets, and initializes the SQLite database automatically.
+
+Prebuilt release archives are published for Linux AMD64/ARM64, Windows AMD64, and macOS ARM64. Extract the archive for your platform and run `familyboard` (`familyboard.exe` on Windows); no installer or external database is required. Verify downloads against the release's `SHA256SUMS` file before running them.
+
+To keep a portable installation's configuration elsewhere, set `FAMILYBOARD_CONFIG` to an absolute TOML path. The daemon and `familyboardctl` both honor it:
+
+```bash
+FAMILYBOARD_CONFIG=/opt/familyboard/config.toml ./familyboard
+```
+
+For access from phones or other LAN devices, set `server.host = "0.0.0.0"` and allow TCP port 8080 in the host firewall. Appliance installers configure LAN binding automatically while retaining authenticated administration and signed household-device pairing.
 
 ---
 

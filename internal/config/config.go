@@ -197,11 +197,14 @@ func Load(explicitPath string) (*Config, string, error) {
 	candidatePaths := []string{}
 	if explicitPath != "" {
 		candidatePaths = append(candidatePaths, explicitPath)
+	} else if envPath := strings.TrimSpace(os.Getenv("FAMILYBOARD_CONFIG")); envPath != "" {
+		candidatePaths = append(candidatePaths, envPath)
+		explicitPath = envPath
 	} else {
 		// Priority:
 		// 1. /etc/familyboard/config.toml (appliance production)
-		// 2. ./config.toml (local dev)
-		// 3. ./config.example.toml (fallback)
+		// 2. ./config.toml (local/portable install)
+		// 3. ./config.example.toml (development fallback)
 		candidatePaths = append(candidatePaths,
 			"/etc/familyboard/config.toml",
 			"config.toml",

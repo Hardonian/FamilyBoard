@@ -1,78 +1,74 @@
-# Release Management & Procedures
+# Release Management
 
-This document outlines the versioning strategy, release qualification checklist, and artifact distribution procedures for `FamilyBoard`.
+FamilyBoard follows [Semantic Versioning 2.0.0](https://semver.org/). The root
+`VERSION` file is the authoritative release version. Build metadata is injected
+into both executables; unversioned developer builds report `dev`.
 
----
+## Supported release artifacts
 
-## 1. Versioning Scheme
+Each release contains static, CGO-free archives and a `SHA256SUMS` manifest:
 
-`FamilyBoard` follows [Semantic Versioning 2.0.0](https://semver.org/):
-- **MAJOR (`vX.0.0`):** Breaking database schema shifts requiring manual migration, incompatible API changes, or fundamental architecture overhauls.
-- **MINOR (`v1.X.0`):** New features (e.g. new mail providers, additional UI themes, enhanced extraction rules), backward-compatible schema migrations.
-- **PATCH (`v1.0.X`):** Bug fixes, security patches, performance improvements, and documentation updates.
+| Target | Archive |
+| --- | --- |
+| Linux AMD64 | `familyboard-VERSION-linux-amd64.tar.gz` |
+| Linux ARM64 (Raspberry Pi/Radxa) | `familyboard-VERSION-linux-arm64.tar.gz` |
+| Windows AMD64 | `familyboard-VERSION-windows-amd64.tar.gz` |
+| macOS Apple Silicon | `familyboard-VERSION-darwin-arm64.tar.gz` |
 
----
+Linux archives include appliance deployment assets. Every archive includes the
+daemon, management CLI, example configuration, license, changelog, operations
+guide, and recovery card.
 
-## 2. Release Qualification Checklist
+## Release qualification
 
-Before creating any release tag, all items in this checklist must be verified:
+Run the canonical gate from a clean checkout:
 
-- [ ] **Formatting:** `gofmt -l .` returns zero unformatted files.
-- [ ] **Static Analysis:** `go vet ./...` completes with 0 warnings or errors.
-- [ ] **Unit & Integration Tests:** `go test -v ./tests/...` passes 100%.
-- [ ] **Data Race Detector:** `go test -race ./tests/...` completes with 0 data races.
-- [ ] **ARM64 Compilation:** Cross-compilation for `linux/arm64` completes successfully without CGO.
-- [ ] **Shell Script Syntax:** `bash -n` validates all scripts in `deploy/pi/`.
-- [ ] **Documentation:** `CHANGELOG.md` updated with release notes and migration notices.
-- [ ] **Clean Git Workspace:** No uncommitted changes or untracked temporary files.
-- [ ] **Canonical Makefile Check:** `make release-check` exits 0.
-
----
-
-## 3. Step-by-Step Release Procedure
-
-### 1. Run Automated Release Validation
 ```bash
 make release-check
 ```
 
-### 2. Build Production Release Binaries
+It checks version consistency, formatting, vet, pinned static analysis and
+reachable-vulnerability scanning, module integrity, browser JavaScript syntax,
+all tests, the full race suite, native and Linux ARM64 compilation, and shell
+deployment syntax.
+
+Build and checksum every supported artifact with:
+
 ```bash
-# Build Linux ARM64 static binaries
-make build-arm64
-
-# Generate SHA-256 checksums
-cd dist
-sha256sum familyboard-linux-arm64 familyboardctl-linux-arm64 > SHA256SUMS
-cat SHA256SUMS
-```
-
-### 3. Create Annotated Git Tag
-```bash
-git tag -a v1.0.0 -m "Release v1.0.0: Production appliance release for Raspberry Pi 3B"
-git push origin v1.0.0
-```
-
-### 4. Create GitHub Release
-Publish a new GitHub Release with:
-- Target tag: `v1.0.0`
-- Release title: `FamilyBoard v1.0.0`
-- Release notes copied from `CHANGELOG.md`
-- Uploaded assets:
-  - `familyboard-linux-arm64`
-  - `familyboardctl-linux-arm64`
-  - `SHA256SUMS`
-
----
-
-## 4. Verifying Release Artifacts on the Appliance
-
-On the Raspberry Pi:
-```bash
-# Verify checksums before installing
+make release-package
+cd dist/releases/$(cat ../../../VERSION)
 sha256sum -c SHA256SUMS
-
-# Verify binary architecture
-file familyboard-linux-arm64
-# Output must indicate: ELF 64-bit LSB executable, ARM aarch64, statically linked
 ```
+
+On Windows with Git Bash, use `mingw32-make` in place of `make`. Generated
+archives are written to `dist/releases/VERSION/`.
+
+## Publishing v1.4.0
+
+1. Confirm `VERSION` is `1.4.0` and `CHANGELOG.md` contains a matching dated
+   section.
+2. Run `make release-package` and test the archive for the target appliance.
+3. Commit the release changes, then create and push the annotated tag:
+
+   ```bash
+   git tag -a v1.4.0 -m "FamilyBoard v1.4.0"
+   git push origin v1.4.0
+   ```
+
+4. The `Release` GitHub Actions workflow reruns the complete gate, rebuilds the
+   matrix from the tagged source, verifies checksums, and publishes all archives
+   plus `SHA256SUMS` to the GitHub release.
+
+The workflow refuses a tag whose name does not equal `v` plus the contents of
+`VERSION`, preventing mislabeled binaries.
+
+## Verifying a download
+
+Place `SHA256SUMS` beside the downloaded archives and run:
+
+```bash
+sha256sum -c SHA256SUMS
+./familyboard --version
+```
+
+The reported version, commit, and build date should match the GitHub release.
