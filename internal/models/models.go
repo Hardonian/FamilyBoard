@@ -1,8 +1,22 @@
 package models
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"sync/atomic"
 	"time"
 )
+
+var idCounter uint64
+
+// NewID creates a collision-resistant identifier with monotonic sequence and crypto entropy.
+func NewID(prefix string) string {
+	c := atomic.AddUint64(&idCounter, 1)
+	var b [4]byte
+	_, _ = rand.Read(b[:])
+	return fmt.Sprintf("%s-%d-%d-%s", prefix, time.Now().UnixNano(), c, hex.EncodeToString(b[:]))
+}
 
 // Person represents a family member identity.
 type Person struct {

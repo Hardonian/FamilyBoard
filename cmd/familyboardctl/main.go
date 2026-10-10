@@ -40,12 +40,14 @@ func main() {
 		runSyncNow()
 	case "backup":
 		runBackup(os.Args[2:])
+	case "verify-backup":
+		runVerifyBackup(os.Args[2:])
 	case "restore":
 		runRestore(os.Args[2:])
 	case "db-check":
 		runDBCheck()
 	case "diagnostics":
-		runDiagnostics()
+		runDiagnostics(os.Args[2:])
 	case "repair":
 		runRepair()
 	case "update":
@@ -67,10 +69,11 @@ func printHelp() {
 	fmt.Println("  health        Check appliance readiness probe (exit 0 on ready, 1 on error)")
 	fmt.Println("  version       Print version, commit, and build architecture")
 	fmt.Println("  sync-now      Trigger immediate calendar synchronization")
-	fmt.Println("  backup        Create a consistent SQLite backup archive")
+	fmt.Println("  backup        Create and integrity-check a consistent SQLite backup archive")
+	fmt.Println("  verify-backup Verify a backup archive without restoring it")
 	fmt.Println("  restore       Restore appliance database from backup archive")
 	fmt.Println("  db-check      Execute SQLite integrity check and table counts")
-	fmt.Println("  diagnostics   Generate privacy-scrubbed appliance diagnostics report")
+	fmt.Println("  diagnostics   Generate a privacy-scrubbed appliance diagnostics report")
 	fmt.Println("  repair        Verify and repair permissions, directories, and DB indexes")
 	fmt.Println("  update        Atomically replace the daemon and retain a rollback copy")
 	fmt.Println("  os-update     Perform supported same-major OS package maintenance")
@@ -203,7 +206,7 @@ func runSyncNow() {
 
 func runBackup(args []string) {
 	fs := flag.NewFlagSet("backup", flag.ExitOnError)
-	toPath := fs.String("to", "backups", "Output directory or path for backup archive")
+	toPath := fs.String("to", "backups", "Output directory or explicit .tar.gz path for backup archive")
 	_ = fs.Parse(args)
 
 	cfg, configPath, err := config.Load("")
@@ -226,6 +229,18 @@ func runBackup(args []string) {
 	}
 
 	fmt.Printf("Backup created successfully: %s\n", archivePath)
+}
+
+func runVerifyBackup(args []string) {
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "Usage: familyboardctl verify-backup <archive-path>")
+		os.Exit(1)
+	}
+	if err := restore.VerifyBackup(context.Background(), args[0]); err != nil {
+		fmt.Fprintf(os.Stderr, "Backup verification failed: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Backup verification passed: manifest checksum and SQLite integrity are valid.")
 }
 
 func runRestore(args []string) {
@@ -281,7 +296,11 @@ func runDBCheck() {
 	_ = store
 }
 
-func runDiagnostics() {
+func runDiagnostics(args []string) {
+	fs := flag.NewFlagSet("diagnostics", flag.ExitOnError)
+	outPath := fs.String("out", "", "Write JSON diagnostics to this path instead of stdout")
+	_ = fs.Parse(args)
+
 	cfg, _, err := config.Load("")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Load config: %v\n", err)
@@ -302,8 +321,53 @@ func runDiagnostics() {
 		os.Exit(1)
 	}
 
-	data, _ := json.MarshalIndent(report, "", "  ")
-	fmt.Println(string(data))
+	data, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Encode diagnostics: %v\n", err)
+		os.Exit(1)
+	}
+	if *outPath == "" {
+		fmt.Println(string(data))
+		return
+	}
+	if err := writePrivateReport(*outPath, append(data, '\n')); err != nil {
+		fmt.Fprintf(os.Stderr, "Write diagnostics: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Diagnostics report written: %s\n", *outPath)
+}
+
+func writePrivateReport(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("create diagnostics output directory: %w", err)
+	}
+	tmp, err := os.CreateTemp(dir, ".familyboard-diagnostics-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temporary diagnostics report: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0600); err != nil {
+		tmp.Close()
+		return fmt.Errorf("secure diagnostics report: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write diagnostics report: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close diagnostics report: %w", err)
+	}
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("diagnostics report already exists: %s", path)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("inspect diagnostics destination: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("publish diagnostics report: %w", err)
+	}
+	return nil
 }
 
 func runRepair() {

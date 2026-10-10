@@ -195,7 +195,7 @@ func (s *Server) handleAPICreateEvent(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	if ev.ID == "" {
-		ev.ID = fmt.Sprintf("evt-local-%d", now.UnixNano())
+		ev.ID = models.NewID("evt-local")
 	}
 	ev.Provider = cal.Provider
 	ev.Source = "kiosk"
@@ -203,21 +203,24 @@ func (s *Server) handleAPICreateEvent(w http.ResponseWriter, r *http.Request) {
 	ev.LocalCreatedAt = now
 	ev.LocalUpdatedAt = now
 
-	// 1. Transactionally persist to local SQLite database and enqueue outbound mutation
-	payload, _ := json.Marshal(ev)
-	mutation := &models.MutationQueueItem{
-		ID:             fmt.Sprintf("mut-%d", now.UnixNano()),
-		Operation:      "create",
-		Provider:       cal.Provider,
-		CalendarID:     cal.ID,
-		LocalEventID:   ev.ID,
-		Payload:        string(payload),
-		IdempotencyKey: fmt.Sprintf("idemp-%s", ev.ID),
-		AttemptCount:   0,
-		NextAttemptAt:  now,
-		State:          models.QueuePending,
-		CreatedAt:      now,
-		UpdatedAt:      now,
+	// 1. Transactionally persist to local SQLite database and enqueue outbound mutation if cloud-synced
+	var mutation *models.MutationQueueItem
+	if cal.Provider != "local" && cal.OAuthAccountID != "" {
+		payload, _ := json.Marshal(ev)
+		mutation = &models.MutationQueueItem{
+			ID:             models.NewID("mut"),
+			Operation:      "create",
+			Provider:       cal.Provider,
+			CalendarID:     cal.ID,
+			LocalEventID:   ev.ID,
+			Payload:        string(payload),
+			IdempotencyKey: fmt.Sprintf("idemp-%s", ev.ID),
+			AttemptCount:   0,
+			NextAttemptAt:  now,
+			State:          models.QueuePending,
+			CreatedAt:      now,
+			UpdatedAt:      now,
+		}
 	}
 
 	if err := s.store.UpsertEventAndEnqueueMutation(r.Context(), &ev, mutation); err != nil {
@@ -226,9 +229,11 @@ func (s *Server) handleAPICreateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Immediately trigger background queue processing & SSE broadcast
+	// 3. Trigger background queue processing (if mutation enqueued) & SSE broadcast
 	go func() {
-		_ = s.queueEngine.ProcessBatch(context.Background(), 5)
+		if mutation != nil && s.queueEngine != nil {
+			_ = s.queueEngine.ProcessBatch(context.Background(), 5)
+		}
 		s.BroadcastReload()
 	}()
 
@@ -315,20 +320,23 @@ func (s *Server) handleAPIUpdateEvent(w http.ResponseWriter, r *http.Request) {
 	existing.Source = "kiosk"
 	existing.LocalUpdatedAt = time.Now()
 
-	payload, _ := json.Marshal(existing)
-	mutation := &models.MutationQueueItem{
-		ID:             fmt.Sprintf("mut-%d", time.Now().UnixNano()),
-		Operation:      "update",
-		Provider:       existing.Provider,
-		CalendarID:     existing.CalendarID,
-		LocalEventID:   existing.ID,
-		Payload:        string(payload),
-		IdempotencyKey: fmt.Sprintf("idemp-upd-%s-%d", existing.ID, existing.LocalUpdatedAt.UnixNano()),
-		AttemptCount:   0,
-		NextAttemptAt:  time.Now(),
-		State:          models.QueuePending,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+	var mutation *models.MutationQueueItem
+	if existing.Provider != "local" {
+		payload, _ := json.Marshal(existing)
+		mutation = &models.MutationQueueItem{
+			ID:             models.NewID("mut"),
+			Operation:      "update",
+			Provider:       existing.Provider,
+			CalendarID:     existing.CalendarID,
+			LocalEventID:   existing.ID,
+			Payload:        string(payload),
+			IdempotencyKey: fmt.Sprintf("idemp-upd-%s-%d", existing.ID, existing.LocalUpdatedAt.UnixNano()),
+			AttemptCount:   0,
+			NextAttemptAt:  time.Now(),
+			State:          models.QueuePending,
+			CreatedAt:      time.Now(),
+			UpdatedAt:      time.Now(),
+		}
 	}
 
 	if err := s.store.UpsertEventAndEnqueueMutation(r.Context(), existing, mutation); err != nil {
@@ -338,7 +346,9 @@ func (s *Server) handleAPIUpdateEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go func() {
-		_ = s.queueEngine.ProcessBatch(context.Background(), 5)
+		if mutation != nil && s.queueEngine != nil {
+			_ = s.queueEngine.ProcessBatch(context.Background(), 5)
+		}
 		s.BroadcastReload()
 	}()
 
@@ -359,20 +369,23 @@ func (s *Server) handleAPIDeleteEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payload, _ := json.Marshal(existing)
-	mutation := &models.MutationQueueItem{
-		ID:             fmt.Sprintf("mut-%d", time.Now().UnixNano()),
-		Operation:      "delete",
-		Provider:       existing.Provider,
-		CalendarID:     existing.CalendarID,
-		LocalEventID:   existing.ID,
-		Payload:        string(payload),
-		IdempotencyKey: fmt.Sprintf("idemp-del-%s-%d", existing.ID, time.Now().UnixNano()),
-		AttemptCount:   0,
-		NextAttemptAt:  time.Now(),
-		State:          models.QueuePending,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+	var mutation *models.MutationQueueItem
+	if existing.Provider != "local" {
+		payload, _ := json.Marshal(existing)
+		mutation = &models.MutationQueueItem{
+			ID:             models.NewID("mut"),
+			Operation:      "delete",
+			Provider:       existing.Provider,
+			CalendarID:     existing.CalendarID,
+			LocalEventID:   existing.ID,
+			Payload:        string(payload),
+			IdempotencyKey: fmt.Sprintf("idemp-del-%s-%d", existing.ID, time.Now().UnixNano()),
+			AttemptCount:   0,
+			NextAttemptAt:  time.Now(),
+			State:          models.QueuePending,
+			CreatedAt:      time.Now(),
+			UpdatedAt:      time.Now(),
+		}
 	}
 
 	if err := s.store.SoftDeleteEventAndEnqueueMutation(r.Context(), id, mutation); err != nil {
@@ -382,7 +395,9 @@ func (s *Server) handleAPIDeleteEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go func() {
-		_ = s.queueEngine.ProcessBatch(context.Background(), 5)
+		if mutation != nil && s.queueEngine != nil {
+			_ = s.queueEngine.ProcessBatch(context.Background(), 5)
+		}
 		s.BroadcastReload()
 	}()
 
@@ -403,20 +418,23 @@ func (s *Server) handleAPIRestoreEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payload, _ := json.Marshal(restored)
-	mutation := &models.MutationQueueItem{
-		ID:             fmt.Sprintf("mut-%d", time.Now().UnixNano()),
-		Operation:      "create",
-		Provider:       restored.Provider,
-		CalendarID:     restored.CalendarID,
-		LocalEventID:   restored.ID,
-		Payload:        string(payload),
-		IdempotencyKey: fmt.Sprintf("idemp-rest-%s-%d", restored.ID, time.Now().UnixNano()),
-		AttemptCount:   0,
-		NextAttemptAt:  time.Now(),
-		State:          models.QueuePending,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+	var mutation *models.MutationQueueItem
+	if restored.Provider != "local" {
+		payload, _ := json.Marshal(restored)
+		mutation = &models.MutationQueueItem{
+			ID:             models.NewID("mut"),
+			Operation:      "create",
+			Provider:       restored.Provider,
+			CalendarID:     restored.CalendarID,
+			LocalEventID:   restored.ID,
+			Payload:        string(payload),
+			IdempotencyKey: fmt.Sprintf("idemp-rest-%s-%d", restored.ID, time.Now().UnixNano()),
+			AttemptCount:   0,
+			NextAttemptAt:  time.Now(),
+			State:          models.QueuePending,
+			CreatedAt:      time.Now(),
+			UpdatedAt:      time.Now(),
+		}
 	}
 
 	if err := s.store.RestoreEventAndEnqueueMutation(r.Context(), id, mutation); err != nil {
@@ -426,7 +444,9 @@ func (s *Server) handleAPIRestoreEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go func() {
-		_ = s.queueEngine.ProcessBatch(context.Background(), 5)
+		if mutation != nil && s.queueEngine != nil {
+			_ = s.queueEngine.ProcessBatch(context.Background(), 5)
+		}
 		s.BroadcastReload()
 	}()
 

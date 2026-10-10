@@ -27,13 +27,15 @@ type Manifest struct {
 
 // CreateBackup creates a consistent SQLite backup archive with config and manifest.
 func CreateBackup(ctx context.Context, database *db.DB, configPath, outDir string) (string, error) {
-	if err := os.MkdirAll(outDir, 0700); err != nil {
-		return "", fmt.Errorf("create backup output dir: %w", err)
+	archivePath, err := resolveArchivePath(outDir)
+	if err != nil {
+		return "", err
 	}
-
-	timestamp := time.Now().Format("20060102-150405")
-	archiveName := fmt.Sprintf("familyboard-backup-%s.tar.gz", timestamp)
-	archivePath := filepath.Join(outDir, archiveName)
+	if _, err := os.Stat(archivePath); err == nil {
+		return "", fmt.Errorf("backup archive already exists: %s", archivePath)
+	} else if !os.IsNotExist(err) {
+		return "", fmt.Errorf("inspect backup destination: %w", err)
+	}
 
 	// 1. Create a staged SQLite snapshot via VACUUM INTO
 	tmpDir, err := os.MkdirTemp("", "fb-backup-stage-*")
@@ -48,6 +50,17 @@ func CreateBackup(ctx context.Context, database *db.DB, configPath, outDir strin
 	_, err = database.ExecContext(ctx, fmt.Sprintf("VACUUM INTO '%s';", escapedSnapshotPath))
 	if err != nil {
 		return "", fmt.Errorf("execute vacuum into: %w", err)
+	}
+	stagedDB, err := db.Open(dbSnapshotPath, 5000, 1, 1)
+	if err != nil {
+		return "", fmt.Errorf("open database snapshot: %w", err)
+	}
+	if err := stagedDB.CheckIntegrity(); err != nil {
+		_ = stagedDB.Close()
+		return "", fmt.Errorf("verify database snapshot integrity: %w", err)
+	}
+	if err := stagedDB.Close(); err != nil {
+		return "", fmt.Errorf("close verified database snapshot: %w", err)
 	}
 
 	// Calculate DB hash
@@ -69,17 +82,22 @@ func CreateBackup(ctx context.Context, database *db.DB, configPath, outDir strin
 	}
 	manifestBytes, _ := json.MarshalIndent(manifest, "", "  ")
 
-	// 2. Build tar.gz archive
-	outFile, err := os.OpenFile(archivePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	// 2. Build the archive beside its final path, then atomically publish it.
+	archiveDir := filepath.Dir(archivePath)
+	outFile, err := os.CreateTemp(archiveDir, ".familyboard-backup-*.tmp")
 	if err != nil {
-		return "", fmt.Errorf("create archive file: %w", err)
+		return "", fmt.Errorf("create temporary backup archive: %w", err)
+	}
+	tmpArchivePath := outFile.Name()
+	defer os.Remove(tmpArchivePath)
+	if err := outFile.Chmod(0600); err != nil {
+		outFile.Close()
+		return "", fmt.Errorf("secure temporary backup archive: %w", err)
 	}
 	defer outFile.Close()
 
 	gw := gzip.NewWriter(outFile)
-	defer gw.Close()
 	tw := tar.NewWriter(gw)
-	defer tw.Close()
 
 	// Add database.db
 	dbHeader := &tar.Header{
@@ -124,5 +142,38 @@ func CreateBackup(ctx context.Context, database *db.DB, configPath, outDir strin
 		}
 	}
 
+	if err := tw.Close(); err != nil {
+		outFile.Close()
+		return "", fmt.Errorf("finalize backup archive: %w", err)
+	}
+	if err := gw.Close(); err != nil {
+		outFile.Close()
+		return "", fmt.Errorf("compress backup archive: %w", err)
+	}
+	if err := outFile.Close(); err != nil {
+		return "", fmt.Errorf("close backup archive: %w", err)
+	}
+	if err := os.Rename(tmpArchivePath, archivePath); err != nil {
+		return "", fmt.Errorf("publish backup archive: %w", err)
+	}
+
 	return archivePath, nil
+}
+
+func resolveArchivePath(outPath string) (string, error) {
+	if strings.TrimSpace(outPath) == "" {
+		outPath = "backups"
+	}
+	if strings.HasSuffix(strings.ToLower(outPath), ".tar.gz") {
+		dir := filepath.Dir(outPath)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return "", fmt.Errorf("create backup output dir: %w", err)
+		}
+		return outPath, nil
+	}
+	if err := os.MkdirAll(outPath, 0700); err != nil {
+		return "", fmt.Errorf("create backup output dir: %w", err)
+	}
+	timestamp := time.Now().Format("20060102-150405")
+	return filepath.Join(outPath, fmt.Sprintf("familyboard-backup-%s.tar.gz", timestamp)), nil
 }

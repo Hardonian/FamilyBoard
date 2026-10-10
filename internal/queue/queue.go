@@ -133,6 +133,10 @@ func (e *Engine) ProcessBatch(ctx context.Context, batchSize int) error {
 
 // ProcessItem executes an individual mutation against the appropriate calendar provider.
 func (e *Engine) ProcessItem(ctx context.Context, item *models.MutationQueueItem) error {
+	if item.Provider == "local" {
+		return e.store.UpdateMutationState(ctx, item.ID, models.QueueCompleted, item.AttemptCount+1, time.Now(), "")
+	}
+
 	e.mu.Lock()
 	prov, ok := e.providers[item.Provider]
 	tokenProvider := e.tokenProvider

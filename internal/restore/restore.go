@@ -23,6 +23,19 @@ var (
 	ErrCorruptBackup    = errors.New("backup database failed integrity verification")
 )
 
+// VerifyBackup validates a backup archive without modifying the active
+// appliance database or configuration. It verifies the manifest checksum and
+// runs SQLite integrity_check against an isolated staged copy.
+func VerifyBackup(ctx context.Context, archivePath string) error {
+	verifyDir, err := os.MkdirTemp("", "fb-backup-verify-*")
+	if err != nil {
+		return fmt.Errorf("create verification staging directory: %w", err)
+	}
+	defer os.RemoveAll(verifyDir)
+
+	return RestoreBackup(ctx, archivePath, filepath.Join(verifyDir, "verified.db"), "")
+}
+
 // RestoreBackup safely restores an appliance database and configuration from a backup archive.
 func RestoreBackup(ctx context.Context, archivePath, targetDBPath, targetConfigPath string) error {
 	// 1. Open and extract archive to temporary staging directory
