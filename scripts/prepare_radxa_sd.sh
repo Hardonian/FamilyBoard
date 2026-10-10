@@ -9,7 +9,19 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-TARGET_DIR="${1:-${PROJECT_ROOT}/dist/familyboard-sd-standalone}"
+TARGET_DIR="${PROJECT_ROOT}/dist/familyboard-sd-standalone"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -d|--dir|--output)
+      TARGET_DIR="$2"
+      shift 2
+      ;;
+    *)
+      TARGET_DIR="$1"
+      shift
+      ;;
+  esac
+done
 
 echo "=============================================================="
 echo "   FamilyBoard Radxa Dragon SD Card Preparation Engine        "
