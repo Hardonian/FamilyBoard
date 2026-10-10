@@ -2,17 +2,19 @@ ifeq ($(OS),Windows_NT)
     SHELL := C:/PROGRA~1/Git/bin/bash.exe
     .SHELLFLAGS := -c
     BASH_BIN := C:/PROGRA~1/Git/bin/bash.exe
+    EXE_EXT := .exe
 else
     SHELL := /bin/bash
     .SHELLFLAGS := -c
     BASH_BIN := bash
+    EXE_EXT :=
 endif
 
 .PHONY: all fmt vet lint staticcheck vuln security-check tools-check verify-mod check-version check-js test test-race build build-arm64 package-arm64 package-all pi-bootstrap-check release-check release-package clean
 
-VERSION ?= $(shell cat VERSION)
+VERSION ?= $(strip $(file <VERSION))
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
-DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown")
+DATE ?= $(shell git show -s --format=%cI HEAD 2>/dev/null || echo "unknown")
 LDFLAGS = -s -w -X github.com/Hardonian/FamilyBoard/internal/buildinfo.Version=$(VERSION) -X github.com/Hardonian/FamilyBoard/internal/buildinfo.Commit=$(COMMIT) -X github.com/Hardonian/FamilyBoard/internal/buildinfo.Date=$(DATE)
 
 all: build
@@ -57,8 +59,8 @@ bench:
 	go test -v -bench=. -benchmem ./tests/...
 
 build:
-	go build -ldflags "$(LDFLAGS)" -o familyboard ./cmd/familyboard
-	go build -ldflags "$(LDFLAGS)" -o familyboardctl ./cmd/familyboardctl
+	go build -ldflags "$(LDFLAGS)" -o familyboard$(EXE_EXT) ./cmd/familyboard
+	go build -ldflags "$(LDFLAGS)" -o familyboardctl$(EXE_EXT) ./cmd/familyboardctl
 
 build-arm64:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o familyboard-linux-arm64 ./cmd/familyboard
