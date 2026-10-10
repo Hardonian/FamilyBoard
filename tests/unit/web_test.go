@@ -672,6 +672,26 @@ func TestWeb_MobilePairingAndCapabilityIssuance(t *testing.T) {
 		InitializedAt: time.Now(),
 		Version:       "v1.2.0",
 	})
+	_ = store.UpsertOAuthAccount(ctx, &models.OAuthAccount{
+		ID:                "acc-test",
+		PersonID:          "person-1",
+		Provider:          "google",
+		ProviderAccountID: "g-1",
+		VerifiedEmail:     "alex@example.com",
+		Scopes:            "cal",
+		ExpiresAt:         time.Now().Add(time.Hour),
+		Status:            "active",
+	})
+	_ = store.UpsertCalendar(ctx, &models.Calendar{
+		ID:                 "cal-primary",
+		OAuthAccountID:     "acc-test",
+		Provider:           "google",
+		ProviderCalendarID: "alex@example.com",
+		Name:               "Family Calendar",
+		EnabledForDisplay:  true,
+		Writable:           true,
+		DefaultWriteTarget: true,
+	})
 
 	// 1. Physical kiosk requests pairing payload (localhost)
 	reqPair := httptest.NewRequest(http.MethodGet, "/api/system/mobile-pair", nil)
@@ -727,7 +747,7 @@ func TestWeb_MobilePairingAndCapabilityIssuance(t *testing.T) {
 
 	// 4. Remote smartphone now uses the issued cookie to perform a write mutation (create event)
 	eventPayload := map[string]interface{}{
-		"calendar_id": "cal-home",
+		"calendar_id": "cal-primary",
 		"title":       "Soccer Practice from Mobile Phone",
 		"start_at":    time.Now().Add(2 * time.Hour).Format(time.RFC3339),
 		"end_at":      time.Now().Add(3 * time.Hour).Format(time.RFC3339),
