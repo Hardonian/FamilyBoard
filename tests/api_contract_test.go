@@ -181,8 +181,8 @@ func TestAPIContract_OpenAPISpecValidation(t *testing.T) {
 	if !strings.Contains(content, "openapi: 3.0.3") {
 		t.Errorf("expected openapi: 3.0.3")
 	}
-	if !strings.Contains(content, "version: 1.5.0") {
-		t.Errorf("expected version: 1.5.0")
+	if !strings.Contains(content, "version: 1.6.0") {
+		t.Errorf("expected version: 1.6.0")
 	}
 	expectedEndpoints := []string{
 		"/health/live:",

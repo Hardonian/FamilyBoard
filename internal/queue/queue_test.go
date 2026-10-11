@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -123,6 +124,44 @@ func TestQueue_LifecycleAndStatus(t *testing.T) {
 	status = engine.Status()
 	if status.Running || status.Health != "stopped" {
 		t.Errorf("expected stopped status after shutdown, got %+v", status)
+	}
+}
+
+func TestQueue_RecoversInterruptedProcessingWork(t *testing.T) {
+	_, store, cleanup := setupQueueTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now()
+	item := &models.MutationQueueItem{
+		ID: "mut-interrupted", Operation: "create", Provider: "local",
+		CalendarID: "cal-local", LocalEventID: "ev-local", Payload: `{}`,
+		IdempotencyKey: "idem-interrupted", State: models.QueuePending,
+		NextAttemptAt: now, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := store.EnqueueMutation(ctx, item); err != nil {
+		t.Fatalf("enqueue mutation: %v", err)
+	}
+	if err := store.UpdateMutationState(ctx, item.ID, models.QueueProcessing, 1, now, "connection dropped"); err != nil {
+		t.Fatalf("mark processing: %v", err)
+	}
+
+	recovered, err := store.RecoverProcessingMutations(ctx)
+	if err != nil {
+		t.Fatalf("recover processing mutations: %v", err)
+	}
+	if recovered != 1 {
+		t.Fatalf("recovered %d mutations, want 1", recovered)
+	}
+	got, err := store.GetMutation(ctx, item.ID)
+	if err != nil {
+		t.Fatalf("get recovered mutation: %v", err)
+	}
+	if got.State != models.QueueRetry || got.NextAttemptAt.After(time.Now()) {
+		t.Fatalf("recovered mutation is not immediately retryable: %+v", got)
+	}
+	if !strings.Contains(got.LastError, "recovered after interrupted processing") {
+		t.Fatalf("recovery reason missing from last_error: %q", got.LastError)
 	}
 }
 

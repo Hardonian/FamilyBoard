@@ -106,7 +106,12 @@ func (e *Engine) Start(ctx context.Context) {
 
 	e.wg.Add(1)
 	go func() {
-		defer e.wg.Done()
+		defer func() {
+			e.mu.Lock()
+			e.running = false
+			e.mu.Unlock()
+			e.wg.Done()
+		}()
 		// Initial sync run on startup
 		_ = e.SyncAll(ctx)
 
@@ -436,26 +441,33 @@ func (e *Engine) reconcileEvent(ctx context.Context, cal *models.Calendar, remot
 	}
 
 	if existing != nil {
-		pendingMutations, _ := e.store.GetPendingMutations(ctx, 50)
-		for _, m := range pendingMutations {
-			if m.LocalEventID == existing.ID && m.State != models.QueueCompleted {
-				if existing.ETag != remoteEv.ETag && remoteEv.ETag != "" {
-					localPayload, _ := json.Marshal(existing)
-					remotePayload, _ := json.Marshal(remoteEv)
-					conflict := &models.Conflict{
-						ID:            fmt.Sprintf("conf-%d", e.clock.Now().UnixNano()),
-						LocalEventID:  existing.ID,
-						RemoteEventID: remoteEv.ProviderEventID,
-						ConflictType:  "concurrent_edit",
-						LocalPayload:  string(localPayload),
-						RemotePayload: string(remotePayload),
-						State:         "pending",
-					}
-					_ = e.store.CreateConflict(ctx, conflict)
-					slog.Warn("Conflict detected on event", "title", existing.Title, "local_id", existing.ID)
-					return nil
-				}
+		hasActiveMutation, err := e.store.HasActiveMutationForEvent(ctx, existing.ID)
+		if err != nil {
+			return err
+		}
+		if hasActiveMutation && existing.ETag != remoteEv.ETag && remoteEv.ETag != "" {
+			localPayload, err := json.Marshal(existing)
+			if err != nil {
+				return fmt.Errorf("marshal local conflict payload: %w", err)
 			}
+			remotePayload, err := json.Marshal(remoteEv)
+			if err != nil {
+				return fmt.Errorf("marshal remote conflict payload: %w", err)
+			}
+			conflict := &models.Conflict{
+				ID:            fmt.Sprintf("conf-%d", e.clock.Now().UnixNano()),
+				LocalEventID:  existing.ID,
+				RemoteEventID: remoteEv.ProviderEventID,
+				ConflictType:  "concurrent_edit",
+				LocalPayload:  string(localPayload),
+				RemotePayload: string(remotePayload),
+				State:         "pending",
+			}
+			if err := e.store.CreateConflict(ctx, conflict); err != nil {
+				return fmt.Errorf("persist sync conflict: %w", err)
+			}
+			slog.Warn("Conflict detected on event", "title", existing.Title, "local_id", existing.ID)
+			return nil
 		}
 
 		remoteEv.ID = existing.ID

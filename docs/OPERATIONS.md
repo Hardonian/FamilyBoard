@@ -119,3 +119,8 @@ FamilyBoard enforces bounded disk usage:
 - **Processed Messages:** Parsed email metadata pruned after 90 days.
 - **Mutation Queue:** Successfully processed sync mutations pruned after 30 days.
 - **Admin Sessions:** Expired authentication tokens purged automatically.
+
+The daemon runs this maintenance once at startup and every 24 hours. The Admin
+System tab can run the same transactional retention pass on demand, followed by
+a WAL checkpoint and explicit database compaction. Active or retrying outbound
+mutations prevent their related soft-deleted events from being purged.

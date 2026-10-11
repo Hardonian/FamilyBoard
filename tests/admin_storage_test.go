@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -9,20 +8,6 @@ import (
 	"strings"
 	"testing"
 )
-
-func extractCSRFToken(body string) string {
-	const marker = `name="csrf_token" value="`
-	start := strings.Index(body, marker)
-	if start < 0 {
-		return ""
-	}
-	start += len(marker)
-	end := strings.IndexByte(body[start:], '"')
-	if end < 0 {
-		return ""
-	}
-	return html.UnescapeString(body[start : start+end])
-}
 
 func TestAdminSystemTabAndStorageEndpoints(t *testing.T) {
 	srv, store, tempDir := setupTestServer(t)

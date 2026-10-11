@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: FamilyBoard Appliance Internal API
   description: Official OpenAPI contract specification for the sovereign FamilyBoard smart display appliance.
-  version: 1.5.0
+  version: 1.6.0
 servers:
   - url: http://127.0.0.1:8080
     description: Local appliance daemon

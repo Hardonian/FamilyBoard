@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"runtime"
 	"sync"
 	"time"
 )
@@ -22,6 +23,7 @@ type MetricsSnapshot struct {
 	DiskTotalBytes     uint64           `json:"disk_total_bytes"`
 	DiskUsedPercent    float64          `json:"disk_used_percent"`
 	MemoryAllocBytes   uint64           `json:"memory_alloc_bytes"`
+	MemorySysBytes     uint64           `json:"memory_sys_bytes"`
 }
 
 type Registry struct {
@@ -109,6 +111,8 @@ func (r *Registry) Snapshot() MetricsSnapshot {
 	}
 
 	diskFree, diskTotal := getDiskSpace()
+	var memory runtime.MemStats
+	runtime.ReadMemStats(&memory)
 	var diskUsedPct float64
 	if diskTotal > 0 {
 		diskUsedPct = float64(diskTotal-diskFree) / float64(diskTotal) * 100.0
@@ -130,5 +134,7 @@ func (r *Registry) Snapshot() MetricsSnapshot {
 		DiskFreeBytes:      diskFree,
 		DiskTotalBytes:     diskTotal,
 		DiskUsedPercent:    diskUsedPct,
+		MemoryAllocBytes:   memory.Alloc,
+		MemorySysBytes:     memory.Sys,
 	}
 }

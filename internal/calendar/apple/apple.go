@@ -482,7 +482,12 @@ func (c *AppleCalendarClient) CreateEvent(ctx context.Context, accessToken strin
 
 	uid := event.ProviderUID
 	if uid == "" {
-		uid = fmt.Sprintf("fb-apple-%d@familyboard.local", time.Now().UnixNano())
+		if idempotencyKey != "" {
+			sum := sha256.Sum256([]byte(idempotencyKey))
+			uid = fmt.Sprintf("fb-apple-%x@familyboard.local", sum[:16])
+		} else {
+			uid = fmt.Sprintf("fb-apple-%d@familyboard.local", time.Now().UnixNano())
+		}
 	}
 
 	calURL := calendarID

@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-11
+
+### Added
+
+- Scheduled transactional storage retention with safe manual checkpoint and
+  compaction controls.
+- Crash recovery for queue items interrupted in `processing`, plus stable
+  provider create identifiers across Google, Microsoft, and Apple.
+- Live worker, memory, queue, database, clock, and available NTP state in the
+  authenticated health report.
+- Optional SHA-256 verification for `familyboardctl update` candidates.
+
+### Changed
+
+- Conflict detection now checks all active mutations for an event instead of a
+  bounded queue sample.
+- Backup and restore paths now fail closed on metadata errors, reject oversized
+  or duplicate archive entries, reject newer schemas, and publish restored
+  files atomically with rollback copies.
+- Support bundles are assembled completely before download and exclude audit
+  details, resource identifiers, client IP addresses, hostnames, and usernames.
+
 ## [1.5.0] - 2026-10-11
 
 ### Added

@@ -1,5 +1,11 @@
 # FamilyBoard Remote Support Architecture & Security Model
 
+> **Shipping status:** FamilyBoard 1.5 implements local diagnostics and a
+> household-downloaded redacted support bundle. It does not ship a remote
+> tunnel, public listener, vendor account, or persistent support credential.
+> The session state machine below is a mandatory security contract for any
+> future live-support implementation, not a claim that remote access is active.
+
 This document outlines the privacy-first architecture, threat model, and operational boundaries for technical remote assistance on FamilyBoard smart appliances.
 
 ---

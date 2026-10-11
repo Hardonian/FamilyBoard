@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -77,6 +78,12 @@ func TestAdminSupportBundle(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	cookie := createAdminCookie(t, store)
+	if err := store.RecordAudit(context.Background(), &models.AuditEntry{
+		ID: "audit-private", Actor: "admin", Action: "person_create", ResourceType: "person",
+		ResourceID: "person-private", Details: "Added family member Private Name", IPAddress: "192.0.2.44",
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	req := httptest.NewRequest("GET", "/admin/support/bundle", nil)
 	req.AddCookie(cookie)
@@ -111,6 +118,22 @@ func TestAdminSupportBundle(t *testing.T) {
 	for _, f := range zr.File {
 		if _, ok := expectedEntries[f.Name]; ok {
 			expectedEntries[f.Name] = true
+		}
+		if f.Name == "recent_audit.json" {
+			reader, err := f.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var entries []map[string]any
+			if err := json.NewDecoder(reader).Decode(&entries); err != nil {
+				reader.Close()
+				t.Fatal(err)
+			}
+			reader.Close()
+			encoded, _ := json.Marshal(entries)
+			if strings.Contains(string(encoded), "Private Name") || strings.Contains(string(encoded), "192.0.2.44") || strings.Contains(string(encoded), "person-private") {
+				t.Fatalf("support audit leaked private detail: %s", encoded)
+			}
 		}
 	}
 

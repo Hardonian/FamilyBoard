@@ -2,6 +2,8 @@ package timezone
 
 import (
 	"fmt"
+	"os"
+	"runtime"
 	"time"
 )
 
@@ -11,7 +13,8 @@ type ClockHealth struct {
 	TimezoneValid    bool      `json:"timezone_valid"`
 	YearSane         bool      `json:"year_sane"`
 	MonotonicCheckOK bool      `json:"monotonic_check_ok"`
-	Status           string    `json:"status"` // "healthy", "warning", "critical"
+	NTPStatus        string    `json:"ntp_status"` // synchronized, unsynchronized, or unknown
+	Status           string    `json:"status"`     // "healthy", "warning", "critical"
 	Details          string    `json:"details"`
 }
 
@@ -24,7 +27,8 @@ func CheckClockHealth(configuredTZ string) ClockHealth {
 		YearSane:         now.Year() >= 2024 && now.Year() <= 2100,
 		MonotonicCheckOK: true,
 		Status:           "healthy",
-		Details:          "Clock and timezone are synchronized and healthy",
+		NTPStatus:        detectNTPStatus(),
+		Details:          "Clock and timezone appear healthy",
 	}
 
 	if configuredTZ != "" {
@@ -43,6 +47,27 @@ func CheckClockHealth(configuredTZ string) ClockHealth {
 		health.Status = "critical"
 		health.Details = fmt.Sprintf("System clock reports year %d (must be 2024-2100), indicating lost NTP synchronization or dead RTC battery", now.Year())
 	}
+	if health.Status == "healthy" && health.NTPStatus == "unsynchronized" {
+		health.Status = "warning"
+		health.Details = "System clock is plausible, but systemd-timesyncd has not confirmed synchronization"
+	} else if health.Status == "healthy" && health.NTPStatus == "synchronized" {
+		health.Details = "Clock, timezone, and NTP synchronization are healthy"
+	} else if health.Status == "healthy" {
+		health.Details = "Clock and timezone are healthy; NTP state is unavailable on this platform"
+	}
 
 	return health
+}
+
+func detectNTPStatus() string {
+	if runtime.GOOS != "linux" {
+		return "unknown"
+	}
+	if _, err := os.Stat("/run/systemd/timesync/synchronized"); err == nil {
+		return "synchronized"
+	}
+	if _, err := os.Stat("/run/systemd/timesync"); err == nil {
+		return "unsynchronized"
+	}
+	return "unknown"
 }

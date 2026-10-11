@@ -36,6 +36,9 @@ func TestMetrics_RecordAndSnapshot(t *testing.T) {
 	if snap.DiskTotalBytes == 0 {
 		t.Logf("disk total bytes is 0 (may occur in restricted test envs)")
 	}
+	if snap.MemoryAllocBytes == 0 || snap.MemorySysBytes == 0 {
+		t.Errorf("live runtime memory metrics were not populated: %+v", snap)
+	}
 }
 
 func TestDefaultRegistry(t *testing.T) {

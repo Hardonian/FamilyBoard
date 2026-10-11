@@ -69,7 +69,7 @@ make prepare-sd SD=/Volumes/bootfs
 This automated helper:
 
 1. Copies **[`familyboard-setup.sh`](../familyboard-setup.sh)** to the MicroSD card root.
-2. Copies **`dist/releases/1.5.0/familyboard-1.5.0-linux-arm64.tar.gz`** to the MicroSD card root.
+2. Copies **`dist/releases/1.6.0/familyboard-1.6.0-linux-arm64.tar.gz`** to the MicroSD card root.
 3. Configures `cmdline.txt` for automatic execution on first boot.
 
 ---
@@ -81,7 +81,7 @@ If you prefer to copy files manually in your file manager:
 1. Open the MicroSD card drive (e.g. `E:\` or `bootfs`).
 2. Copy these **2 files** from your local `FamilyBoard` repository directly to the root of the card:
    * `familyboard-setup.sh`
-   * `dist/releases/1.5.0/familyboard-1.5.0-linux-arm64.tar.gz`
+   * `dist/releases/1.6.0/familyboard-1.6.0-linux-arm64.tar.gz`
 3. *(Optional for Zero-Touch Auto-Run)*:
    * Open `cmdline.txt` on the MicroSD card in a text editor (Notepad, VS Code, TextEdit).
    * At the very end of the line (keep everything on **a single line**, separated by a space), add:
@@ -102,7 +102,7 @@ If you prefer to copy files manually in your file manager:
 2. Connect your HDMI display and USB touchscreen / power supply.
 3. Power on the Pi:
    * The Pi boots and executes `familyboard-setup.sh`.
-   * The script detects the local `familyboard-1.5.0-linux-arm64.tar.gz` package on the card (100% offline, zero GitHub credentials needed).
+   * The script detects the local `familyboard-1.6.0-linux-arm64.tar.gz` package on the card (100% offline, zero GitHub credentials needed).
    * Installs the daemon to `/opt/familyboard`, sets up systemd service, enables desktop auto-login, redirects Chromium browser cache to RAM tmpfs (`/dev/shm`), and removes the first-boot flag from `cmdline.txt`.
    * After ~90 seconds, the Pi automatically reboots.
    * **FamilyBoard appears full-screen in kiosk mode!**

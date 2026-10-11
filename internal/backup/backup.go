@@ -72,7 +72,10 @@ func CreateBackup(ctx context.Context, database *db.DB, configPath, outDir strin
 	dbHash := sha256.Sum256(dbBytes)
 	dbHashHex := hex.EncodeToString(dbHash[:])
 
-	ver, _ := db.CurrentVersion(ctx, database)
+	ver, err := db.CurrentVersion(ctx, database)
+	if err != nil {
+		return "", fmt.Errorf("read database schema version: %w", err)
+	}
 
 	manifest := Manifest{
 		Version:        buildinfo.Version,
@@ -81,7 +84,10 @@ func CreateBackup(ctx context.Context, database *db.DB, configPath, outDir strin
 		DatabaseSHA256: dbHashHex,
 		SchemaVersion:  ver,
 	}
-	manifestBytes, _ := json.MarshalIndent(manifest, "", "  ")
+	manifestBytes, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("encode backup manifest: %w", err)
+	}
 
 	// 2. Build the archive beside its final path, then atomically publish it.
 	archiveDir := filepath.Dir(archivePath)
@@ -130,16 +136,21 @@ func CreateBackup(ctx context.Context, database *db.DB, configPath, outDir strin
 
 	// Add config.toml if it exists
 	if configPath != "" {
-		if configBytes, err := os.ReadFile(configPath); err == nil {
-			configHeader := &tar.Header{
-				Name:    "config.toml",
-				Size:    int64(len(configBytes)),
-				Mode:    0600,
-				ModTime: time.Now(),
-			}
-			if err := tw.WriteHeader(configHeader); err == nil {
-				_, _ = tw.Write(configBytes)
-			}
+		configBytes, err := os.ReadFile(configPath)
+		if err != nil {
+			return "", fmt.Errorf("read backup configuration: %w", err)
+		}
+		configHeader := &tar.Header{
+			Name:    "config.toml",
+			Size:    int64(len(configBytes)),
+			Mode:    0600,
+			ModTime: time.Now(),
+		}
+		if err := tw.WriteHeader(configHeader); err != nil {
+			return "", fmt.Errorf("write configuration header: %w", err)
+		}
+		if _, err := tw.Write(configBytes); err != nil {
+			return "", fmt.Errorf("write configuration backup: %w", err)
 		}
 	}
 
@@ -150,6 +161,10 @@ func CreateBackup(ctx context.Context, database *db.DB, configPath, outDir strin
 	if err := gw.Close(); err != nil {
 		outFile.Close()
 		return "", fmt.Errorf("compress backup archive: %w", err)
+	}
+	if err := outFile.Sync(); err != nil {
+		outFile.Close()
+		return "", fmt.Errorf("sync backup archive: %w", err)
 	}
 	if err := outFile.Close(); err != nil {
 		return "", fmt.Errorf("close backup archive: %w", err)

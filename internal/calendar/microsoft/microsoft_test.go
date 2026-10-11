@@ -144,12 +144,16 @@ func TestCalendarClient_SyncEvents_DeltaLinkAndMeetings(t *testing.T) {
 }
 
 func TestCalendarClient_CRUD(t *testing.T) {
+	var createPayload map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.Method {
 		case "POST":
 			if r.Header.Get("Client-Request-Id") != "idemp-crud-1" {
 				t.Errorf("missing or incorrect Client-Request-Id header")
+			}
+			if err := json.NewDecoder(r.Body).Decode(&createPayload); err != nil {
+				t.Errorf("decode create payload: %v", err)
 			}
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
@@ -193,6 +197,9 @@ func TestCalendarClient_CRUD(t *testing.T) {
 	}
 	if created.ETag != "ck-initial" {
 		t.Errorf("expected ETag 'ck-initial', got %q", created.ETag)
+	}
+	if createPayload["transactionId"] != "idemp-crud-1" {
+		t.Fatalf("create payload transactionId = %v, want idemp-crud-1", createPayload["transactionId"])
 	}
 
 	// 2. UpdateEvent

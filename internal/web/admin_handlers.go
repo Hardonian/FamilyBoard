@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/Hardonian/FamilyBoard/internal/buildinfo"
 	"github.com/Hardonian/FamilyBoard/internal/diagnostics"
 	"github.com/Hardonian/FamilyBoard/internal/hardware"
+	"github.com/Hardonian/FamilyBoard/internal/maintenance"
 	"github.com/Hardonian/FamilyBoard/internal/metrics"
 	"github.com/Hardonian/FamilyBoard/internal/models"
 	"github.com/Hardonian/FamilyBoard/internal/oauth"
@@ -514,10 +514,11 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	if tab == "system" {
 		diagnosticReport, _ = diagnostics.Generate(ctx, s.store, s.cfg.Database.Path)
 		clockHealth = timezone.CheckClockHealth(s.cfg.Server.Timezone)
-		metricsSnapshot = metrics.Default().Snapshot()
 		if diagnosticReport != nil {
 			databaseSizeMB = fmt.Sprintf("%.2f MB", float64(diagnosticReport.Database.SizeBytes)/(1024*1024))
+			metrics.Default().RecordDatabaseSize(diagnosticReport.Database.SizeBytes)
 		}
+		metricsSnapshot = metrics.Default().Snapshot()
 		if metricsSnapshot.MemoryAllocBytes > 0 {
 			memoryAllocMB = fmt.Sprintf("%.1f MB", float64(metricsSnapshot.MemoryAllocBytes)/(1024*1024))
 		}
@@ -1014,8 +1015,18 @@ func (s *Server) handleAdminQueueRetry(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAdminDatabaseVacuum(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	slog.Info("Compacting and optimizing SQLite database")
-	if _, err := s.store.DB().ExecContext(ctx, "VACUUM; PRAGMA optimize;"); err != nil {
+	if _, err := s.store.DB().ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE);"); err != nil {
+		slog.Error("Database checkpoint failed", "err", err)
+		http.Redirect(w, r, "/admin?tab=system&err="+url.QueryEscape("Database checkpoint failed: "+err.Error()), http.StatusSeeOther)
+		return
+	}
+	if _, err := s.store.DB().ExecContext(ctx, "VACUUM;"); err != nil {
 		slog.Error("Database vacuum failed", "err", err)
+		http.Redirect(w, r, "/admin?tab=system&err="+url.QueryEscape("Database optimization failed: "+err.Error()), http.StatusSeeOther)
+		return
+	}
+	if _, err := s.store.DB().ExecContext(ctx, "PRAGMA optimize;"); err != nil {
+		slog.Error("Database optimization failed", "err", err)
 		http.Redirect(w, r, "/admin?tab=system&err="+url.QueryEscape("Database optimization failed: "+err.Error()), http.StatusSeeOther)
 		return
 	}
@@ -1026,16 +1037,21 @@ func (s *Server) handleAdminDatabaseVacuum(w http.ResponseWriter, r *http.Reques
 func (s *Server) handleAdminStorageCleanup(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	slog.Info("Executing storage retention cleanup pass")
-	retentionDays := 365
-	if d, err := s.store.GetSetting(ctx, "deleted_event_retention_days"); err == nil && d != "" {
-		if parsed, parseErr := strconv.Atoi(d); parseErr == nil && parsed > 0 {
-			retentionDays = parsed
-		}
+	report, err := maintenance.RunOnce(ctx, s.store)
+	if err != nil {
+		slog.Error("Storage retention cleanup failed", "err", err)
+		http.Redirect(w, r, "/admin?tab=system&err="+url.QueryEscape("Storage cleanup failed: "+err.Error()), http.StatusSeeOther)
+		return
 	}
-	cutoff := time.Now().AddDate(0, 0, -retentionDays)
-	_, _ = s.store.DB().ExecContext(ctx, "DELETE FROM events WHERE status = 'cancelled' AND local_updated_at < ?;", cutoff)
-	_, _ = s.store.DB().ExecContext(ctx, "VACUUM; PRAGMA optimize;")
+	if _, err := s.store.DB().ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE);"); err != nil {
+		http.Redirect(w, r, "/admin?tab=system&err="+url.QueryEscape("Storage checkpoint failed: "+err.Error()), http.StatusSeeOther)
+		return
+	}
+	if _, err := s.store.DB().ExecContext(ctx, "VACUUM;"); err != nil {
+		http.Redirect(w, r, "/admin?tab=system&err="+url.QueryEscape("Storage compaction failed: "+err.Error()), http.StatusSeeOther)
+		return
+	}
 
-	s.recordAudit(r, "storage_cleanup", "storage", "*", "Pruned expired data and compacted database")
-	http.Redirect(w, r, "/admin?tab=system&msg=Storage+cleanup+and+pruning+completed+successfully", http.StatusSeeOther)
+	s.recordAudit(r, "storage_cleanup", "storage", "*", fmt.Sprintf("Pruned expired data and compacted database; removed %d deleted events and %d old audit records", report.RemovedEvents, report.RemovedAudit))
+	http.Redirect(w, r, fmt.Sprintf("/admin?tab=system&msg=Storage+cleanup+complete:+%d+events+and+%d+audit+records+removed", report.RemovedEvents, report.RemovedAudit), http.StatusSeeOther)
 }

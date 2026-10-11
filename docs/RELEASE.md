@@ -45,16 +45,16 @@ sha256sum -c SHA256SUMS
 On Windows with Git Bash, use `mingw32-make` in place of `make`. Generated
 archives are written to `dist/releases/VERSION/`.
 
-## Publishing v1.5.0
+## Publishing v1.6.0
 
-1. Confirm `VERSION` is `1.5.0` and `CHANGELOG.md` contains a matching dated
+1. Confirm `VERSION` is `1.6.0` and `CHANGELOG.md` contains a matching dated
    section.
 2. Run `make release-package` and test the archive for the target appliance.
 3. Commit the release changes, then create and push the annotated tag:
 
    ```bash
-   git tag -a v1.5.0 -m "FamilyBoard v1.5.0"
-   git push origin v1.5.0
+   git tag -a v1.6.0 -m "FamilyBoard v1.6.0"
+   git push origin v1.6.0
    ```
 
 4. The `Release` GitHub Actions workflow reruns the complete gate, rebuilds the
@@ -77,5 +77,5 @@ The reported version, commit, and build date should match the GitHub release.
 Verify provenance with GitHub CLI:
 
 ```bash
-gh attestation verify familyboard-1.5.0-linux-arm64.tar.gz -R Hardonian/FamilyBoard
+gh attestation verify familyboard-1.6.0-linux-arm64.tar.gz -R Hardonian/FamilyBoard
 ```

@@ -400,8 +400,9 @@ func (c *CalendarClient) SyncEvents(ctx context.Context, accessToken string, cal
 }
 
 type msEventCreatePayload struct {
-	Subject string `json:"subject"`
-	Body    struct {
+	Subject       string `json:"subject"`
+	TransactionID string `json:"transactionId,omitempty"`
+	Body          struct {
 		ContentType string `json:"contentType"`
 		Content     string `json:"content"`
 	} `json:"body"`
@@ -423,8 +424,9 @@ func (c *CalendarClient) CreateEvent(ctx context.Context, accessToken string, ca
 	endpoint := fmt.Sprintf("%s/calendars/%s/events", c.baseURL, url.PathEscape(calendarID))
 
 	payload := msEventCreatePayload{
-		Subject:  event.Title,
-		IsAllDay: event.AllDay,
+		Subject:       event.Title,
+		TransactionID: idempotencyKey,
+		IsAllDay:      event.AllDay,
 	}
 	payload.Body.ContentType = "text"
 	payload.Body.Content = event.Description

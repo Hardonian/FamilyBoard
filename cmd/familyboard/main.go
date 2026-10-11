@@ -19,6 +19,7 @@ import (
 	msCal "github.com/Hardonian/FamilyBoard/internal/calendar/microsoft"
 	"github.com/Hardonian/FamilyBoard/internal/config"
 	"github.com/Hardonian/FamilyBoard/internal/db"
+	"github.com/Hardonian/FamilyBoard/internal/maintenance"
 	"github.com/Hardonian/FamilyBoard/internal/oauth"
 	"github.com/Hardonian/FamilyBoard/internal/queue"
 	calsync "github.com/Hardonian/FamilyBoard/internal/sync"
@@ -170,6 +171,7 @@ func main() {
 
 	queueEngine.Start(appCtx)
 	syncEngine.Start(appCtx)
+	maintenance.NewRunner(store, 24*time.Hour).Start(appCtx)
 	watchdog.StartWatchdog(appCtx)
 
 	// 9. HTTP Server

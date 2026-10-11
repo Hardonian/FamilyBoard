@@ -60,11 +60,15 @@ sudo familyboardctl health
 ```
 
 Before replacing the database, restore validates the archived checksum and
-SQLite integrity. The previous database is retained beside it with the suffix
-`.bak-prerestore`, allowing a manual rollback if required.
+SQLite integrity, enforces archive size/type limits, rejects duplicate entries,
+and refuses a schema newer than the running release. Database and configuration
+files are published through synced same-directory temporary files. The previous
+database is retained beside it with the suffix `.bak-prerestore`, allowing a
+manual rollback if required.
 
-## Optional nightly schedule
+## Nightly schedule
 
-FamilyBoard does not create a scheduler automatically. If you want one, add a
-systemd timer or cron job that runs `familyboardctl backup --to
-/var/backups/familyboard`, then replicate that directory off the appliance.
+The appliance installer enables `familyboard-backup.timer`. It creates and
+verifies a private backup every night, keeps the newest seven archives, and
+runs a missed backup after the next boot. Replicate `/var/lib/familyboard/backups`
+off the appliance for protection against storage-device loss.

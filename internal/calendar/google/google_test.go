@@ -138,10 +138,14 @@ func TestGoogleCalendarClient_SyncEvents_410Gone(t *testing.T) {
 }
 
 func TestGoogleCalendarClient_CRUD(t *testing.T) {
+	var createPayload map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.Method {
 		case "POST":
+			if err := json.NewDecoder(r.Body).Decode(&createPayload); err != nil {
+				t.Errorf("decode create payload: %v", err)
+			}
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"id":    "created-g-id",
@@ -182,6 +186,9 @@ func TestGoogleCalendarClient_CRUD(t *testing.T) {
 	if created.ProviderEventID != "created-g-id" {
 		t.Errorf("expected ProviderEventID 'created-g-id', got %q", created.ProviderEventID)
 	}
+	if createPayload["id"] == "" || createPayload["extendedProperties"] == nil {
+		t.Fatalf("create payload does not carry deterministic idempotency fields: %#v", createPayload)
+	}
 
 	// 2. UpdateEvent
 	created.Title = "Updated Piano Lesson"
@@ -196,5 +203,44 @@ func TestGoogleCalendarClient_CRUD(t *testing.T) {
 	// 3. DeleteEvent
 	if err := client.DeleteEvent(ctx, "test-token", "primary", "created-g-id"); err != nil {
 		t.Fatalf("DeleteEvent failed: %v", err)
+	}
+}
+
+func TestGoogleCalendarClient_CreateReplayResolvesDeterministicEvent(t *testing.T) {
+	var providerID string
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodPost {
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			providerID, _ = payload["id"].(string)
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		if r.Method == http.MethodGet && providerID != "" && strings.HasSuffix(r.URL.Path, "/"+providerID) {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": providerID, "etag": "existing-etag",
+				"start": map[string]any{"dateTime": "2026-10-24T16:00:00Z"},
+				"end":   map[string]any{"dateTime": "2026-10-24T17:00:00Z"},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client := NewGoogleCalendarClient(server.URL, server.Client())
+	created, err := client.CreateEvent(context.Background(), "token", "primary", &models.Event{
+		ID: "local-1", Title: "Recovered create", StartAt: time.Date(2026, 10, 24, 16, 0, 0, 0, time.UTC), EndAt: time.Date(2026, 10, 24, 17, 0, 0, 0, time.UTC),
+	}, "stable-key")
+	if err != nil {
+		t.Fatalf("resolve create replay: %v", err)
+	}
+	if requests != 2 || created.ProviderEventID != providerID || created.ID != "local-1" {
+		t.Fatalf("unexpected replay result requests=%d provider=%q event=%+v", requests, providerID, created)
 	}
 }

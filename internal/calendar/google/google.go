@@ -3,6 +3,8 @@ package google
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base32"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -474,6 +476,18 @@ func (c *GoogleCalendarClient) CreateEvent(ctx context.Context, accessToken, cal
 		"description": ev.Description,
 		"location":    ev.Location,
 	}
+	providerEventID := ""
+	if idempotencyKey != "" {
+		// Google accepts client-chosen event IDs using the base32hex alphabet.
+		// A stable ID makes replay after a lost response resolve to the same
+		// provider object instead of creating a duplicate household event.
+		sum := sha256.Sum256([]byte(idempotencyKey))
+		providerEventID = strings.ToLower(base32.HexEncoding.WithPadding(base32.NoPadding).EncodeToString(sum[:20]))
+		payload["id"] = providerEventID
+		payload["extendedProperties"] = map[string]any{
+			"private": map[string]string{"familyboard_idempotency_key": idempotencyKey},
+		}
+	}
 
 	if ev.AllDay {
 		payload["start"] = map[string]string{"date": ev.StartAt.Format("2006-01-02")}
@@ -507,6 +521,24 @@ func (c *GoogleCalendarClient) CreateEvent(ctx context.Context, accessToken, cal
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusConflict && providerEventID != "" {
+		// A prior identical request may have committed remotely while its
+		// response was lost. Resolve the deterministic event ID and treat the
+		// replay as success.
+		resp.Body.Close()
+		getEndpoint := fmt.Sprintf("%s/calendars/%s/events/%s", c.baseURL, calEscaped, url.PathEscape(providerEventID))
+		getReq, getErr := http.NewRequestWithContext(ctx, http.MethodGet, getEndpoint, nil)
+		if getErr != nil {
+			return nil, getErr
+		}
+		getReq.Header.Set("Authorization", "Bearer "+accessToken)
+		resp, getErr = c.executeWithRetry(ctx, getReq)
+		if getErr != nil {
+			return nil, fmt.Errorf("resolve replayed create event: %w", getErr)
+		}
+		defer resp.Body.Close()
+	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))

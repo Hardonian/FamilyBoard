@@ -341,3 +341,33 @@ func TestAppleCalendar_CredentialsValidation(t *testing.T) {
 		t.Errorf("expected error for credentials without colon separator")
 	}
 }
+
+func TestAppleCalendar_CreateUsesStableUIDForReplay(t *testing.T) {
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			http.NotFound(w, r)
+			return
+		}
+		paths = append(paths, r.URL.Path)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	client := NewAppleCalendarClient(server.URL, server.Client())
+	event := &models.Event{
+		Title: "Stable create", StartAt: time.Date(2026, 10, 25, 10, 0, 0, 0, time.UTC),
+		EndAt: time.Date(2026, 10, 25, 11, 0, 0, 0, time.UTC),
+	}
+	first, err := client.CreateEvent(context.Background(), "user@example.com:app-password", "/calendar", event, "stable-apple-key")
+	if err != nil {
+		t.Fatalf("first create: %v", err)
+	}
+	second, err := client.CreateEvent(context.Background(), "user@example.com:app-password", "/calendar", event, "stable-apple-key")
+	if err != nil {
+		t.Fatalf("replayed create: %v", err)
+	}
+	if len(paths) != 2 || paths[0] != paths[1] || first.ProviderUID != second.ProviderUID {
+		t.Fatalf("create replay was not stable: paths=%v first=%q second=%q", paths, first.ProviderUID, second.ProviderUID)
+	}
+}

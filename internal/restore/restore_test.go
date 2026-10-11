@@ -74,8 +74,14 @@ func TestRestore_EndToEndBackupAndRestore(t *testing.T) {
 	// 3. Restore into clean target destination
 	targetDB := filepath.Join(tmpDir, "restored.db")
 	targetCfg := filepath.Join(tmpDir, "restored_config.toml")
+	if err := os.WriteFile(targetDB, []byte("previous-database-bytes"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if err := restore.RestoreBackup(ctx, archivePath, targetDB, targetCfg); err != nil {
 		t.Fatalf("restore backup failed: %v", err)
+	}
+	if previous, err := os.ReadFile(targetDB + ".bak-prerestore"); err != nil || string(previous) != "previous-database-bytes" {
+		t.Fatalf("pre-restore rollback copy missing or incorrect: %q err=%v", previous, err)
 	}
 
 	// 4. Verify restored DB content

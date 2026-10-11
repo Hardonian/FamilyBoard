@@ -12,11 +12,11 @@ Upgrades on an embedded home appliance must be completely reliable. A failed upg
 1. **Automated Pre-Update Snapshot:**
    Before any files are changed, `VACUUM INTO` creates a verified SQLite database snapshot and archives `/etc/familyboard/config.toml` in `/var/backups/familyboard/pre-upgrade/`.
 2. **Atomic Binary Swapping:**
-   New binaries are validated before deployment. Old binaries are moved to `/usr/local/bin/familyboard.old` rather than overwritten, enabling instant reversal.
+   New binaries are validated before deployment. Known-good binaries are retained as `/usr/local/bin/familyboard.known-good` and `/usr/local/bin/familyboardctl.known-good`.
 3. **Atomic Schema Migrations:**
    Embedded database migrations run in forward-only, transactional blocks. If a migration statement errors, the database rolls back to its exact pre-migration state.
 4. **Health Check & Auto-Rollback:**
-   After starting the new version, `update.sh` polls `http://127.0.0.1:8080/health/ready` for 30 seconds. If the endpoint fails to return `HTTP 200 OK`, the script immediately:
+   After starting the new version, `update.sh` calls `familyboardctl health` for up to 45 seconds. The CLI handles direct TLS certificates while keeping the request on loopback. If readiness fails, the script immediately:
    - Stops the failed service.
    - Restores the `.old` binaries.
    - Restores the pre-upgrade database backup.
@@ -33,17 +33,20 @@ To upgrade to the latest stable release:
 # SSH into the Raspberry Pi
 ssh pi@familyboard.local
 
-# Navigate to the repository
-cd FamilyBoard
-
-# Execute the update script
-sudo ./deploy/pi/update.sh
+# Verify release checksums first, then pass both matching binaries
+sha256sum -c SHA256SUMS
+sudo /opt/familyboard/deploy/pi/update.sh \
+  ./familyboard-linux-arm64 ./familyboardctl-linux-arm64
 ```
 
-### Specifying a Release Tag:
-To upgrade to a specific release (e.g. `v1.1.0`):
+To make the updater independently verify unpacked binaries, provide their
+digests through the protected environment:
+
 ```bash
-sudo ./deploy/pi/update.sh --tag v1.1.0
+sudo FAMILYBOARD_DAEMON_SHA256=<daemon-sha256> \
+  FAMILYBOARD_CTL_SHA256=<ctl-sha256> \
+  /opt/familyboard/deploy/pi/update.sh \
+  ./familyboard-linux-arm64 ./familyboardctl-linux-arm64
 ```
 
 ---
@@ -54,8 +57,8 @@ In the unlikely event that an issue is discovered after a successful update:
 
 ```bash
 # Revert to previous binary version
-sudo cp /usr/local/bin/familyboard.old /usr/local/bin/familyboard
-sudo cp /usr/local/bin/familyboardctl.old /usr/local/bin/familyboardctl
+sudo install -m 0755 /usr/local/bin/familyboard.known-good /usr/local/bin/familyboard
+sudo install -m 0755 /usr/local/bin/familyboardctl.known-good /usr/local/bin/familyboardctl
 
 # Restore pre-upgrade database snapshot
 sudo familyboardctl restore /var/backups/familyboard/pre-upgrade/pre-update.tar.gz

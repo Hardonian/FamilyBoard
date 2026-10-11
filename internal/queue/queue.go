@@ -109,7 +109,18 @@ func (e *Engine) Start(ctx context.Context) {
 
 	e.wg.Add(1)
 	go func() {
-		defer e.wg.Done()
+		defer func() {
+			e.mu.Lock()
+			e.running = false
+			e.mu.Unlock()
+			e.wg.Done()
+		}()
+		if recovered, err := e.store.RecoverProcessingMutations(ctx); err != nil {
+			slog.Error("Failed to recover interrupted mutation work", "err", err)
+		} else if recovered > 0 {
+			slog.Warn("Recovered interrupted mutation work", "count", recovered)
+		}
+		_ = e.ProcessBatch(ctx, 10)
 		ticker := time.NewTicker(e.baseInterval)
 		defer ticker.Stop()
 
@@ -182,9 +193,10 @@ func (e *Engine) ProcessBatch(ctx context.Context, batchSize int) error {
 		}
 	}
 
-	pendingCount, _ := e.store.CountPendingMutations(ctx)
-	deadCount, _ := e.store.CountDeadLetterMutations(ctx)
-	metrics.Default().RecordQueue(pendingCount, 0, deadCount)
+	pendingCount, retryCount, processingCount, deadCount, countErr := e.store.MutationQueueCounts(ctx)
+	if countErr == nil {
+		metrics.Default().RecordQueue(pendingCount+processingCount, retryCount, deadCount)
+	}
 
 	if len(processErrors) > 0 {
 		joined := errors.Join(processErrors...)

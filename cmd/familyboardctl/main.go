@@ -2,15 +2,20 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -156,8 +161,11 @@ func runStatus() {
 }
 
 func checkLive(cfg *config.Config) string {
-	client := http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/health/live", cfg.Server.Port))
+	client, baseURL, err := localAPIClient(cfg, 2*time.Second)
+	if err != nil {
+		return "configuration error: " + err.Error()
+	}
+	resp, err := client.Get(baseURL + "/health/live")
 	if err != nil {
 		return "service inactive or unreachable"
 	}
@@ -186,8 +194,12 @@ func runHealth() {
 		fmt.Fprintf(os.Stderr, "Load config: %v\n", err)
 		os.Exit(1)
 	}
-	client := http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/health/ready", cfg.Server.Port))
+	client, baseURL, err := localAPIClient(cfg, 3*time.Second)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Configure local health client: %v\n", err)
+		os.Exit(1)
+	}
+	resp, err := client.Get(baseURL + "/health/ready")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "NOT READY: %v\n", err)
 		os.Exit(1)
@@ -207,13 +219,15 @@ func runSyncNow() {
 		fmt.Fprintf(os.Stderr, "Load config: %v\n", err)
 		os.Exit(1)
 	}
-	client := http.Client{
-		Timeout: 30 * time.Second,
-		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
+	client, baseURL, err := localAPIClient(cfg, 30*time.Second)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Configure local control client: %v\n", err)
+		os.Exit(1)
 	}
-	resp, err := client.Post(fmt.Sprintf("http://127.0.0.1:%d/api/control/sync-now", cfg.Server.Port), "application/json", nil)
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	resp, err := client.Post(baseURL+"/api/control/sync-now", "application/json", nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Trigger sync failed: %v\n", err)
 		os.Exit(1)
@@ -225,6 +239,39 @@ func runSyncNow() {
 		os.Exit(1)
 	}
 	fmt.Println("Sync command sent successfully.")
+}
+
+// localAPIClient always connects over loopback so privileged control routes do
+// not become LAN calls. When direct TLS is enabled it verifies the configured
+// appliance certificate instead of disabling certificate checks.
+func localAPIClient(cfg *config.Config, timeout time.Duration) (*http.Client, string, error) {
+	scheme := "http"
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if cfg.Server.TLSCertFile != "" && cfg.Server.TLSKeyFile != "" {
+		scheme = "https"
+		certPEM, err := os.ReadFile(cfg.Server.TLSCertFile)
+		if err != nil {
+			return nil, "", fmt.Errorf("read TLS certificate: %w", err)
+		}
+		roots, err := x509.SystemCertPool()
+		if err != nil || roots == nil {
+			roots = x509.NewCertPool()
+		}
+		if !roots.AppendCertsFromPEM(certPEM) {
+			return nil, "", fmt.Errorf("configured TLS certificate contains no valid PEM certificate")
+		}
+		serverName := "localhost"
+		if configuredBase, err := url.Parse(cfg.Server.BaseURL); err == nil && configuredBase.Hostname() != "" {
+			serverName = configuredBase.Hostname()
+		}
+		transport.TLSClientConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    roots,
+			ServerName: serverName,
+		}
+	}
+	baseURL := (&url.URL{Scheme: scheme, Host: net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Server.Port))}).String()
+	return &http.Client{Timeout: timeout, Transport: transport}, baseURL, nil
 }
 
 func runBackup(args []string) {
@@ -443,6 +490,7 @@ func runUpdate(args []string) {
 	fs.SetOutput(os.Stderr)
 	targetPath := fs.String("target", defaultTarget, "Installed FamilyBoard daemon path")
 	channel := fs.String("channel", "stable", "Release channel: stable, beta, or dev")
+	expectedSHA256 := fs.String("sha256", "", "Expected 64-character SHA-256 digest for the candidate")
 	if err := fs.Parse(args); err != nil {
 		os.Exit(1)
 	}
@@ -451,7 +499,7 @@ func runUpdate(args []string) {
 		return
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(os.Stderr, "Usage: familyboardctl update [check] [--channel <stable|beta|dev>] [--target <daemon-path>] <binary-path>")
+		fmt.Fprintln(os.Stderr, "Usage: familyboardctl update [check] [--channel <stable|beta|dev>] [--sha256 <digest>] [--target <daemon-path>] <binary-path>")
 		os.Exit(1)
 	}
 
@@ -459,6 +507,12 @@ func runUpdate(args []string) {
 	if newBinary == "check" {
 		PrintUpdateStatus(*channel)
 		return
+	}
+	if *expectedSHA256 != "" {
+		if err := verifyFileSHA256(newBinary, *expectedSHA256); err != nil {
+			fmt.Fprintf(os.Stderr, "Update checksum verification failed: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	fmt.Printf("Validating and installing FamilyBoard daemon from %s (channel: %s)...\n", newBinary, *channel)

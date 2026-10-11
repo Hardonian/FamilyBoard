@@ -968,6 +968,49 @@ func (s *Store) CountPendingMutations(ctx context.Context) (int, error) {
 	return count, err
 }
 
+// MutationQueueCounts returns disjoint queue state totals for operational
+// health reporting. Keeping the aggregation in SQLite avoids races between
+// separate COUNT queries while workers are changing item state.
+func (s *Store) MutationQueueCounts(ctx context.Context) (pending, retry, processing, deadLetter int, err error) {
+	err = s.db.QueryRowContext(ctx, `SELECT
+		COALESCE(SUM(CASE WHEN state = 'pending' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN state = 'retry' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN state = 'processing' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN state = 'dead_letter' THEN 1 ELSE 0 END), 0)
+		FROM mutation_queue;`).Scan(&pending, &retry, &processing, &deadLetter)
+	return
+}
+
+// RecoverProcessingMutations makes work claimed by a process that crashed
+// eligible for replay. Provider create operations receive stable idempotency
+// identifiers, so replay is safer than leaving household changes stuck.
+func (s *Store) RecoverProcessingMutations(ctx context.Context) (int64, error) {
+	now := time.Now()
+	result, err := s.db.ExecContext(ctx, `UPDATE mutation_queue
+		SET state = 'retry', next_attempt_at = ?,
+			last_error = CASE WHEN last_error = '' THEN 'recovered after interrupted processing' ELSE last_error || '; recovered after interrupted processing' END,
+			updated_at = ?
+		WHERE state = 'processing';`, now, now)
+	if err != nil {
+		return 0, fmt.Errorf("recover processing mutations: %w", err)
+	}
+	return result.RowsAffected()
+}
+
+// HasActiveMutationForEvent checks every active queue row for one event. It is
+// used by sync conflict detection instead of sampling a bounded queue page.
+func (s *Store) HasActiveMutationForEvent(ctx context.Context, eventID string) (bool, error) {
+	var exists int
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM mutation_queue
+		WHERE local_event_id = ? AND state IN ('pending', 'retry', 'processing')
+	);`, eventID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("check active event mutation: %w", err)
+	}
+	return exists == 1, nil
+}
+
 // CountDeadLetterMutations returns work that needs an explicit administrator
 // decision instead of silently retrying forever.
 func (s *Store) CountDeadLetterMutations(ctx context.Context) (int, error) {
@@ -1527,24 +1570,21 @@ func (s *Store) DeleteQuickTemplate(ctx context.Context, id string) error {
 // to keep SQLite database lean and bound storage growth on Raspberry Pi.
 func (s *Store) PruneRetentionRecords(ctx context.Context, mutationAge, candidateAge, sessionAge time.Duration) error {
 	now := time.Now()
+	return s.db.WithTx(ctx, func(tx *sql.Tx) error {
+		// 1. Completed mutations older than mutationAge
+		if _, err := tx.ExecContext(ctx, "DELETE FROM mutation_queue WHERE state = 'completed' AND updated_at < ?;", now.Add(-mutationAge)); err != nil {
+			return fmt.Errorf("prune mutations: %w", err)
+		}
 
-	// 1. Completed mutations older than mutationAge
-	mutCutoff := now.Add(-mutationAge)
-	if _, err := s.db.ExecContext(ctx, "DELETE FROM mutation_queue WHERE state = 'completed' AND updated_at < ?;", mutCutoff); err != nil {
-		return fmt.Errorf("prune mutations: %w", err)
-	}
+		// 2. Resolved candidates older than candidateAge
+		if _, err := tx.ExecContext(ctx, "DELETE FROM event_candidates WHERE state IN ('applied', 'dismissed') AND created_at < ?;", now.Add(-candidateAge)); err != nil {
+			return fmt.Errorf("prune candidates: %w", err)
+		}
 
-	// 2. Resolved candidates older than candidateAge
-	candCutoff := now.Add(-candidateAge)
-	if _, err := s.db.ExecContext(ctx, "DELETE FROM event_candidates WHERE state IN ('applied', 'dismissed') AND created_at < ?;", candCutoff); err != nil {
-		return fmt.Errorf("prune candidates: %w", err)
-	}
-
-	// 3. Expired sessions
-	sessCutoff := now.Add(-sessionAge)
-	if _, err := s.db.ExecContext(ctx, "DELETE FROM sessions WHERE expires_at < ?;", sessCutoff); err != nil {
-		return fmt.Errorf("prune sessions: %w", err)
-	}
-
-	return nil
+		// 3. Expired sessions. A zero grace period removes every expired row.
+		if _, err := tx.ExecContext(ctx, "DELETE FROM sessions WHERE expires_at < ?;", now.Add(-sessionAge)); err != nil {
+			return fmt.Errorf("prune sessions: %w", err)
+		}
+		return nil
+	})
 }

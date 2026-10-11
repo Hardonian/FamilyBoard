@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -39,7 +42,7 @@ func PrintUpdateStatus(channel string) {
 	fmt.Printf("  Update Status:         Up to date on channel '%s'\n\n", channel)
 	fmt.Printf("Commands:\n")
 	fmt.Printf("  familyboardctl update check [--channel stable|beta|dev]\n")
-	fmt.Printf("  familyboardctl update [--channel <channel>] [--target <daemon-path>] <binary-path>\n")
+	fmt.Printf("  familyboardctl update [--channel <channel>] [--sha256 <digest>] [--target <daemon-path>] <binary-path>\n")
 }
 
 // defaultDaemonPath resolves the FamilyBoard daemon next to familyboardctl.
@@ -235,6 +238,28 @@ func samePath(a, b string) bool {
 		return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
 	}
 	return filepath.Clean(a) == filepath.Clean(b)
+}
+
+func verifyFileSHA256(path, expected string) error {
+	expected = strings.ToLower(strings.TrimSpace(expected))
+	decoded, err := hex.DecodeString(expected)
+	if err != nil || len(decoded) != sha256.Size {
+		return errors.New("expected SHA-256 must be exactly 64 hexadecimal characters")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open candidate for checksum: %w", err)
+	}
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return fmt.Errorf("hash candidate: %w", err)
+	}
+	actual := hash.Sum(nil)
+	if !bytes.Equal(actual, decoded) {
+		return fmt.Errorf("candidate SHA-256 mismatch: got %s", hex.EncodeToString(actual))
+	}
+	return nil
 }
 
 func syncDirectory(path string) error {

@@ -6,6 +6,8 @@ umask 027
 
 NEW_BINARY="${1:-}"
 NEW_CTL_BINARY="${2:-}"
+EXPECTED_DAEMON_SHA256="${FAMILYBOARD_DAEMON_SHA256:-}"
+EXPECTED_CTL_SHA256="${FAMILYBOARD_CTL_SHA256:-}"
 if [ -z "$NEW_BINARY" ] || [ ! -f "$NEW_BINARY" ]; then
   echo "Usage: sudo update.sh <new-familyboard-binary> [new-familyboardctl-binary]" >&2
   exit 2
@@ -19,7 +21,7 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-for required_tool in systemctl curl flock install; do
+for required_tool in systemctl flock install sha256sum sed; do
   command -v "$required_tool" >/dev/null 2>&1 || {
     echo "ERROR: Required tool '$required_tool' is not installed." >&2
     exit 1
@@ -52,15 +54,28 @@ RESTORE_TOOL="/usr/local/libexec/familyboard/restore-migration-bundle"
 [ -x "$BACKUP_TOOL" ] || { echo "ERROR: Backup tool is unavailable." >&2; exit 1; }
 [ -x "$RESTORE_TOOL" ] || { echo "ERROR: Restore tool is unavailable." >&2; exit 1; }
 [ -x "$TARGET_BIN" ] || { echo "ERROR: No installed FamilyBoard binary exists at $TARGET_BIN." >&2; exit 1; }
+[ -x "$TARGET_CTL" ] || { echo "ERROR: No installed familyboardctl exists at $TARGET_CTL." >&2; exit 1; }
 
 echo "Validating candidate binaries on $(uname -m)..."
 [ -x "$NEW_BINARY" ] || { echo "ERROR: Candidate daemon is not executable: $NEW_BINARY" >&2; exit 1; }
 NEW_VERSION=$("$NEW_BINARY" --version)
 echo "Candidate daemon: $NEW_VERSION"
+if [ -n "$EXPECTED_DAEMON_SHA256" ]; then
+  printf '%s  %s\n' "$EXPECTED_DAEMON_SHA256" "$NEW_BINARY" | sha256sum --check --strict -
+fi
 if [ -n "$NEW_CTL_BINARY" ]; then
   [ -x "$NEW_CTL_BINARY" ] || { echo "ERROR: Candidate CLI is not executable: $NEW_CTL_BINARY" >&2; exit 1; }
   NEW_CTL_VERSION=$("$NEW_CTL_BINARY" version)
   echo "Candidate CLI:    $NEW_CTL_VERSION"
+  if [ -n "$EXPECTED_CTL_SHA256" ]; then
+    printf '%s  %s\n' "$EXPECTED_CTL_SHA256" "$NEW_CTL_BINARY" | sha256sum --check --strict -
+  fi
+  DAEMON_SEMVER=$(printf '%s\n' "$NEW_VERSION" | sed -n 's/.*FamilyBoard v\([^ ]*\).*/\1/p')
+  CTL_SEMVER=$(printf '%s\n' "$NEW_CTL_VERSION" | sed -n 's/.*FamilyBoard v\([^ ]*\).*/\1/p')
+  [ -n "$DAEMON_SEMVER" ] && [ "$DAEMON_SEMVER" = "$CTL_SEMVER" ] || {
+    echo "ERROR: Daemon and familyboardctl versions do not match." >&2
+    exit 1
+  }
 fi
 
 install -d -m 0700 -o familyboard -g familyboard "$BACKUP_DIR"
@@ -124,7 +139,7 @@ systemctl restart familyboard.service || true
 echo "Waiting up to 45 seconds for the updated daemon to become ready..."
 HEALTHY=false
 for _ in $(seq 1 23); do
-  if curl --fail --silent --show-error --max-time 2 http://127.0.0.1:8080/health/ready >/dev/null 2>&1; then
+  if "$TARGET_CTL" health >/dev/null 2>&1; then
     HEALTHY=true
     break
   fi

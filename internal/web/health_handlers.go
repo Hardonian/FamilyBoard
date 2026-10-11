@@ -3,10 +3,12 @@ package web
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 
 	"github.com/Hardonian/FamilyBoard/internal/buildinfo"
 	"github.com/Hardonian/FamilyBoard/internal/db"
 	"github.com/Hardonian/FamilyBoard/internal/metrics"
+	"github.com/Hardonian/FamilyBoard/internal/models"
 	"github.com/Hardonian/FamilyBoard/internal/timezone"
 )
 
@@ -95,7 +97,10 @@ type AdminHealthReport struct {
 	DeadLetterCount  int                     `json:"dead_letter_count"`
 	ClockHealth      timezone.ClockHealth    `json:"clock_health"`
 	Metrics          metrics.MetricsSnapshot `json:"metrics"`
+	SyncWorker       models.WorkerStatus     `json:"sync_worker"`
+	QueueWorker      models.WorkerStatus     `json:"queue_worker"`
 	RepairActions    []string                `json:"repair_actions"`
+	Errors           []string                `json:"errors,omitempty"`
 }
 
 func (s *Server) handleAdminHealth(w http.ResponseWriter, r *http.Request) {
@@ -103,17 +108,40 @@ func (s *Server) handleAdminHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 
 	ctx := r.Context()
-	ver, _ := db.CurrentVersion(ctx, s.store.DB())
-	pending, _ := s.store.CountPendingMutations(ctx)
-	deadLetters, _ := s.store.CountDeadLetterMutations(ctx)
+	ver, versionErr := db.CurrentVersion(ctx, s.store.DB())
+	pending, pendingErr := s.store.CountPendingMutations(ctx)
+	deadLetters, deadErr := s.store.CountDeadLetterMutations(ctx)
 
 	status := "ready"
-	if deadLetters > 0 {
+	var reportErrors []string
+	for _, item := range []struct {
+		name string
+		err  error
+	}{{"schema", versionErr}, {"pending queue", pendingErr}, {"dead-letter queue", deadErr}} {
+		if item.err != nil {
+			status = "not_ready"
+			reportErrors = append(reportErrors, item.name+": "+item.err.Error())
+		}
+	}
+	if status == "ready" && deadLetters > 0 {
 		status = "degraded"
 	}
 
 	clock := timezone.CheckClockHealth(s.cfg.Server.Timezone)
-	if clock.Status == "critical" {
+	if status == "ready" && clock.Status == "critical" {
+		status = "degraded"
+	}
+	if info, err := os.Stat(s.cfg.Database.Path); err == nil {
+		metrics.Default().RecordDatabaseSize(info.Size())
+	}
+	var syncStatus, queueStatus models.WorkerStatus
+	if s.syncEngine != nil {
+		syncStatus = s.syncEngine.Status()
+	}
+	if s.queueEngine != nil {
+		queueStatus = s.queueEngine.Status()
+	}
+	if status == "ready" && (syncStatus.Health == "degraded" || queueStatus.Health == "degraded") {
 		status = "degraded"
 	}
 
@@ -125,11 +153,14 @@ func (s *Server) handleAdminHealth(w http.ResponseWriter, r *http.Request) {
 		DeadLetterCount:  deadLetters,
 		ClockHealth:      clock,
 		Metrics:          metrics.Default().Snapshot(),
+		SyncWorker:       syncStatus,
+		QueueWorker:      queueStatus,
 		RepairActions: []string{
-			"POST /admin/queue/reset/{id}",
-			"POST /admin/sync/all",
-			"POST /admin/system/storage/migrate-nvme",
+			"POST /admin/queue/{id}/retry",
+			"POST /admin/sync-now",
+			"POST /api/system/storage/migrate-nvme",
 		},
+		Errors: reportErrors,
 	}
 
 	_ = json.NewEncoder(w).Encode(report)

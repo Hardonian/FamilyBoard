@@ -18,7 +18,7 @@
 
 set -Eeuo pipefail
 
-VERSION="${FAMILYBOARD_VERSION:-1.5.0}"
+VERSION="${FAMILYBOARD_VERSION:-1.6.0}"
 RELEASE_TARBALL_NAME="familyboard-${VERSION}-linux-arm64.tar.gz"
 GITHUB_REPO="Hardonian/FamilyBoard"
 RELEASE_URL="https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}/${RELEASE_TARBALL_NAME}"
