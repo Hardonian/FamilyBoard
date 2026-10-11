@@ -172,6 +172,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /admin/calendars/{id}/preferences", s.requireAuth(s.requireCSRF(s.handleAdminCalendarUpdatePreferences)))
 	s.mux.HandleFunc("POST /admin/calendars/{id}/set-default", s.requireAuth(s.requireCSRF(s.handleAdminCalendarSetDefault)))
 	s.mux.HandleFunc("POST /admin/people/{id}/update", s.requireAuth(s.requireCSRF(s.handleAdminPersonUpdate)))
+	s.mux.HandleFunc("POST /admin/people", s.requireAuth(s.requireCSRF(s.handleAdminPersonCreate)))
+	s.mux.HandleFunc("POST /admin/people/{id}/delete", s.requireAuth(s.requireCSRF(s.handleAdminPersonDelete)))
 	s.mux.HandleFunc("POST /admin/candidates/{id}/approve", s.requireAuth(s.requireCSRF(s.handleAdminCandidateApprove)))
 	s.mux.HandleFunc("POST /admin/candidates/{id}/reject", s.requireAuth(s.requireCSRF(s.handleAdminCandidateReject)))
 	s.mux.HandleFunc("POST /admin/mail-sources/{id}", s.requireAuth(s.requireCSRF(s.handleAdminMailSourceUpdate)))
@@ -183,6 +185,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /admin/apple/connect", s.requireAuth(s.requireCSRF(s.handleAdminAppleConnect)))
 	s.mux.HandleFunc("GET /admin/backup/download", s.requireAuth(s.handleAdminBackupDownload))
 	s.mux.HandleFunc("GET /admin/diagnostics", s.requireAuth(s.handleAdminDiagnosticsDownload))
+	s.mux.HandleFunc("GET /admin/privacy/export", s.requireAuth(s.handleAdminPrivacyExport))
+	s.mux.HandleFunc("POST /admin/devices/{id}/revoke", s.requireAuth(s.requireCSRF(s.handleAdminDeviceRevoke)))
+	s.mux.HandleFunc("POST /admin/devices/revoke-all", s.requireAuth(s.requireCSRF(s.handleAdminDevicesRevokeAll)))
 
 	// OAuth Callbacks
 	s.mux.HandleFunc("GET /oauth/callback/google", s.handleOAuthCallbackGoogle)

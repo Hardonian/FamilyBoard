@@ -242,6 +242,7 @@ func (s *Server) handleAPICreateEvent(w http.ResponseWriter, r *http.Request) {
 		writeHardwareError(w, http.StatusInternalServerError, "failed to save event locally")
 		return
 	}
+	s.recordAudit(r, "event_create", "event", ev.ID, "Created from kiosk on calendar "+ev.CalendarID)
 
 	// 3. Trigger background queue processing (if mutation enqueued) & SSE broadcast
 	go func() {
@@ -358,6 +359,7 @@ func (s *Server) handleAPIUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		writeHardwareError(w, http.StatusInternalServerError, "failed to update event locally")
 		return
 	}
+	s.recordAudit(r, "event_update", "event", existing.ID, "Updated from kiosk")
 
 	go func() {
 		if mutation != nil && s.queueEngine != nil {
@@ -407,6 +409,7 @@ func (s *Server) handleAPIDeleteEvent(w http.ResponseWriter, r *http.Request) {
 		writeHardwareError(w, http.StatusInternalServerError, "failed to delete event locally")
 		return
 	}
+	s.recordAudit(r, "event_delete", "event", id, "Soft-deleted from kiosk; restore remains available")
 
 	go func() {
 		if mutation != nil && s.queueEngine != nil {
@@ -456,6 +459,7 @@ func (s *Server) handleAPIRestoreEvent(w http.ResponseWriter, r *http.Request) {
 		writeHardwareError(w, http.StatusInternalServerError, "failed to restore event locally")
 		return
 	}
+	s.recordAudit(r, "event_restore", "event", id, "Restored from kiosk")
 
 	go func() {
 		if mutation != nil && s.queueEngine != nil {

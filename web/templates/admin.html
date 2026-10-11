@@ -11,6 +11,7 @@
       <a href="/admin?tab=queue" class="admin-nav-item{{if eq .ActiveTab `queue`}} active{{end}}"{{if eq .ActiveTab `queue`}} aria-current="page"{{end}}>Mutation Queue ({{.PendingQueueCount}})</a>
       <a href="/admin?tab=senders" class="admin-nav-item{{if eq .ActiveTab `senders`}} active{{end}}"{{if eq .ActiveTab `senders`}} aria-current="page"{{end}}>Trusted Senders</a>
       <a href="/admin?tab=audit" class="admin-nav-item{{if eq .ActiveTab `audit`}} active{{end}}"{{if eq .ActiveTab `audit`}} aria-current="page"{{end}}>Audit Log</a>
+      <a href="/admin?tab=privacy" class="admin-nav-item{{if eq .ActiveTab `privacy`}} active{{end}}"{{if eq .ActiveTab `privacy`}} aria-current="page"{{end}}>Privacy &amp; Devices</a>
       <a href="/admin?tab=hardware" class="admin-nav-item{{if eq .ActiveTab `hardware`}} active{{end}}"{{if eq .ActiveTab `hardware`}} aria-current="page"{{end}}>Hardware &amp; Network</a>
       <a href="/admin?tab=system" class="admin-nav-item{{if eq .ActiveTab `system`}} active{{end}}"{{if eq .ActiveTab `system`}} aria-current="page"{{end}}>System &amp; Diagnostics</a>
     </nav>
@@ -55,6 +56,17 @@
 
     {{if eq .ActiveTab "accounts"}}
     <div class="admin-card">
+      <div class="admin-card-header"><div><h2>Add a family member</h2><p class="admin-section-sub">Each person gets an isolated provider identity and calendar connection.</p></div></div>
+      <form method="POST" action="/admin/people" class="admin-inline-form">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <label for="new-person-name" class="sr-only">Display name</label>
+        <input id="new-person-name" name="display_name" class="form-input" maxlength="100" required placeholder="Display name" autocomplete="name">
+        <label for="new-person-email" class="sr-only">Email address</label>
+        <input id="new-person-email" name="email" type="email" class="form-input" maxlength="254" required placeholder="Email address" autocomplete="email">
+        <button type="submit" class="btn btn-primary">Add member</button>
+      </form>
+    </div>
+    <div class="admin-card">
       <h2 class="admin-section-heading">Family Accounts &amp; Provider Identity</h2>
       <p class="admin-section-sub">Independent Google Calendar and Microsoft Outlook connections for registered family members. Verified identities prevent accidental cross-assignment.</p>
 
@@ -83,6 +95,12 @@
                   <input type="email" id="person-email-{{.ID}}" name="email" value="{{.Email}}" class="form-input form-input-compact" aria-label="Provider email" title="Provider email" placeholder="Google or Microsoft email">
                   <button type="submit" class="btn btn-secondary btn-sm admin-inline-submit">Update profile</button>
                 </form>
+                {{if gt (len $.People) 1}}
+                <form method="POST" action="/admin/people/{{.ID}}/delete" class="admin-inline-form js-confirm-form" data-confirm="Delete {{.DisplayName}} and all connected accounts, calendars, and events? This cannot be undone.">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                  <button type="submit" class="btn btn-danger btn-sm">Delete member and data</button>
+                </form>
+                {{end}}
               </details>
             </td>
             <td><code>{{.Email}}</code></td>
@@ -163,6 +181,37 @@
           <small class="admin-ecosystem-tip">Apple Tip: Generate an App-Specific Password at <a href="https://appleid.apple.com" target="_blank" rel="noopener noreferrer">appleid.apple.com</a> for full two-way editing.</small>
         </div>
       </div>
+    </div>
+    {{end}}
+
+    {{if eq .ActiveTab "privacy"}}
+    <div class="admin-card">
+      <div class="admin-card-header">
+        <div><h2>Privacy controls</h2><p class="admin-section-sub">Export household data, review phone access, and revoke devices immediately.</p></div>
+        <a href="/admin/privacy/export" class="btn btn-primary">Export my household data</a>
+      </div>
+      <div class="admin-callout"><strong>Local-first:</strong> calendar credentials are encrypted at rest and never included in exports or diagnostics. Uploaded photos use randomized private filenames.</div>
+    </div>
+    <div class="admin-card">
+      <div class="admin-card-header">
+        <div><h2>Paired household devices</h2><p class="admin-section-sub">Pairing QR codes are single-use and expire after ten minutes. Each device receives its own revocable credential.</p></div>
+        <form method="POST" action="/admin/devices/revoke-all" class="js-confirm-form" data-confirm="Revoke access for every paired phone? Each phone will need to pair again.">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <button type="submit" class="btn btn-danger">Revoke all devices</button>
+        </form>
+      </div>
+      {{if .PairedDevices}}
+      <table class="admin-table">
+        <thead><tr><th>Device</th><th>Paired</th><th>Last used</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody>{{range .PairedDevices}}
+          <tr><td><strong>{{.Name}}</strong><br><small>{{.UserAgent}}</small></td><td>{{.CreatedAt}}</td><td>{{.LastSeenAt}}</td>
+          <td>{{if .RevokedAt}}<span class="status-badge offline">Revoked</span>{{else}}<span class="status-badge">Active</span>{{end}}</td>
+          <td>{{if not .RevokedAt}}<form method="POST" action="/admin/devices/{{.ID}}/revoke" class="js-confirm-form" data-confirm="Revoke this device now?">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><button type="submit" class="btn btn-secondary btn-sm">Revoke</button>
+          </form>{{else}}—{{end}}</td></tr>
+        {{end}}</tbody>
+      </table>
+      {{else}}<p class="admin-empty">No phones have been paired yet.</p>{{end}}
     </div>
     {{end}}
 

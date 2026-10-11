@@ -55,6 +55,7 @@ func (s *Server) handleAdminLock(w http.ResponseWriter, r *http.Request) {
 		tokenHash := auth.HashToken(cookie.Value)
 		_ = s.store.DeleteSession(r.Context(), tokenHash)
 	}
+	s.recordAudit(r, "admin_lock", "session", "current", "Locked admin controls and returned to kiosk")
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
@@ -179,6 +180,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		tokenHash := auth.HashToken(cookie.Value)
 		_ = s.store.DeleteSession(r.Context(), tokenHash)
 	}
+	s.recordAudit(r, "logout", "session", "current", "Signed out of administration")
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
@@ -436,7 +438,7 @@ func DetectEmailProvider(email string) string {
 func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	tab := r.URL.Query().Get("tab")
 	switch tab {
-	case "", "accounts", "calendars", "mail", "candidates", "conflicts", "queue", "senders", "audit", "hardware", "system":
+	case "", "accounts", "calendars", "mail", "candidates", "conflicts", "queue", "senders", "audit", "privacy", "hardware", "system":
 	default:
 		tab = "accounts"
 	}
@@ -471,6 +473,7 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	deadLetterCount, _ := s.store.CountDeadLetterMutations(ctx)
 	activeEventCount, _ := s.store.CountActiveEvents(ctx)
 	conflicts, _ := s.store.ListPendingConflicts(ctx)
+	pairedDevices, _ := s.store.ListPairedDevices(ctx)
 	var auditEntries []models.AuditEntry
 	if tab == "audit" {
 		auditEntries, _ = s.store.ListAuditLogs(ctx, 100, 0)
@@ -503,6 +506,7 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		"MailSourceCount":       len(mailSources),
 		"TrustedSenders":        trustedSenders,
 		"Conflicts":             conflicts,
+		"PairedDevices":         pairedDevices,
 		"AuditEntries":          auditEntries,
 		"Candidates":            candidates,
 		"QueueItems":            queueItems,
@@ -527,6 +531,7 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAdminSyncNow(w http.ResponseWriter, r *http.Request) {
+	s.recordAudit(r, "sync_start", "calendar", "*", "Requested immediate synchronization")
 	go func() {
 		_ = s.syncEngine.SyncAll(context.Background())
 		s.BroadcastReload()
@@ -536,6 +541,7 @@ func (s *Server) handleAdminSyncNow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAdminCalendarsRefresh(w http.ResponseWriter, r *http.Request) {
+	s.recordAudit(r, "calendar_discovery", "calendar", "*", "Requested calendar discovery and synchronization")
 	go func() {
 		bgCtx := context.Background()
 		_ = s.syncEngine.DiscoverCalendars(bgCtx)
@@ -566,6 +572,7 @@ func (s *Server) handleAdminCalendarUpdatePreferences(w http.ResponseWriter, r *
 	}
 
 	s.BroadcastReload()
+	s.recordAudit(r, "calendar_preferences", "calendar", calendarID, "Updated visibility, writability, or display color")
 	http.Redirect(w, r, "/admin?tab=calendars&msg=Calendar+preferences+updated", http.StatusSeeOther)
 }
 
@@ -582,6 +589,7 @@ func (s *Server) handleAdminCalendarSetDefault(w http.ResponseWriter, r *http.Re
 	}
 
 	s.BroadcastReload()
+	s.recordAudit(r, "calendar_default", "calendar", calendarID, "Changed default write target")
 	http.Redirect(w, r, "/admin?tab=calendars&msg=Default+write+calendar+updated", http.StatusSeeOther)
 }
 
@@ -606,6 +614,7 @@ func (s *Server) handleAdminPersonUpdate(w http.ResponseWriter, r *http.Request)
 		http.Redirect(w, r, "/admin?tab=accounts&err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
 		return
 	}
+	s.recordAudit(r, "person_update", "person", personID, "Updated family member identity")
 
 	http.Redirect(w, r, "/admin?tab=accounts&msg=Family+member+profile+updated", http.StatusSeeOther)
 }
@@ -670,6 +679,7 @@ func (s *Server) handleAdminCandidateApprove(w http.ResponseWriter, r *http.Requ
 	_ = s.store.EnqueueMutation(r.Context(), mutation)
 
 	_ = s.store.UpdateCandidateState(r.Context(), cand.ID, models.CandidateApproved, "admin")
+	s.recordAudit(r, "candidate_approve", "event_candidate", cand.ID, "Approved and scheduled candidate")
 
 	go func() {
 		_ = s.queueEngine.ProcessBatch(context.Background(), 5)
@@ -682,6 +692,7 @@ func (s *Server) handleAdminCandidateApprove(w http.ResponseWriter, r *http.Requ
 func (s *Server) handleAdminCandidateReject(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	_ = s.store.UpdateCandidateState(r.Context(), id, models.CandidateRejected, "admin")
+	s.recordAudit(r, "candidate_reject", "event_candidate", id, "Rejected candidate")
 	http.Redirect(w, r, "/admin?tab=candidates&msg=Candidate+rejected", http.StatusSeeOther)
 }
 
@@ -1312,6 +1323,7 @@ func (s *Server) handleAdminAppleConnect(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleAdminBackupDownload(w http.ResponseWriter, r *http.Request) {
+	s.recordAudit(r, "backup_download", "database", "local", "Downloaded database backup; OAuth token files excluded")
 	tmpDir, err := os.MkdirTemp("", "fb-backup-*")
 	if err != nil {
 		http.Error(w, "create temp backup dir: "+err.Error(), http.StatusInternalServerError)
@@ -1335,6 +1347,7 @@ func (s *Server) handleAdminBackupDownload(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handleAdminDiagnosticsDownload(w http.ResponseWriter, r *http.Request) {
+	s.recordAudit(r, "diagnostics_download", "system", "local", "Downloaded redacted diagnostics report")
 	report, err := diagnostics.Generate(r.Context(), s.store, s.cfg.Database.Path)
 	if err != nil {
 		http.Error(w, "generate diagnostics: "+err.Error(), http.StatusInternalServerError)

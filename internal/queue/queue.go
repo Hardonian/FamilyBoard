@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/Hardonian/FamilyBoard/internal/calendar"
+	"github.com/Hardonian/FamilyBoard/internal/clock"
 	"github.com/Hardonian/FamilyBoard/internal/db"
+	"github.com/Hardonian/FamilyBoard/internal/errdefs"
 	"github.com/Hardonian/FamilyBoard/internal/models"
 	"github.com/Hardonian/FamilyBoard/internal/oauth"
 )
@@ -32,6 +34,8 @@ type Engine struct {
 	mu            sync.Mutex
 	processMu     sync.Mutex
 	running       bool
+	clock         clock.Clock
+	status        models.WorkerStatus
 }
 
 func NewEngine(store *db.Store, tokenProvider TokenProvider, maxAttempts int, baseInterval time.Duration) *Engine {
@@ -49,7 +53,35 @@ func NewEngine(store *db.Store, tokenProvider TokenProvider, maxAttempts int, ba
 		baseInterval:  baseInterval,
 		maxInterval:   10 * time.Minute,
 		stopCh:        make(chan struct{}),
+		clock:         clock.NewRealClock(),
+		status: models.WorkerStatus{
+			Name:   "mutation_queue",
+			Health: "stopped",
+		},
 	}
+}
+
+func (e *Engine) SetClock(clk clock.Clock) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if clk != nil {
+		e.clock = clk
+	}
+}
+
+func (e *Engine) Status() models.WorkerStatus {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	st := e.status
+	st.Running = e.running
+	if !e.running {
+		st.Health = "stopped"
+	} else if st.LastError != "" {
+		st.Health = "degraded"
+	} else {
+		st.Health = "healthy"
+	}
+	return st
 }
 
 func (e *Engine) RegisterProvider(provider calendar.Provider) {
@@ -94,30 +126,50 @@ func (e *Engine) Start(ctx context.Context) {
 }
 
 func (e *Engine) Stop() {
+	_ = e.StopWithTimeout(5 * time.Second)
+}
+
+func (e *Engine) StopWithTimeout(timeout time.Duration) error {
 	e.mu.Lock()
 	if !e.running {
 		e.mu.Unlock()
-		return
+		return nil
 	}
 	e.running = false
 	close(e.stopCh)
 	e.mu.Unlock()
-	e.wg.Wait()
+
+	done := make(chan struct{})
+	go func() {
+		e.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-time.After(timeout):
+		return fmt.Errorf("queue engine shutdown timed out after %v", timeout)
+	}
 }
 
 // ProcessBatch runs one cycle of processing pending queue items.
 func (e *Engine) ProcessBatch(ctx context.Context, batchSize int) error {
-	// The HTTP fast-path and the periodic worker can fire together. Serialize
-	// claims within this process so the same pending create is never submitted
-	// twice before its state transition is visible.
 	e.processMu.Lock()
 	defer e.processMu.Unlock()
+
+	e.mu.Lock()
+	e.status.LastRunAt = e.clock.Now()
+	e.mu.Unlock()
 
 	if batchSize <= 0 {
 		batchSize = 10
 	}
 	items, err := e.store.GetPendingMutations(ctx, batchSize)
 	if err != nil {
+		e.mu.Lock()
+		e.status.LastError = err.Error()
+		e.mu.Unlock()
 		return fmt.Errorf("get pending mutations: %w", err)
 	}
 
@@ -128,13 +180,33 @@ func (e *Engine) ProcessBatch(ctx context.Context, batchSize int) error {
 			processErrors = append(processErrors, fmt.Errorf("mutation %s: %w", item.ID, err))
 		}
 	}
-	return errors.Join(processErrors...)
+
+	if len(processErrors) > 0 {
+		joined := errors.Join(processErrors...)
+		e.mu.Lock()
+		e.status.LastError = joined.Error()
+		e.mu.Unlock()
+		return joined
+	}
+
+	e.mu.Lock()
+	e.status.LastError = ""
+	e.status.LastSuccessAt = e.clock.Now()
+	e.mu.Unlock()
+	return nil
 }
 
 // ProcessItem executes an individual mutation against the appropriate calendar provider.
 func (e *Engine) ProcessItem(ctx context.Context, item *models.MutationQueueItem) error {
+	now := e.clock.Now()
 	if item.Provider == "local" {
-		return e.store.UpdateMutationState(ctx, item.ID, models.QueueCompleted, item.AttemptCount+1, time.Now(), "")
+		err := e.store.UpdateMutationState(ctx, item.ID, models.QueueCompleted, item.AttemptCount+1, now, "")
+		if err == nil {
+			e.mu.Lock()
+			e.status.ItemsProcessed++
+			e.mu.Unlock()
+		}
+		return err
 	}
 
 	e.mu.Lock()
@@ -142,49 +214,46 @@ func (e *Engine) ProcessItem(ctx context.Context, item *models.MutationQueueItem
 	tokenProvider := e.tokenProvider
 	e.mu.Unlock()
 	if !ok {
-		return e.failItem(ctx, item, fmt.Errorf("provider %s not registered", item.Provider))
+		return e.failItem(ctx, item, errdefs.Permanent(fmt.Sprintf("provider %s not registered", item.Provider)))
 	}
 
 	// Retrieve calendar to identify person/account
 	cal, err := e.store.GetCalendar(ctx, item.CalendarID)
 	if err != nil {
-		return e.failItem(ctx, item, fmt.Errorf("get calendar %s for mutation: %w", item.CalendarID, err))
+		return e.failItem(ctx, item, errdefs.Retryable(fmt.Sprintf("get calendar %s for mutation", item.CalendarID), err))
 	}
 	if cal == nil {
-		return e.failItem(ctx, item, fmt.Errorf("calendar %s not found for mutation", item.CalendarID))
+		return e.failItem(ctx, item, errdefs.Permanent(fmt.Sprintf("calendar %s not found for mutation", item.CalendarID)))
 	}
 	if cal.Provider != item.Provider {
-		return e.failItem(ctx, item, fmt.Errorf("mutation provider %q does not match calendar provider %q", item.Provider, cal.Provider))
+		return e.failItem(ctx, item, errdefs.Permanent(fmt.Sprintf("mutation provider %q does not match calendar provider %q", item.Provider, cal.Provider)))
 	}
 
-	// Resolve only the exact account referenced by this calendar. Never heal an
-	// orphan by selecting the first account for a provider: on a family device
-	// that can send one person's event with another person's credentials.
 	targetAccount, err := e.store.GetOAuthAccountByID(ctx, cal.OAuthAccountID)
 	if err != nil {
-		return e.failItem(ctx, item, fmt.Errorf("get oauth account %s: %w", cal.OAuthAccountID, err))
+		return e.failItem(ctx, item, errdefs.Retryable(fmt.Sprintf("get oauth account %s", cal.OAuthAccountID), err))
 	}
 	if targetAccount == nil {
-		return e.failItem(ctx, item, fmt.Errorf("oauth account %s not found for calendar", cal.OAuthAccountID))
+		return e.failItem(ctx, item, errdefs.Permanent(fmt.Sprintf("oauth account %s not found for calendar", cal.OAuthAccountID)))
 	}
 	if targetAccount.Provider != item.Provider {
-		return e.failItem(ctx, item, fmt.Errorf("oauth account provider %q does not match mutation provider %q", targetAccount.Provider, item.Provider))
+		return e.failItem(ctx, item, errdefs.Permanent(fmt.Sprintf("oauth account provider %q does not match mutation provider %q", targetAccount.Provider, item.Provider)))
 	}
 	if targetAccount.Status != "active" {
-		return e.failItem(ctx, item, fmt.Errorf("oauth account %s is %s", targetAccount.ID, targetAccount.Status))
+		return e.failItem(ctx, item, errdefs.Authentication(fmt.Sprintf("oauth account %s is %s", targetAccount.ID, targetAccount.Status)))
 	}
 
 	if tokenProvider == nil {
-		return e.failItem(ctx, item, fmt.Errorf("token provider not configured"))
+		return e.failItem(ctx, item, errdefs.Unavailable("token provider not configured"))
 	}
 
 	token, err := tokenProvider.GetValidAccessToken(ctx, targetAccount.PersonID, item.Provider)
 	if err != nil {
-		return e.failItem(ctx, item, fmt.Errorf("get access token: %w", err))
+		return e.failItem(ctx, item, errdefs.Authentication("get access token", err))
 	}
 
 	// Mark processing
-	if err := e.store.UpdateMutationState(ctx, item.ID, models.QueueProcessing, item.AttemptCount, time.Now(), ""); err != nil {
+	if err := e.store.UpdateMutationState(ctx, item.ID, models.QueueProcessing, item.AttemptCount, now, ""); err != nil {
 		return fmt.Errorf("mark mutation processing: %w", err)
 	}
 
@@ -197,7 +266,7 @@ func (e *Engine) ProcessItem(ctx context.Context, item *models.MutationQueueItem
 	case "delete":
 		processErr = e.handleDelete(ctx, prov, token, cal, item)
 	default:
-		processErr = fmt.Errorf("unknown operation %q", item.Operation)
+		processErr = errdefs.Validation(fmt.Sprintf("unknown operation %q", item.Operation))
 	}
 
 	if processErr != nil {
@@ -205,13 +274,19 @@ func (e *Engine) ProcessItem(ctx context.Context, item *models.MutationQueueItem
 	}
 
 	// Success: mark completed
-	return e.store.UpdateMutationState(ctx, item.ID, models.QueueCompleted, item.AttemptCount+1, time.Now(), "")
+	if err := e.store.UpdateMutationState(ctx, item.ID, models.QueueCompleted, item.AttemptCount+1, e.clock.Now(), ""); err != nil {
+		return err
+	}
+	e.mu.Lock()
+	e.status.ItemsProcessed++
+	e.mu.Unlock()
+	return nil
 }
 
 func (e *Engine) handleCreate(ctx context.Context, prov calendar.Provider, token string, cal *models.Calendar, item *models.MutationQueueItem) error {
 	var ev models.Event
 	if err := json.Unmarshal([]byte(item.Payload), &ev); err != nil {
-		return fmt.Errorf("unmarshal event payload: %w", err)
+		return errdefs.Validation("unmarshal event payload", err)
 	}
 
 	created, err := prov.CreateEvent(ctx, token, cal.ProviderCalendarID, &ev, item.IdempotencyKey)
@@ -219,7 +294,6 @@ func (e *Engine) handleCreate(ctx context.Context, prov calendar.Provider, token
 		return err
 	}
 
-	// Update local event with remote identifiers
 	localEv, err := e.store.GetEvent(ctx, item.LocalEventID)
 	if err == nil && localEv != nil {
 		localEv.ProviderEventID = created.ProviderEventID
@@ -240,15 +314,14 @@ func (e *Engine) handleCreate(ctx context.Context, prov calendar.Provider, token
 func (e *Engine) handleUpdate(ctx context.Context, prov calendar.Provider, token string, cal *models.Calendar, item *models.MutationQueueItem) error {
 	var ev models.Event
 	if err := json.Unmarshal([]byte(item.Payload), &ev); err != nil {
-		return fmt.Errorf("unmarshal event payload: %w", err)
+		return errdefs.Validation("unmarshal event payload", err)
 	}
 
 	updated, err := prov.UpdateEvent(ctx, token, cal.ProviderCalendarID, &ev)
 	if err != nil {
 		if errors.Is(err, oauth.ErrAccountRevoked) {
-			return err
+			return errdefs.Authentication("account revoked", err)
 		}
-		// Check if remote event was 404 (deleted remotely)
 		return err
 	}
 
@@ -268,11 +341,10 @@ func (e *Engine) handleUpdate(ctx context.Context, prov calendar.Provider, token
 func (e *Engine) handleDelete(ctx context.Context, prov calendar.Provider, token string, cal *models.Calendar, item *models.MutationQueueItem) error {
 	localEv, err := e.store.GetEvent(ctx, item.LocalEventID)
 	if err != nil || localEv == nil {
-		return nil // Already gone locally
+		return nil
 	}
 
 	if localEv.ProviderEventID == "" {
-		// Event was created offline and never synced to remote provider
 		return nil
 	}
 
@@ -280,23 +352,24 @@ func (e *Engine) handleDelete(ctx context.Context, prov calendar.Provider, token
 }
 
 func (e *Engine) failItem(ctx context.Context, item *models.MutationQueueItem, cause error) error {
-	if stateErr := e.handleFailure(ctx, item, cause.Error()); stateErr != nil {
+	if stateErr := e.handleFailure(ctx, item, cause); stateErr != nil {
 		return errors.Join(cause, fmt.Errorf("persist mutation failure: %w", stateErr))
 	}
 	return cause
 }
 
-func (e *Engine) handleFailure(ctx context.Context, item *models.MutationQueueItem, errMsg string) error {
+func (e *Engine) handleFailure(ctx context.Context, item *models.MutationQueueItem, cause error) error {
+	errMsg := cause.Error()
 	attempts := item.AttemptCount + 1
-	if attempts >= e.maxAttempts {
-		if err := e.store.UpdateMutationState(ctx, item.ID, models.QueueDeadLetter, attempts, time.Now(), errMsg); err != nil {
+
+	if errdefs.IsPermanent(cause) || errdefs.IsValidation(cause) || attempts >= e.maxAttempts {
+		if err := e.store.UpdateMutationState(ctx, item.ID, models.QueueDeadLetter, attempts, e.clock.Now(), errMsg); err != nil {
 			return err
 		}
-		slog.Error("Mutation item exceeded max retries, moved to dead-letter", "id", item.ID, "attempts", attempts, "err", errMsg)
+		slog.Error("Mutation item moved to dead-letter", "id", item.ID, "attempts", attempts, "err", errMsg, "permanent", errdefs.IsPermanent(cause))
 		return nil
 	}
 
-	// Exponential backoff + jitter
 	backoff := e.maxInterval
 	if attempts < 62 {
 		factor := time.Duration(1) << uint(attempts)
@@ -305,7 +378,7 @@ func (e *Engine) handleFailure(ctx context.Context, item *models.MutationQueueIt
 		}
 	}
 	jitter := time.Duration(rand.Intn(1000)) * time.Millisecond
-	nextAttempt := time.Now().Add(backoff + jitter)
+	nextAttempt := e.clock.Now().Add(backoff + jitter)
 
 	return e.store.UpdateMutationState(ctx, item.ID, models.QueueRetry, attempts, nextAttempt, errMsg)
 }

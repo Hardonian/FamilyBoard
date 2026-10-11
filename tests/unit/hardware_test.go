@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -344,7 +347,11 @@ func TestHardware_HTTPEndpoints(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create form file: %v", err)
 		}
-		_, _ = part.Write([]byte("\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xFF\xDB"))
+		img := image.NewRGBA(image.Rect(0, 0, 2, 2))
+		img.Set(0, 0, color.RGBA{R: 255, A: 255})
+		if err := jpeg.Encode(part, img, nil); err != nil {
+			t.Fatalf("encode test image: %v", err)
+		}
 		_ = writer.Close()
 
 		cookie, _, _ := loginAdminForTest(t, srv)

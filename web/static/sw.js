@@ -1,5 +1,5 @@
 // FamilyBoard Service Worker - Appliance & Mobile Offline Resilience
-const CACHE_NAME = 'familyboard-shell-v1.2.0';
+const CACHE_NAME = 'familyboard-shell-v1.5.0';
 const STATIC_ASSETS = [
   '/',
   '/static/css/app.css',
@@ -82,9 +82,9 @@ self.addEventListener('fetch', (event) => {
         .catch(async () => {
           const cached = await caches.match(event.request);
           if (cached) return cached;
-          return new Response(JSON.stringify([]), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' }
+          return new Response(JSON.stringify({ error: 'offline', offline: true }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json', 'X-FamilyBoard-Offline': '1' }
           });
         })
     );

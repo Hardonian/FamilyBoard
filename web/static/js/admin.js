@@ -67,6 +67,12 @@
       alert.setAttribute('aria-live', 'polite');
     });
 
+    document.querySelectorAll('.js-confirm-form').forEach(function(form) {
+      form.addEventListener('submit', function(event) {
+        if (!window.confirm(form.dataset.confirm || 'Are you sure?')) event.preventDefault();
+      });
+    });
+
     setupAppleCalendarModal();
     setupHardwareTab();
   }

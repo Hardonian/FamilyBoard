@@ -108,7 +108,7 @@ func main() {
 	}
 
 	// 4. Token Storage & State Manager
-	tokenStorage, err := oauth.NewTokenStorage(cfg.Security.CredentialsDir)
+	tokenStorage, err := oauth.NewTokenStorage(cfg.Security.CredentialsDir, cfg.Security.SessionSecret)
 	if err != nil {
 		slog.Error("Failed to initialize token storage", "err", err)
 		os.Exit(1)

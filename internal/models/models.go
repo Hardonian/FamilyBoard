@@ -271,3 +271,15 @@ type QuickTemplate struct {
 	DisplayOrder           int       `json:"display_order"`
 	CreatedAt              time.Time `json:"created_at"`
 }
+
+// WorkerStatus represents observable health and lifecycle state for background engines.
+type WorkerStatus struct {
+	Name           string    `json:"name"`
+	Running        bool      `json:"running"`
+	LastRunAt      time.Time `json:"last_run_at"`
+	LastSuccessAt  time.Time `json:"last_success_at"`
+	LastError      string    `json:"last_error,omitempty"`
+	ItemsProcessed int64     `json:"items_processed"`
+	Health         string    `json:"health"` // "healthy", "degraded", "stopped"
+}
+

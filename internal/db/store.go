@@ -125,6 +125,14 @@ func (s *Store) RevokePairedDevice(ctx context.Context, id string) error {
 	return nil
 }
 
+func (s *Store) RevokeAllPairedDevices(ctx context.Context) (int64, error) {
+	result, err := s.db.ExecContext(ctx, "UPDATE paired_devices SET revoked_at = ? WHERE revoked_at IS NULL;", time.Now())
+	if err != nil {
+		return 0, fmt.Errorf("revoke all paired devices: %w", err)
+	}
+	return result.RowsAffected()
+}
+
 // --- People ---
 
 func (s *Store) ListPeople(ctx context.Context) ([]models.Person, error) {
@@ -198,6 +206,21 @@ func (s *Store) UpsertPerson(ctx context.Context, p *models.Person) error {
 	_, err := s.db.ExecContext(ctx, query, p.ID, p.DisplayName, p.Email, enabledInt, p.CreatedAt, p.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("upsert person: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) DeletePerson(ctx context.Context, id string) error {
+	result, err := s.db.ExecContext(ctx, "DELETE FROM people WHERE id = ?;", id)
+	if err != nil {
+		return fmt.Errorf("delete person: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check person deletion: %w", err)
+	}
+	if rows != 1 {
+		return fmt.Errorf("family member not found")
 	}
 	return nil
 }

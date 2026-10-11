@@ -1,6 +1,8 @@
 package oauth
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -50,13 +52,37 @@ func (st *StoredToken) ToOAuth2Token() *oauth2.Token {
 // TokenStorage manages secure file-based storage for sensitive OAuth credentials.
 type TokenStorage struct {
 	baseDir string
+	aead    cipher.AEAD
 }
 
-func NewTokenStorage(baseDir string) (*TokenStorage, error) {
+type encryptedTokenEnvelope struct {
+	Version    int    `json:"version"`
+	Nonce      string `json:"nonce"`
+	Ciphertext string `json:"ciphertext"`
+}
+
+// NewTokenStorage creates credential storage. When installationSecret is
+// supplied, credentials are protected with an AES-256-GCM installation key in
+// addition to restrictive filesystem permissions. The variadic parameter
+// preserves compatibility for tools that intentionally use file permissions
+// only (primarily migration and tests).
+func NewTokenStorage(baseDir string, installationSecret ...string) (*TokenStorage, error) {
 	if err := os.MkdirAll(baseDir, 0700); err != nil {
 		return nil, fmt.Errorf("create token storage dir: %w", err)
 	}
-	return &TokenStorage{baseDir: baseDir}, nil
+	ts := &TokenStorage{baseDir: baseDir}
+	if len(installationSecret) > 0 && strings.TrimSpace(installationSecret[0]) != "" {
+		key := sha256.Sum256([]byte("familyboard/oauth-token/v1/" + installationSecret[0]))
+		block, err := aes.NewCipher(key[:])
+		if err != nil {
+			return nil, fmt.Errorf("create credential cipher: %w", err)
+		}
+		ts.aead, err = cipher.NewGCM(block)
+		if err != nil {
+			return nil, fmt.Errorf("create credential AEAD: %w", err)
+		}
+	}
+	return ts, nil
 }
 
 func (ts *TokenStorage) tokenPath(accountID string) string {
@@ -71,6 +97,20 @@ func (ts *TokenStorage) Save(accountID string, token *StoredToken) error {
 	data, err := json.MarshalIndent(token, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal token: %w", err)
+	}
+	if ts.aead != nil {
+		nonce := make([]byte, ts.aead.NonceSize())
+		if _, err := rand.Read(nonce); err != nil {
+			return fmt.Errorf("generate token nonce: %w", err)
+		}
+		sealed := ts.aead.Seal(nil, nonce, data, []byte(accountID))
+		data, err = json.MarshalIndent(encryptedTokenEnvelope{
+			Version: 1, Nonce: base64.RawStdEncoding.EncodeToString(nonce),
+			Ciphertext: base64.RawStdEncoding.EncodeToString(sealed),
+		}, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshal encrypted token: %w", err)
+		}
 	}
 
 	p := ts.tokenPath(accountID)
@@ -96,6 +136,28 @@ func (ts *TokenStorage) Load(accountID string) (*StoredToken, error) {
 			return nil, ErrTokenNotFound
 		}
 		return nil, fmt.Errorf("read token file: %w", err)
+	}
+
+	if ts.aead != nil {
+		var envelope encryptedTokenEnvelope
+		if err := json.Unmarshal(data, &envelope); err != nil {
+			return nil, fmt.Errorf("unmarshal credential envelope: %w", err)
+		}
+		if envelope.Version != 1 || envelope.Nonce == "" || envelope.Ciphertext == "" {
+			return nil, errors.New("credential file is not encrypted with this installation key")
+		}
+		nonce, err := base64.RawStdEncoding.DecodeString(envelope.Nonce)
+		if err != nil {
+			return nil, fmt.Errorf("decode credential nonce: %w", err)
+		}
+		ciphertext, err := base64.RawStdEncoding.DecodeString(envelope.Ciphertext)
+		if err != nil {
+			return nil, fmt.Errorf("decode credential ciphertext: %w", err)
+		}
+		data, err = ts.aead.Open(nil, nonce, ciphertext, []byte(accountID))
+		if err != nil {
+			return nil, errors.New("decrypt credential: installation key mismatch or corrupt file")
+		}
 	}
 
 	var token StoredToken

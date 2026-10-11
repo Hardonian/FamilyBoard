@@ -13,6 +13,7 @@ import (
 
 	"github.com/Hardonian/FamilyBoard/internal/calendar"
 	"github.com/Hardonian/FamilyBoard/internal/calendar/google"
+	"github.com/Hardonian/FamilyBoard/internal/clock"
 	"github.com/Hardonian/FamilyBoard/internal/db"
 	"github.com/Hardonian/FamilyBoard/internal/models"
 	"github.com/Hardonian/FamilyBoard/internal/queue"
@@ -29,6 +30,8 @@ type Engine struct {
 	syncRunMu       sync.Mutex
 	running         bool
 	onSyncCompleted func()
+	clock           clock.Clock
+	status          models.WorkerStatus
 }
 
 func NewEngine(store *db.Store, tokenProvider queue.TokenProvider, interval time.Duration) *Engine {
@@ -41,7 +44,35 @@ func NewEngine(store *db.Store, tokenProvider queue.TokenProvider, interval time
 		providers:     make(map[string]calendar.Provider),
 		interval:      interval,
 		stopCh:        make(chan struct{}),
+		clock:         clock.NewRealClock(),
+		status: models.WorkerStatus{
+			Name:   "calendar_sync",
+			Health: "stopped",
+		},
 	}
+}
+
+func (e *Engine) SetClock(clk clock.Clock) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if clk != nil {
+		e.clock = clk
+	}
+}
+
+func (e *Engine) Status() models.WorkerStatus {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	st := e.status
+	st.Running = e.running
+	if !e.running {
+		st.Health = "stopped"
+	} else if st.LastError != "" {
+		st.Health = "degraded"
+	} else {
+		st.Health = "healthy"
+	}
+	return st
 }
 
 func (e *Engine) RegisterProvider(p calendar.Provider) {
@@ -95,15 +126,31 @@ func (e *Engine) Start(ctx context.Context) {
 }
 
 func (e *Engine) Stop() {
+	_ = e.StopWithTimeout(5 * time.Second)
+}
+
+func (e *Engine) StopWithTimeout(timeout time.Duration) error {
 	e.mu.Lock()
 	if !e.running {
 		e.mu.Unlock()
-		return
+		return nil
 	}
 	e.running = false
 	close(e.stopCh)
 	e.mu.Unlock()
-	e.wg.Wait()
+
+	done := make(chan struct{})
+	go func() {
+		e.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-time.After(timeout):
+		return fmt.Errorf("sync engine shutdown timed out after %v", timeout)
+	}
 }
 
 // DiscoverCalendars queries all registered providers for active OAuth accounts and auto-registers calendars.
@@ -169,9 +216,6 @@ func (e *Engine) DiscoverCalendars(ctx context.Context) error {
 				continue
 			}
 			if existing != nil && existing.OAuthAccountID != acc.ID {
-				// A shared provider calendar can be visible to several household
-				// accounts. Preserve its established owner instead of silently
-				// flipping credentials on every discovery pass.
 				slog.Info("Calendar already linked to another household account; preserving existing owner", "calendar", existing.ID, "owner_account", existing.OAuthAccountID, "discovered_account", acc.ID)
 				continue
 			}
@@ -200,11 +244,9 @@ func (e *Engine) DiscoverCalendars(ctx context.Context) error {
 			}
 
 			isDefault := false
-			if isHomeCal {
-				isDefault = true
-			} else if existing != nil {
+			if existing != nil {
 				isDefault = existing.DefaultWriteTarget
-			} else if !hasDefault && rc.DefaultWriteTarget {
+			} else if isHomeCal && !hasDefault {
 				isDefault = true
 				hasDefault = true
 			}
@@ -239,11 +281,12 @@ func (e *Engine) DiscoverCalendars(ctx context.Context) error {
 
 // SyncAll syncs all active calendars across all accounts.
 func (e *Engine) SyncAll(ctx context.Context) error {
-	// Startup, the periodic ticker, admin UI, and local control endpoint may all
-	// request a run. Provider cursors are single-writer state, so serialize full
-	// runs and avoid racing the same incremental cursor.
 	e.syncRunMu.Lock()
 	defer e.syncRunMu.Unlock()
+
+	e.mu.Lock()
+	e.status.LastRunAt = e.clock.Now()
+	e.mu.Unlock()
 
 	var syncErrors []error
 	// 1. Auto-discover any new/shared calendars from Google/Microsoft
@@ -255,6 +298,9 @@ func (e *Engine) SyncAll(ctx context.Context) error {
 	// 2. Fetch and synchronize events
 	calendars, err := e.store.ListCalendars(ctx)
 	if err != nil {
+		e.mu.Lock()
+		e.status.LastError = err.Error()
+		e.mu.Unlock()
 		return fmt.Errorf("list calendars for sync: %w", err)
 	}
 
@@ -280,18 +326,30 @@ func (e *Engine) SyncAll(ctx context.Context) error {
 		}
 	}
 
-	return errors.Join(syncErrors...)
+	if len(syncErrors) > 0 {
+		joined := errors.Join(syncErrors...)
+		e.mu.Lock()
+		e.status.LastError = joined.Error()
+		e.mu.Unlock()
+		return joined
+	}
+
+	e.mu.Lock()
+	e.status.LastError = ""
+	e.status.LastSuccessAt = e.clock.Now()
+	e.mu.Unlock()
+	return nil
 }
 
 // SyncCalendar performs full or incremental sync for a single calendar.
 func (e *Engine) SyncCalendar(ctx context.Context, cal *models.Calendar) error {
 	if cal.Provider == "local" {
-		// Sovereign local calendars reside completely in SQLite and do not sync with an external cloud API
 		return nil
 	}
 
 	e.mu.Lock()
 	prov, ok := e.providers[cal.Provider]
+	tokenProvider := e.tokenProvider
 	e.mu.Unlock()
 	if !ok {
 		return fmt.Errorf("provider %s not registered", cal.Provider)
@@ -311,9 +369,6 @@ func (e *Engine) SyncCalendar(ctx context.Context, cal *models.Calendar) error {
 		return fmt.Errorf("oauth account %s is %s", targetAccount.ID, targetAccount.Status)
 	}
 
-	e.mu.Lock()
-	tokenProvider := e.tokenProvider
-	e.mu.Unlock()
 	if tokenProvider == nil {
 		return fmt.Errorf("token provider not configured")
 	}
@@ -327,7 +382,7 @@ func (e *Engine) SyncCalendar(ctx context.Context, cal *models.Calendar) error {
 	if err != nil {
 		if errors.Is(err, google.ErrCursorInvalid) {
 			slog.Info("Sync cursor invalid (410 Gone); resetting cursor and re-syncing", "calendar", cal.Name)
-			if err := e.store.UpdateCalendarSyncCursor(ctx, cal.ID, "", time.Now()); err != nil {
+			if err := e.store.UpdateCalendarSyncCursor(ctx, cal.ID, "", e.clock.Now()); err != nil {
 				return fmt.Errorf("reset invalid sync cursor: %w", err)
 			}
 			cal.SyncCursor = ""
@@ -349,17 +404,19 @@ func (e *Engine) SyncCalendar(ctx context.Context, cal *models.Calendar) error {
 		}
 	}
 	if err := errors.Join(reconcileErrors...); err != nil {
-		// Do not advance the provider cursor after a partial local write. The
-		// next run must replay this page rather than losing failed events.
 		return err
 	}
+
+	e.mu.Lock()
+	e.status.ItemsProcessed += int64(len(result.Events))
+	e.mu.Unlock()
 
 	// Update cursor and timestamp
 	nextCursor := cal.SyncCursor
 	if result.SyncCursor != "" {
 		nextCursor = result.SyncCursor
 	}
-	if err := e.store.UpdateCalendarSyncCursor(ctx, cal.ID, nextCursor, time.Now()); err != nil {
+	if err := e.store.UpdateCalendarSyncCursor(ctx, cal.ID, nextCursor, e.clock.Now()); err != nil {
 		return fmt.Errorf("update calendar sync cursor: %w", err)
 	}
 
@@ -373,16 +430,14 @@ func (e *Engine) reconcileEvent(ctx context.Context, cal *models.Calendar, remot
 	}
 
 	if existing != nil {
-		// Check for conflicts: is there an un-synced local edit for this event?
 		pendingMutations, _ := e.store.GetPendingMutations(ctx, 50)
 		for _, m := range pendingMutations {
 			if m.LocalEventID == existing.ID && m.State != models.QueueCompleted {
-				// Local mutation pending while remote event changed!
 				if existing.ETag != remoteEv.ETag && remoteEv.ETag != "" {
 					localPayload, _ := json.Marshal(existing)
 					remotePayload, _ := json.Marshal(remoteEv)
 					conflict := &models.Conflict{
-						ID:            fmt.Sprintf("conf-%d", time.Now().UnixNano()),
+						ID:            fmt.Sprintf("conf-%d", e.clock.Now().UnixNano()),
 						LocalEventID:  existing.ID,
 						RemoteEventID: remoteEv.ProviderEventID,
 						ConflictType:  "concurrent_edit",
@@ -392,12 +447,11 @@ func (e *Engine) reconcileEvent(ctx context.Context, cal *models.Calendar, remot
 					}
 					_ = e.store.CreateConflict(ctx, conflict)
 					slog.Warn("Conflict detected on event", "title", existing.Title, "local_id", existing.ID)
-					return nil // Do not overwrite local changes until resolved
+					return nil
 				}
 			}
 		}
 
-		// Update existing event ID so we update the local record
 		remoteEv.ID = existing.ID
 		remoteEv.LocalCreatedAt = existing.LocalCreatedAt
 	}

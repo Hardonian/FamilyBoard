@@ -1,6 +1,7 @@
 package unit_test
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -68,6 +69,36 @@ func TestTokenStorage_PermissionsAndLifecycle(t *testing.T) {
 	_, err = storage.Load(accountID)
 	if err != oauth.ErrTokenNotFound {
 		t.Errorf("expected ErrTokenNotFound, got %v", err)
+	}
+}
+
+func TestTokenStorage_EncryptsCredentialsAtRest(t *testing.T) {
+	tmpDir := t.TempDir()
+	storage, err := oauth.NewTokenStorage(tmpDir, "installation-secret-with-enough-entropy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := &oauth.StoredToken{AccessToken: "access-must-not-be-plaintext", RefreshToken: "refresh-must-not-be-plaintext"}
+	if err := storage.Save("account-1", token); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(tmpDir, "account-1.token.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte(token.AccessToken)) || bytes.Contains(raw, []byte(token.RefreshToken)) {
+		t.Fatal("credential file contains plaintext secrets")
+	}
+	loaded, err := storage.Load("account-1")
+	if err != nil || loaded.AccessToken != token.AccessToken {
+		t.Fatalf("encrypted token round trip failed: token=%+v err=%v", loaded, err)
+	}
+	wrongKey, err := oauth.NewTokenStorage(tmpDir, "different-installation-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := wrongKey.Load("account-1"); err == nil {
+		t.Fatal("expected wrong installation key to fail closed")
 	}
 }
 
