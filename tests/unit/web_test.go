@@ -940,3 +940,228 @@ func TestWeb_MobilePWAAndLayoutElements(t *testing.T) {
 		}
 	}
 }
+
+func TestWeb_SetupDiagnostics(t *testing.T) {
+	srv, _, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	// 1. Unauthenticated JSON setup diagnostics
+	req := httptest.NewRequest(http.MethodGet, "/setup/diagnostics", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for /setup/diagnostics, got %d", w.Code)
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &data); err != nil {
+		t.Fatalf("failed to decode diagnostics JSON: %v", err)
+	}
+	if _, ok := data["database"]; !ok {
+		t.Fatalf("expected 'database' field in diagnostics, got %+v", data)
+	}
+
+	// 2. Download parameter
+	req = httptest.NewRequest(http.MethodGet, "/setup/diagnostics?download=1", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for download, got %d", w.Code)
+	}
+	if disp := w.Header().Get("Content-Disposition"); !strings.Contains(disp, "attachment") {
+		t.Fatalf("expected attachment Content-Disposition, got %q", disp)
+	}
+}
+
+func TestWeb_ConflictResolutionKeepBoth(t *testing.T) {
+	srv, store, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now()
+
+	// Setup person, account, and calendar
+	_ = store.UpsertPerson(ctx, &models.Person{
+		ID:          "person-1",
+		DisplayName: "Parent 1",
+		Email:       "parent1@familydomain.org",
+		Enabled:     true,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	})
+
+	_ = store.UpsertOAuthAccount(ctx, &models.OAuthAccount{
+		ID:                  "acc-1",
+		PersonID:            "person-1",
+		Provider:            "google",
+		ProviderAccountID:   "sub-1",
+		VerifiedEmail:       "parent1@familydomain.org",
+		Scopes:              "https://www.googleapis.com/auth/calendar",
+		CredentialReference: "acc-1",
+		ExpiresAt:           now.Add(time.Hour),
+		Status:              "active",
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	})
+
+	_ = store.UpsertCalendar(ctx, &models.Calendar{
+		ID:                 "cal-test-1",
+		OAuthAccountID:     "acc-1",
+		Provider:           "google",
+		ProviderCalendarID: "local-main",
+		Name:               "Household Main",
+		DisplayColor:       "#3b82f6",
+		EnabledForDisplay:  true,
+		Writable:           true,
+		DefaultWriteTarget: true,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	})
+
+	localEvent := &models.Event{
+		ID:             "evt-local-1",
+		CalendarID:     "cal-test-1",
+		Title:          "Piano Practice",
+		StartAt:        now.Add(time.Hour),
+		EndAt:          now.Add(2 * time.Hour),
+		Source:         "local_appliance",
+		LocalCreatedAt: now,
+		LocalUpdatedAt: now,
+	}
+	if err := store.UpsertEvent(ctx, localEvent); err != nil {
+		t.Fatalf("upsert local event: %v", err)
+	}
+
+	remoteEvent := &models.Event{
+		ID:             "evt-local-1",
+		CalendarID:     "cal-test-1",
+		Title:          "Piano Recital with Coach",
+		StartAt:        now.Add(time.Hour),
+		EndAt:          now.Add(2 * time.Hour),
+		Source:         "remote_sync",
+		LocalCreatedAt: now,
+		LocalUpdatedAt: now,
+	}
+	remotePayloadBytes, _ := json.Marshal(remoteEvent)
+
+	conflict := &models.Conflict{
+		ID:            "conf-test-1",
+		LocalEventID:  "evt-local-1",
+		RemoteEventID: "rem-event-1",
+		ConflictType:  "concurrent_edit",
+		LocalPayload:  `{"title":"Piano Practice"}`,
+		RemotePayload: string(remotePayloadBytes),
+		State:         "pending",
+		CreatedAt:     now,
+	}
+	if err := store.CreateConflict(ctx, conflict); err != nil {
+		t.Fatalf("create conflict: %v", err)
+	}
+
+	// Login as admin
+	csrfCookie, csrfToken := csrfForTest(t, srv, "/login")
+	loginForm := url.Values{
+		"username":   {"admin"},
+		"password":   {"correct-horse-battery"},
+		"csrf_token": {csrfToken},
+	}
+	loginReq := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(loginForm.Encode()))
+	loginReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginReq.AddCookie(csrfCookie)
+	loginW := httptest.NewRecorder()
+	srv.ServeHTTP(loginW, loginReq)
+
+	var sessionCookie *http.Cookie
+	for _, c := range loginW.Result().Cookies() {
+		if c.Name == "fb_session" {
+			sessionCookie = c
+			break
+		}
+	}
+	if sessionCookie == nil {
+		t.Fatal("expected admin session cookie")
+	}
+
+	// Resolve with keep_both
+	resolveForm := url.Values{
+		"resolution": {"keep_both"},
+		"csrf_token": {csrfToken},
+	}
+	resolveReq := httptest.NewRequest(http.MethodPost, "/admin/conflicts/conf-test-1/resolve", strings.NewReader(resolveForm.Encode()))
+	resolveReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resolveReq.AddCookie(sessionCookie)
+	resolveReq.AddCookie(csrfCookie)
+	resolveW := httptest.NewRecorder()
+	srv.ServeHTTP(resolveW, resolveReq)
+
+	if resolveW.Code != http.StatusSeeOther || !strings.Contains(resolveW.Header().Get("Location"), "/admin?tab=conflicts") {
+		t.Fatalf("expected redirect to /admin?tab=conflicts, got %d loc %s", resolveW.Code, resolveW.Header().Get("Location"))
+	}
+
+	// Verify original event has been updated to remote version
+	origEvt, err := store.GetEvent(ctx, "evt-local-1")
+	if err != nil || origEvt == nil {
+		t.Fatalf("get original event: %v", err)
+	}
+	if origEvt.Title != "Piano Recital with Coach" {
+		t.Fatalf("expected remote title on original event, got %q", origEvt.Title)
+	}
+
+	// Verify cloned local event exists and retains local edit
+	allEvents, err := store.ListEventsRange(ctx, now.Add(-time.Hour), now.Add(24*time.Hour))
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	var foundClone bool
+	for _, ev := range allEvents {
+		if strings.Contains(ev.Title, "Piano Practice") && strings.Contains(ev.Title, "Local Edit") {
+			foundClone = true
+			break
+		}
+	}
+	if !foundClone {
+		t.Fatalf("expected cloned local event retaining local edit to be persisted, events: %+v", allEvents)
+	}
+
+	// Verify pending conflicts is 0
+	pending, err := store.ListPendingConflicts(ctx)
+	if err != nil {
+		t.Fatalf("list pending conflicts: %v", err)
+	}
+	if len(pending) != 0 {
+		t.Fatalf("expected 0 pending conflicts, got %d", len(pending))
+	}
+}
+
+func TestWeb_KioskJumpDateAndDuplicateButtons(t *testing.T) {
+	srv, store, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	_ = store.SetDeviceMetadata(ctx, &models.DeviceMetadata{
+		DeviceName:    "Kitchen Appliance",
+		Timezone:      "America/Toronto",
+		InitializedAt: time.Now(),
+		Version:       "v1.5.0",
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for kiosk, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	requiredElements := []string{
+		"calendar-jump-date",
+		"btn-detail-duplicate",
+		"detail-delete-calendar-target",
+	}
+
+	for _, elem := range requiredElements {
+		if !strings.Contains(body, elem) {
+			t.Errorf("kiosk HTML missing usability element: %q", elem)
+		}
+	}
+}
