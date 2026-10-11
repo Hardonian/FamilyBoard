@@ -114,6 +114,38 @@ func TestHardware_ManagerDirect(t *testing.T) {
 			t.Errorf("beacon should have been removed")
 		}
 	}
+
+	// 4. Bluetooth Keyboard Pairing, Classification & Disconnection
+	kbMAC := "00:1F:20:EE:11:22"
+	if err := bt.PairAndConnectDevice(ctx, kbMAC); err != nil {
+		t.Fatalf("pair and connect keyboard failed: %v", err)
+	}
+	devicesAfterConnect, err := bt.ScanDevices(ctx)
+	if err != nil {
+		t.Fatalf("scan devices failed: %v", err)
+	}
+	var kbDeviceFound bool
+	for _, d := range devicesAfterConnect {
+		if d.MACAddress == kbMAC {
+			kbDeviceFound = true
+			if !d.Connected {
+				t.Errorf("expected keyboard %s to be connected", kbMAC)
+			}
+			if !d.IsKeyboard || d.DeviceType != "keyboard" {
+				t.Errorf("expected device %s to be classified as keyboard, got IsKeyboard=%v, DeviceType=%s", kbMAC, d.IsKeyboard, d.DeviceType)
+			}
+		}
+	}
+	if !kbDeviceFound {
+		t.Errorf("expected connected keyboard to appear in scan results")
+	}
+
+	if err := bt.DisconnectDevice(ctx, kbMAC); err != nil {
+		t.Fatalf("disconnect keyboard failed: %v", err)
+	}
+	if err := bt.RemoveDevice(ctx, kbMAC); err != nil {
+		t.Fatalf("remove keyboard failed: %v", err)
+	}
 }
 
 func TestHardware_HTTPEndpoints(t *testing.T) {
@@ -207,6 +239,40 @@ func TestHardware_HTTPEndpoints(t *testing.T) {
 		srv.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
 			t.Errorf("expected 200 for bluetooth power, got %d", w.Code)
+		}
+	}
+
+	// 7b. Bluetooth Keyboard Connect, Disconnect, Remove
+	{
+		// Connect
+		payload := []byte(`{"mac_address":"00:1F:20:EE:11:22"}`)
+		req := httptest.NewRequest(http.MethodPost, "/api/system/bluetooth/connect", bytes.NewReader(payload))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = "127.0.0.1:1234"
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200 for bluetooth connect, got %d (body: %s)", w.Code, w.Body.String())
+		}
+
+		// Disconnect
+		reqDisc := httptest.NewRequest(http.MethodPost, "/api/system/bluetooth/disconnect", bytes.NewReader(payload))
+		reqDisc.Header.Set("Content-Type", "application/json")
+		reqDisc.RemoteAddr = "127.0.0.1:1234"
+		wDisc := httptest.NewRecorder()
+		srv.ServeHTTP(wDisc, reqDisc)
+		if wDisc.Code != http.StatusOK {
+			t.Errorf("expected 200 for bluetooth disconnect, got %d (body: %s)", wDisc.Code, wDisc.Body.String())
+		}
+
+		// Remove
+		reqRem := httptest.NewRequest(http.MethodPost, "/api/system/bluetooth/remove", bytes.NewReader(payload))
+		reqRem.Header.Set("Content-Type", "application/json")
+		reqRem.RemoteAddr = "127.0.0.1:1234"
+		wRem := httptest.NewRecorder()
+		srv.ServeHTTP(wRem, reqRem)
+		if wRem.Code != http.StatusOK {
+			t.Errorf("expected 200 for bluetooth remove, got %d (body: %s)", wRem.Code, wRem.Body.String())
 		}
 	}
 

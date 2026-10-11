@@ -214,6 +214,15 @@ func (s *Server) handleAPIScanBluetooth(w http.ResponseWriter, r *http.Request) 
 
 type bluetoothDeviceActionRequest struct {
 	MACAddress string `json:"mac_address"`
+	MAC        string `json:"mac"`
+}
+
+func (r bluetoothDeviceActionRequest) resolvedMAC() string {
+	mac := strings.TrimSpace(r.MACAddress)
+	if mac == "" {
+		mac = strings.TrimSpace(r.MAC)
+	}
+	return mac
 }
 
 // handleAPIConnectBluetooth pairs, trusts, and connects a Bluetooth device (e.g. keyboard).
@@ -222,13 +231,13 @@ func (s *Server) handleAPIConnectBluetooth(w http.ResponseWriter, r *http.Reques
 	if !decodeRequestJSON(w, r, &req) {
 		return
 	}
-	req.MACAddress = strings.TrimSpace(req.MACAddress)
-	if req.MACAddress == "" {
+	mac := req.resolvedMAC()
+	if mac == "" {
 		writeHardwareError(w, http.StatusBadRequest, "mac_address is required")
 		return
 	}
 
-	if err := s.hwMgr.Bluetooth().PairAndConnectDevice(r.Context(), req.MACAddress); err != nil {
+	if err := s.hwMgr.Bluetooth().PairAndConnectDevice(r.Context(), mac); err != nil {
 		writeHardwareError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -236,7 +245,7 @@ func (s *Server) handleAPIConnectBluetooth(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":     true,
-		"mac_address": req.MACAddress,
+		"mac_address": mac,
 		"connected":   true,
 		"paired":      true,
 	})
@@ -248,13 +257,13 @@ func (s *Server) handleAPIDisconnectBluetooth(w http.ResponseWriter, r *http.Req
 	if !decodeRequestJSON(w, r, &req) {
 		return
 	}
-	req.MACAddress = strings.TrimSpace(req.MACAddress)
-	if req.MACAddress == "" {
+	mac := req.resolvedMAC()
+	if mac == "" {
 		writeHardwareError(w, http.StatusBadRequest, "mac_address is required")
 		return
 	}
 
-	if err := s.hwMgr.Bluetooth().DisconnectDevice(r.Context(), req.MACAddress); err != nil {
+	if err := s.hwMgr.Bluetooth().DisconnectDevice(r.Context(), mac); err != nil {
 		writeHardwareError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -262,7 +271,7 @@ func (s *Server) handleAPIDisconnectBluetooth(w http.ResponseWriter, r *http.Req
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":     true,
-		"mac_address": req.MACAddress,
+		"mac_address": mac,
 		"connected":   false,
 	})
 }
@@ -273,13 +282,13 @@ func (s *Server) handleAPIRemoveBluetooth(w http.ResponseWriter, r *http.Request
 	if !decodeRequestJSON(w, r, &req) {
 		return
 	}
-	req.MACAddress = strings.TrimSpace(req.MACAddress)
-	if req.MACAddress == "" {
+	mac := req.resolvedMAC()
+	if mac == "" {
 		writeHardwareError(w, http.StatusBadRequest, "mac_address is required")
 		return
 	}
 
-	if err := s.hwMgr.Bluetooth().RemoveDevice(r.Context(), req.MACAddress); err != nil {
+	if err := s.hwMgr.Bluetooth().RemoveDevice(r.Context(), mac); err != nil {
 		writeHardwareError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

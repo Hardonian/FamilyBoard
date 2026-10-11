@@ -601,13 +601,16 @@
         </form>
       </div>
 
-      <!-- Discovered Nearby Bluetooth Devices -->
-      <details class="admin-collapsible-section">
-        <summary class="admin-collapsible-summary">Nearby Discovered Devices (Click to inspect or pair)</summary>
+      <!-- Wireless Keyboards & Nearby Bluetooth Devices -->
+      <div class="admin-collapsible-section-wrapper" style="margin-top: 24px;">
+        <h3 class="admin-subheading">Wireless Keyboards &amp; Discovered Bluetooth Devices</h3>
+        <p class="admin-section-sub-spaced">Pair Bluetooth wireless keyboards (Logitech K380, MX Keys, Keychron, etc.) or connect USB keyboards directly to the Radxa Dragon. Typing on a physical keyboard automatically dismisses the touchscreen virtual keyboard for full-screen event viewing.</p>
+
         <table class="admin-table admin-table-compact">
           <thead>
             <tr>
               <th>Device Name</th>
+              <th>Type / Status</th>
               <th>MAC Address</th>
               <th>RSSI</th>
               <th>Action</th>
@@ -616,21 +619,72 @@
           <tbody id="bluetooth-devices-tbody">
             {{range .BluetoothDevices}}
             <tr>
-              <td><strong>{{if .Name}}{{.Name}}{{else}}Unknown BLE Device{{end}}</strong></td>
+              <td>
+                <strong>{{if .Name}}{{.Name}}{{else}}Unknown BLE Device{{end}}</strong>
+              </td>
+              <td>
+                <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                  {{if .IsKeyboard}}
+                  <span class="badge-keyboard">⌨️ Wireless Keyboard</span>
+                  {{else}}
+                  <span class="badge-subtle">📡 {{.DeviceType}}</span>
+                  {{end}}
+                  {{if .Connected}}
+                  <span class="status-badge status-badge-home" style="padding: 2px 8px; font-size: 0.75rem;">Connected</span>
+                  {{else if .Paired}}
+                  <span class="status-badge" style="padding: 2px 8px; font-size: 0.75rem;">Paired</span>
+                  {{end}}
+                </div>
+              </td>
               <td><code>{{.MACAddress}}</code></td>
               <td>{{.RSSI}} dBm</td>
               <td>
-                <button type="button" class="btn btn-secondary btn-sm btn-quick-add-beacon" data-mac="{{.MACAddress}}" data-name="{{.Name}}" aria-label="Use {{.MACAddress}} as beacon">
-                  Use for Presence
-                </button>
+                <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                  {{if .Connected}}
+                  <button type="button" class="btn btn-secondary btn-sm btn-bt-disconnect" data-mac="{{.MACAddress}}" aria-label="Disconnect {{.Name}}">
+                    Disconnect
+                  </button>
+                  {{else}}
+                  <button type="button" class="btn {{if .IsKeyboard}}btn-primary{{else}}btn-secondary{{end}} btn-sm btn-bt-connect" data-mac="{{.MACAddress}}" aria-label="Pair and connect {{.Name}}">
+                    Pair &amp; Connect
+                  </button>
+                  {{end}}
+                  <button type="button" class="btn btn-secondary btn-sm btn-quick-add-beacon" data-mac="{{.MACAddress}}" data-name="{{.Name}}" aria-label="Use {{.MACAddress}} as beacon">
+                    Use for Presence
+                  </button>
+                  {{if .Paired}}
+                  <button type="button" class="btn btn-danger btn-sm btn-bt-remove" data-mac="{{.MACAddress}}" aria-label="Forget {{.Name}}">
+                    Forget
+                  </button>
+                  {{end}}
+                </div>
               </td>
             </tr>
             {{else}}
-            <tr><td colspan="4" class="admin-empty-cell">Click "Scan Devices" to search for nearby Bluetooth radios.</td></tr>
+            <tr><td colspan="5" class="admin-empty-cell">Click "Scan Devices" to search for nearby Bluetooth keyboards and BLE radios.</td></tr>
             {{end}}
           </tbody>
         </table>
-      </details>
+      </div>
+
+      <!-- Kiosk Physical Keyboard Shortcuts Reference -->
+      <div class="admin-shortcuts-box" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+        <h4 class="admin-subheading-small">⌨️ Kiosk Physical Keyboard Shortcuts</h4>
+        <p class="admin-section-sub">Use any connected wireless or USB keyboard directly on the kiosk screen:</p>
+        <div class="shortcuts-grid">
+          <div class="shortcut-item"><span class="shortcut-kbd">C</span><span class="shortcut-kbd">N</span><span class="shortcut-kbd">+</span><span class="shortcut-desc">Add new event</span></div>
+          <div class="shortcut-item"><span class="shortcut-kbd">T</span><span class="shortcut-desc">Jump to Today</span></div>
+          <div class="shortcut-item"><span class="shortcut-kbd">M</span><span class="shortcut-desc">Month (30-day) view</span></div>
+          <div class="shortcut-item"><span class="shortcut-kbd">W</span><span class="shortcut-desc">Week view</span></div>
+          <div class="shortcut-item"><span class="shortcut-kbd">S</span><span class="shortcut-desc">Schedule timeline</span></div>
+          <div class="shortcut-item"><span class="shortcut-kbd">D</span><span class="shortcut-desc">Day cards view</span></div>
+          <div class="shortcut-item"><span class="shortcut-kbd">←</span><span class="shortcut-kbd">→</span><span class="shortcut-desc">Previous / Next range</span></div>
+          <div class="shortcut-item"><span class="shortcut-kbd">Enter</span><span class="shortcut-desc">Save / submit event</span></div>
+          <div class="shortcut-item"><span class="shortcut-kbd">Esc</span><span class="shortcut-desc">Close dialog / drawer</span></div>
+          <div class="shortcut-item"><span class="shortcut-kbd">P</span><span class="shortcut-desc">Photo screensaver</span></div>
+          <div class="shortcut-item"><span class="shortcut-kbd">?</span><span class="shortcut-desc">Show shortcuts toast</span></div>
+        </div>
+      </div>
     </div>
 
     <!-- FotoCube Ambient Photo Frame & Screensaver Management -->

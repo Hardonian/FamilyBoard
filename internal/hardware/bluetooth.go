@@ -214,6 +214,37 @@ func (b *BluetoothManager) ScanDevices(ctx context.Context) ([]BluetoothDevice, 
 				LastSeen:   now,
 			},
 		}
+
+		for mac, isPaired := range b.mockPaired {
+			if !isPaired {
+				continue
+			}
+			found := false
+			for i := range devices {
+				if devices[i].MACAddress == mac {
+					found = true
+					devices[i].Paired = true
+					devices[i].Connected = b.mockConnected[mac]
+					break
+				}
+			}
+			if !found {
+				name := "Bluetooth Wireless Keyboard"
+				devType, isKb := classifyBluetoothDevice(name)
+				devices = append(devices, BluetoothDevice{
+					MACAddress: mac,
+					Name:       name,
+					RSSI:       -55,
+					Paired:     true,
+					Connected:  b.mockConnected[mac],
+					Trusted:    true,
+					DeviceType: devType,
+					IsKeyboard: isKb,
+					LastSeen:   now,
+				})
+			}
+		}
+
 		b.updateBeaconSightings(devices)
 		return devices, nil
 	}

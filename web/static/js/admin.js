@@ -277,7 +277,7 @@
       }
     });
 
-    // 8. Quick Add from Bluetooth Scanned List
+    // 8. Quick Add from Bluetooth Scanned List & Keyboard Actions
     document.addEventListener('click', function(e) {
       const btn = e.target.closest('.btn-quick-add-beacon');
       if (btn) {
@@ -288,6 +288,78 @@
         if (macInput) macInput.value = mac;
         if (deviceInput) deviceInput.value = name || 'Bluetooth Device';
         document.getElementById('beacon-person-name')?.focus();
+      }
+    });
+
+    // 8b. Bluetooth Wireless Keyboard Connect / Disconnect / Forget
+    document.addEventListener('click', async function(e) {
+      const btnConnect = e.target.closest('.btn-bt-connect');
+      if (btnConnect) {
+        const mac = btnConnect.dataset.mac;
+        if (!mac) return;
+        btnConnect.disabled = true;
+        btnConnect.textContent = 'Connecting…';
+        try {
+          const resp = await apiFetch('/api/system/bluetooth/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mac_address: mac })
+          });
+          const res = await resp.json();
+          if (!resp.ok || res.error) throw new Error(res.error || 'Failed to connect');
+          alert('Device paired and connected successfully! You can now use it on the kiosk.');
+          window.location.reload();
+        } catch (err) {
+          alert('Bluetooth connect error: ' + err.message);
+          btnConnect.disabled = false;
+          btnConnect.textContent = 'Pair & Connect';
+        }
+        return;
+      }
+
+      const btnDisconnect = e.target.closest('.btn-bt-disconnect');
+      if (btnDisconnect) {
+        const mac = btnDisconnect.dataset.mac;
+        if (!mac) return;
+        btnDisconnect.disabled = true;
+        btnDisconnect.textContent = 'Disconnecting…';
+        try {
+          const resp = await apiFetch('/api/system/bluetooth/disconnect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mac_address: mac })
+          });
+          const res = await resp.json();
+          if (!resp.ok || res.error) throw new Error(res.error || 'Failed to disconnect');
+          window.location.reload();
+        } catch (err) {
+          alert('Bluetooth disconnect error: ' + err.message);
+          btnDisconnect.disabled = false;
+          btnDisconnect.textContent = 'Disconnect';
+        }
+        return;
+      }
+
+      const btnRemove = e.target.closest('.btn-bt-remove');
+      if (btnRemove) {
+        const mac = btnRemove.dataset.mac;
+        if (!mac) return;
+        if (!confirm('Forget / unpair Bluetooth device ' + mac + '?')) return;
+        btnRemove.disabled = true;
+        try {
+          const resp = await apiFetch('/api/system/bluetooth/remove', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mac_address: mac })
+          });
+          const res = await resp.json();
+          if (!resp.ok || res.error) throw new Error(res.error || 'Failed to remove device');
+          window.location.reload();
+        } catch (err) {
+          alert('Bluetooth remove error: ' + err.message);
+          btnRemove.disabled = false;
+        }
+        return;
       }
     });
 
@@ -580,7 +652,7 @@
     if (!tbody) return;
 
     if (!devices || devices.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" class="admin-empty-cell">No Bluetooth devices discovered.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="admin-empty-cell">No Bluetooth devices discovered.</td></tr>';
       return;
     }
 
@@ -588,14 +660,40 @@
     devices.forEach(dev => {
       const name = dev.name || 'Unknown BLE Device';
       const rssi = Number.isFinite(Number(dev.rssi)) ? Math.round(Number(dev.rssi)) : '—';
+      const isKb = dev.is_keyboard || dev.device_type === 'keyboard';
+      const typeBadge = isKb
+        ? '<span class="badge-keyboard">⌨️ Wireless Keyboard</span>'
+        : `<span class="badge-subtle">📡 ${escapeHtml(dev.device_type || 'BLE')}</span>`;
+      const connBadge = dev.connected
+        ? '<span class="status-badge status-badge-home" style="padding: 2px 8px; font-size: 0.75rem;">Connected</span>'
+        : (dev.paired ? '<span class="status-badge" style="padding: 2px 8px; font-size: 0.75rem;">Paired</span>' : '');
+
+      let actionBtns = '';
+      if (dev.connected) {
+        actionBtns += `<button type="button" class="btn btn-secondary btn-sm btn-bt-disconnect" data-mac="${escapeHtml(dev.mac_address)}" aria-label="Disconnect ${escapeHtml(name)}">Disconnect</button>`;
+      } else {
+        const btnClass = isKb ? 'btn-primary' : 'btn-secondary';
+        actionBtns += `<button type="button" class="btn ${btnClass} btn-sm btn-bt-connect" data-mac="${escapeHtml(dev.mac_address)}" aria-label="Pair and connect ${escapeHtml(name)}">Pair &amp; Connect</button>`;
+      }
+      actionBtns += ` <button type="button" class="btn btn-secondary btn-sm btn-quick-add-beacon" data-mac="${escapeHtml(dev.mac_address)}" data-name="${escapeHtml(name)}" aria-label="Use ${escapeHtml(dev.mac_address)} as beacon">Use for Presence</button>`;
+      if (dev.paired) {
+        actionBtns += ` <button type="button" class="btn btn-danger btn-sm btn-bt-remove" data-mac="${escapeHtml(dev.mac_address)}" aria-label="Forget ${escapeHtml(name)}">Forget</button>`;
+      }
+
       html += `<tr>
         <td><strong>${escapeHtml(name)}</strong></td>
+        <td>
+          <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+            ${typeBadge}
+            ${connBadge}
+          </div>
+        </td>
         <td><code>${escapeHtml(dev.mac_address)}</code></td>
         <td>${rssi}${rssi === '—' ? '' : ' dBm'}</td>
         <td>
-          <button type="button" class="btn btn-secondary btn-sm btn-quick-add-beacon" data-mac="${escapeHtml(dev.mac_address)}" data-name="${escapeHtml(name)}" aria-label="Use ${escapeHtml(dev.mac_address)} as beacon">
-            Use for Presence
-          </button>
+          <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+            ${actionBtns}
+          </div>
         </td>
       </tr>`;
     });

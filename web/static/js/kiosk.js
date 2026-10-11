@@ -2145,9 +2145,13 @@
     }
   }
 
+  let usingPhysicalKeyboard = false;
+
   function showVirtualKeyboard() {
     // Suppress physical touchscreen keyboard on mobile smartphones (iPhone & Android)
     if (isMobileDevice()) return;
+    // Suppress touchscreen keyboard if user is typing on a physical wireless or USB keyboard
+    if (usingPhysicalKeyboard) return;
     if (elVirtualKeyboard) elVirtualKeyboard.style.display = 'flex';
   }
 
@@ -2444,15 +2448,135 @@
   }
 
   function handleGlobalKeydown(event) {
-    const overlay = getVisibleOverlay();
-    if (!overlay) return;
+    // When typing on a physical keyboard, auto-dismiss touchscreen keyboard
+    if (event.isTrusted) {
+      usingPhysicalKeyboard = true;
+      hideVirtualKeyboard();
+    }
 
+    const overlay = getVisibleOverlay();
+    if (!overlay) {
+      // Don't intercept shortcuts if user is currently focused on an input element
+      const activeEl = document.activeElement;
+      const tag = (activeEl?.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+        if (event.key === 'Escape') {
+          activeEl.blur();
+        }
+        return;
+      }
+
+      const key = event.key;
+      // Kiosk Keyboard Shortcuts
+      if (key === 'c' || key === 'C' || key === 'n' || key === 'N' || key === '+') {
+        event.preventDefault();
+        triggerHaptic(12);
+        openQuickAddModal(new Date());
+        return;
+      }
+      if (key === 't' || key === 'T') {
+        event.preventDefault();
+        triggerHaptic(10);
+        currentDate = new Date();
+        renderView();
+        showToast('Jumped to Today 📅', false);
+        return;
+      }
+      if (key === 'm' || key === 'M') {
+        event.preventDefault();
+        triggerHaptic(10);
+        currentView = 'hybrid';
+        syncViewButtons();
+        renderView();
+        showToast('Month (30-day) View', false);
+        return;
+      }
+      if (key === 'w' || key === 'W') {
+        event.preventDefault();
+        triggerHaptic(10);
+        currentView = 'week';
+        syncViewButtons();
+        renderView();
+        showToast('Week View', false);
+        return;
+      }
+      if (key === 's' || key === 'S') {
+        event.preventDefault();
+        triggerHaptic(10);
+        currentView = 'schedule';
+        syncViewButtons();
+        renderView();
+        showToast('Schedule View', false);
+        return;
+      }
+      if (key === 'd' || key === 'D') {
+        event.preventDefault();
+        triggerHaptic(10);
+        currentView = 'today';
+        syncViewButtons();
+        renderView();
+        showToast('Day View', false);
+        return;
+      }
+      if (key === 'ArrowLeft') {
+        event.preventDefault();
+        navigateCalendar(-1);
+        return;
+      }
+      if (key === 'ArrowRight') {
+        event.preventDefault();
+        navigateCalendar(1);
+        return;
+      }
+      if (key === '?' || (key === '/' && !event.shiftKey)) {
+        event.preventDefault();
+        showToast('⌨️ C/N: Add · T: Today · M/W/S/D: Views · ←/→: Navigate · Esc: Close', false);
+        return;
+      }
+      if (key === 'p' || key === 'P') {
+        event.preventDefault();
+        openFotoCubePhotoFrame();
+        return;
+      }
+      return;
+    }
+
+    // Overlay IS open:
     if (event.key === 'Escape') {
       event.preventDefault();
       if (overlay === elEventDetailModal) closeEventDetailSheet();
       else if (overlay === elEventModal) closeQuickAddModal();
       else if (overlay === elDayDrawerOverlay) closeDayDrawer();
       else closeKioskWifiModal();
+      return;
+    }
+
+    // Inside Quick Add Modal: Enter to submit
+    if (overlay === elEventModal && event.key === 'Enter') {
+      const activeEl = document.activeElement;
+      // Allow Shift+Enter in description for newlines
+      if (activeEl && activeEl.id === 'event-description' && event.shiftKey) {
+        return;
+      }
+      event.preventDefault();
+      handleEventSave();
+      return;
+    }
+
+    // Inside Event Detail Modal: E to edit
+    if (overlay === elEventDetailModal && (event.key === 'e' || event.key === 'E')) {
+      const btnDelete = document.getElementById('btn-detail-delete');
+      const ev = btnDelete?.eventObject;
+      closeEventDetailSheet();
+      if (ev) openEditEventModal(ev);
+      return;
+    }
+
+    // Inside Day Drawer: C or N to add event for drawer's date
+    if (overlay === elDayDrawerOverlay && (event.key === 'c' || event.key === 'C' || event.key === 'n' || event.key === 'N' || event.key === '+')) {
+      event.preventDefault();
+      closeDayDrawer();
+      openQuickAddModal(drawerSelectedDate);
       return;
     }
 
