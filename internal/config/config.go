@@ -43,11 +43,11 @@ func (c *Config) EnsureSessionSecret() error {
 }
 
 type ServerConfig struct {
-	Host       string `toml:"host"`
-	Port       int    `toml:"port"`
-	BaseURL    string `toml:"base_url"`
-	Timezone   string `toml:"timezone"`
-	DeviceName string `toml:"device_name"`
+	Host        string `toml:"host"`
+	Port        int    `toml:"port"`
+	BaseURL     string `toml:"base_url"`
+	Timezone    string `toml:"timezone"`
+	DeviceName  string `toml:"device_name"`
 	TLSCertFile string `toml:"tls_cert_file"`
 	TLSKeyFile  string `toml:"tls_key_file"`
 }

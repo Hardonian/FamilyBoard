@@ -578,7 +578,7 @@ func (s *Server) handleAPIUploadPhoto(w http.ResponseWriter, r *http.Request) {
 	_ = s.store.RecordAudit(r.Context(), &models.AuditEntry{
 		ID: models.NewID("aud"), Actor: "household_device", Action: "photo_upload",
 		ResourceType: "photo", ResourceID: storedName,
-		Details: fmt.Sprintf("Uploaded validated %s photo (%dx%d, %d bytes)", contentType, imageConfig.Width, imageConfig.Height, header.Size),
+		Details:   fmt.Sprintf("Uploaded validated %s photo (%dx%d, %d bytes)", contentType, imageConfig.Width, imageConfig.Height, header.Size),
 		IPAddress: remoteIP(r),
 	})
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
