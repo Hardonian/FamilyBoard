@@ -116,8 +116,11 @@ func Expand(r Rule, dtstart time.Time, loc *time.Location, windowStart, windowEn
 	}
 	start := dtstart.In(loc)
 	skip := make(map[int64]struct{}, len(excluded))
+	skipDate := make(map[string]struct{}, len(excluded))
 	for _, ex := range excluded {
 		skip[ex.Unix()] = struct{}{}
+		exLoc := ex.In(loc)
+		skipDate[fmt.Sprintf("%04d-%02d-%02d", exLoc.Year(), exLoc.Month(), exLoc.Day())] = struct{}{}
 	}
 
 	var out []time.Time
@@ -131,7 +134,11 @@ func Expand(r Rule, dtstart time.Time, loc *time.Location, windowStart, windowEn
 			return false
 		}
 		produced++
-		if _, ex := skip[t.Unix()]; !ex && !t.Before(windowStart) && t.Before(windowEnd) {
+		tLoc := t.In(loc)
+		dateKey := fmt.Sprintf("%04d-%02d-%02d", tLoc.Year(), tLoc.Month(), tLoc.Day())
+		_, isUnixEx := skip[t.Unix()]
+		_, isDateEx := skipDate[dateKey]
+		if !isUnixEx && !isDateEx && !t.Before(windowStart) && t.Before(windowEnd) {
 			out = append(out, t)
 		}
 		return len(out) < MaxOccurrences

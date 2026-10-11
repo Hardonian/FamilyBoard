@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/Hardonian/FamilyBoard/internal/db"
 	"github.com/Hardonian/FamilyBoard/internal/models"
+	"github.com/Hardonian/FamilyBoard/internal/recurrence"
 )
 
 func (s *Server) handleKiosk(w http.ResponseWriter, r *http.Request) {
@@ -166,20 +169,123 @@ func (s *Server) handleAPIGetEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	views := make([]KioskEventView, len(events))
-	for i, ev := range events {
-		views[i] = KioskEventView{
-			ID:             ev.ID,
-			CalendarID:     ev.CalendarID,
-			Title:          ev.Title,
-			StartAt:        ev.StartAt,
-			EndAt:          ev.EndAt,
-			AllDay:         ev.AllDay,
-			Location:       ev.Location,
-			Description:    ev.Description,
-			RecurrenceRule: ev.RecurrenceRule,
-			Status:         ev.Status,
+	masters, err := s.store.ListRecurringMasters(r.Context(), endAt)
+	if err != nil {
+		slog.Warn("Failed to list recurring event masters; falling back to range events", "err", err)
+	}
+
+	var exceptions map[string][]time.Time
+	if len(masters) > 0 {
+		masterIDs := make([]string, 0, len(masters)*2)
+		for _, m := range masters {
+			masterIDs = append(masterIDs, m.ID)
+			if m.ProviderUID != "" {
+				masterIDs = append(masterIDs, m.ProviderUID)
+			}
 		}
+		var excErr error
+		exceptions, excErr = s.store.ListRecurrenceExceptions(r.Context(), masterIDs)
+		if excErr != nil {
+			slog.Warn("Failed to list recurrence exceptions", "err", excErr)
+		}
+	}
+
+	// Filter base events: single events and detached exceptions (RecurrenceRule == "")
+	var views []KioskEventView
+	for _, ev := range events {
+		if ev.RecurrenceRule == "" {
+			views = append(views, KioskEventView{
+				ID:             ev.ID,
+				CalendarID:     ev.CalendarID,
+				Title:          ev.Title,
+				StartAt:        ev.StartAt,
+				EndAt:          ev.EndAt,
+				AllDay:         ev.AllDay,
+				Location:       ev.Location,
+				Description:    ev.Description,
+				RecurrenceRule: ev.RecurrenceRule,
+				Status:         ev.Status,
+			})
+		}
+	}
+
+	// Expand recurring masters into occurrence instances within the window
+	for _, m := range masters {
+		rule, err := recurrence.Parse(m.RecurrenceRule)
+		if err != nil {
+			// If rule is unsupported/malformed, include master if its original start falls in window
+			if !m.StartAt.Before(startAt) && m.StartAt.Before(endAt) {
+				views = append(views, KioskEventView{
+					ID:             m.ID,
+					CalendarID:     m.CalendarID,
+					Title:          m.Title,
+					StartAt:        m.StartAt,
+					EndAt:          m.EndAt,
+					AllDay:         m.AllDay,
+					Location:       m.Location,
+					Description:    m.Description,
+					RecurrenceRule: m.RecurrenceRule,
+					Status:         m.Status,
+				})
+			}
+			continue
+		}
+
+		loc := time.UTC
+		if m.Timezone != "" {
+			if l, err := time.LoadLocation(m.Timezone); err == nil {
+				loc = l
+			}
+		}
+
+		var exList []time.Time
+		if exceptions != nil {
+			if ex, ok := exceptions[m.ID]; ok {
+				exList = append(exList, ex...)
+			}
+			if m.ProviderUID != "" {
+				if ex, ok := exceptions[m.ProviderUID]; ok {
+					exList = append(exList, ex...)
+				}
+			}
+		}
+
+		occurrences := recurrence.Expand(rule, m.StartAt, loc, startAt, endAt, exList)
+		dur := m.EndAt.Sub(m.StartAt)
+		if dur <= 0 {
+			if m.AllDay {
+				dur = 24 * time.Hour
+			} else {
+				dur = time.Hour
+			}
+		}
+
+		for _, occ := range occurrences {
+			occID := fmt.Sprintf("%s_%s", m.ID, occ.Format("20060102T150405"))
+			views = append(views, KioskEventView{
+				ID:             occID,
+				CalendarID:     m.CalendarID,
+				Title:          m.Title,
+				StartAt:        occ,
+				EndAt:          occ.Add(dur),
+				AllDay:         m.AllDay,
+				Location:       m.Location,
+				Description:    m.Description,
+				RecurrenceRule: m.RecurrenceRule,
+				Status:         m.Status,
+			})
+		}
+	}
+
+	sort.Slice(views, func(i, j int) bool {
+		if views[i].StartAt.Equal(views[j].StartAt) {
+			return views[i].ID < views[j].ID
+		}
+		return views[i].StartAt.Before(views[j].StartAt)
+	})
+
+	if len(views) > db.MaxEventsPerWindow {
+		views = views[:db.MaxEventsPerWindow]
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -249,7 +355,7 @@ func (s *Server) handleAPICreateEvent(w http.ResponseWriter, r *http.Request) {
 		if mutation != nil && s.queueEngine != nil {
 			_ = s.queueEngine.ProcessBatch(context.Background(), 5)
 		}
-		s.BroadcastReload()
+		s.BroadcastEventChange("create", ev.ID, ev.CalendarID)
 	}()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -365,7 +471,7 @@ func (s *Server) handleAPIUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		if mutation != nil && s.queueEngine != nil {
 			_ = s.queueEngine.ProcessBatch(context.Background(), 5)
 		}
-		s.BroadcastReload()
+		s.BroadcastEventChange("update", existing.ID, existing.CalendarID)
 	}()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -415,7 +521,7 @@ func (s *Server) handleAPIDeleteEvent(w http.ResponseWriter, r *http.Request) {
 		if mutation != nil && s.queueEngine != nil {
 			_ = s.queueEngine.ProcessBatch(context.Background(), 5)
 		}
-		s.BroadcastReload()
+		s.BroadcastEventChange("delete", existing.ID, existing.CalendarID)
 	}()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -465,7 +571,7 @@ func (s *Server) handleAPIRestoreEvent(w http.ResponseWriter, r *http.Request) {
 		if mutation != nil && s.queueEngine != nil {
 			_ = s.queueEngine.ProcessBatch(context.Background(), 5)
 		}
-		s.BroadcastReload()
+		s.BroadcastEventChange("restore", restored.ID, restored.CalendarID)
 	}()
 
 	w.Header().Set("Content-Type", "application/json")

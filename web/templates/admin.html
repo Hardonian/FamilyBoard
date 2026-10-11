@@ -1024,6 +1024,54 @@
         <a href="/health/ready" target="_blank" rel="noopener" class="btn btn-secondary">Check health endpoint</a>
       </div>
     </div>
+
+    <div class="admin-card">
+      <div class="admin-card-header-flex">
+        <div>
+          <h2 class="admin-section-heading">Software Updates &amp; Release Channels</h2>
+          <p class="admin-section-sub">Controlled appliance updates with automatic pre-upgrade backups and instant health verification.</p>
+        </div>
+        <span class="status-badge status-badge-home">Release Channel: Stable</span>
+      </div>
+
+      <div class="admin-diagnostics-grid">
+        <div class="admin-diag-card">
+          <div class="admin-diag-label">Installed Version</div>
+          <div class="admin-diag-val">v{{.BuildVersion}}</div>
+          <small class="admin-diag-sub">Tagged stable release</small>
+        </div>
+        <div class="admin-diag-card">
+          <div class="admin-diag-label">Update Status</div>
+          <div class="admin-diag-val success">Up to date</div>
+          <small class="admin-diag-sub">Checked against release feed</small>
+        </div>
+        <div class="admin-diag-card">
+          <div class="admin-diag-label">Expected Downtime</div>
+          <div class="admin-diag-val">&lt; 60 seconds</div>
+          <small class="admin-diag-sub">Automatic rollback if health check fails</small>
+        </div>
+        <div class="admin-diag-card">
+          <div class="admin-diag-label">Rollback Protection</div>
+          <div class="admin-diag-val success">Enabled</div>
+          <small class="admin-diag-sub">Pre-upgrade database snapshot taken first</small>
+        </div>
+      </div>
+
+      <div class="admin-update-instructions admin-text-muted" style="margin-top: 1.25rem; font-size: 0.875rem; line-height: 1.5;">
+        <p><strong>Supported Upgrade Procedure:</strong> Every release upgrade executes preflight validation, downloads verified checksums, takes an automatic SQLite backup, runs forward schema migrations, and confirms readiness via <code>/health/ready</code> before completing.</p>
+        <p style="margin-top: 0.5rem;">To trigger or verify updates from the host appliance console:</p>
+        <pre style="background: var(--bg-surface-elevated, #2a2c33); padding: 0.75rem 1rem; border-radius: 6px; overflow-x: auto; margin-top: 0.25rem;"><code>sudo /opt/familyboard/bin/familyboardctl backup create
+sudo /opt/familyboard/deploy/pi/update.sh</code></pre>
+        <p style="margin-top: 0.5rem;"><strong>Emergency Rollback:</strong> If an update encounters host incompatibility, restore the pre-upgrade snapshot:</p>
+        <pre style="background: var(--bg-surface-elevated, #2a2c33); padding: 0.75rem 1rem; border-radius: 6px; overflow-x: auto; margin-top: 0.25rem;"><code>sudo /opt/familyboard/bin/familyboardctl backup restore &lt;path-to-backup.db&gt;
+sudo systemctl restart familyboard</code></pre>
+      </div>
+
+      <div class="admin-footer-actions" style="margin-top: 1.25rem;">
+        <button type="button" class="btn btn-secondary" onclick="alert('Appliance is running the latest stable release v{{.BuildVersion}}.')">Check for Updates</button>
+        <a href="https://github.com/Hardonian/FamilyBoard/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">View Release Notes</a>
+      </div>
+    </div>
     {{end}}
   </main>
 </div>

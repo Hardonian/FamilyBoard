@@ -304,16 +304,42 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	withCorrelationID(withGzip(s.mux)).ServeHTTP(w, r)
 }
 
-// BroadcastReload notifies all open kiosk clients via SSE to reload event data.
-func (s *Server) BroadcastReload() {
+// SSEEventPayload defines structured event change notifications broadcast to kiosks.
+type SSEEventPayload struct {
+	Action     string `json:"action"` // "create", "update", "delete", "restore", "reload"
+	ID         string `json:"id,omitempty"`
+	CalendarID string `json:"calendar_id,omitempty"`
+}
+
+// BroadcastEventChange broadcasts a granular change notification to connected kiosks.
+func (s *Server) BroadcastEventChange(action, eventID, calendarID string) {
+	payload, err := json.Marshal(SSEEventPayload{
+		Action:     action,
+		ID:         eventID,
+		CalendarID: calendarID,
+	})
+	if err != nil {
+		s.BroadcastReload()
+		return
+	}
+	s.BroadcastMessage(string(payload))
+}
+
+// BroadcastMessage sends a message string to all connected SSE clients.
+func (s *Server) BroadcastMessage(msg string) {
 	s.sseMu.Lock()
 	defer s.sseMu.Unlock()
 	for ch := range s.sseClients {
 		select {
-		case ch <- "reload":
+		case ch <- msg:
 		default:
 		}
 	}
+}
+
+// BroadcastReload notifies all open kiosk clients via SSE to reload event data.
+func (s *Server) BroadcastReload() {
+	s.BroadcastMessage("reload")
 }
 
 func (s *Server) render(w http.ResponseWriter, page string, data interface{}) {

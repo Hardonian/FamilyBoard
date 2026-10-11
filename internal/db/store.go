@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Hardonian/FamilyBoard/internal/models"
@@ -625,6 +626,78 @@ func (s *Store) ListEventsRange(ctx context.Context, start, end time.Time) ([]mo
 		events = append(events, e)
 	}
 	return events, rows.Err()
+}
+
+// ListRecurringMasters returns active recurring parent events from enabled display calendars
+// whose recurrence series started before the window end.
+func (s *Store) ListRecurringMasters(ctx context.Context, windowEnd time.Time) ([]models.Event, error) {
+	query := `SELECT e.id, e.provider, e.provider_event_id, e.provider_uid, e.calendar_id, e.etag, e.version, e.title, e.description, e.location,
+		e.start_at, e.end_at, e.timezone, e.all_day, e.status, e.recurrence_rule, e.recurrence_parent, e.organizer, e.source,
+		e.remote_created_at, e.remote_updated_at, e.local_created_at, e.local_updated_at, e.deleted_at
+		FROM events e
+		JOIN calendars c ON e.calendar_id = c.id
+		WHERE c.enabled_for_display = 1
+		  AND e.deleted_at IS NULL
+		  AND e.recurrence_rule IS NOT NULL
+		  AND e.recurrence_rule != ''
+		  AND e.start_at < ?
+		ORDER BY e.start_at ASC
+		LIMIT ?;`
+
+	rows, err := s.db.QueryContext(ctx, query, windowEnd, MaxEventsPerWindow)
+	if err != nil {
+		return nil, fmt.Errorf("list recurring masters: %w", err)
+	}
+	defer rows.Close()
+
+	var events []models.Event
+	for rows.Next() {
+		var e models.Event
+		var allDay int
+		if err := rows.Scan(&e.ID, &e.Provider, &e.ProviderEventID, &e.ProviderUID, &e.CalendarID, &e.ETag, &e.Version, &e.Title, &e.Description, &e.Location,
+			&e.StartAt, &e.EndAt, &e.Timezone, &allDay, &e.Status, &e.RecurrenceRule, &e.RecurrenceParent, &e.Organizer, &e.Source,
+			&e.RemoteCreatedAt, &e.RemoteUpdatedAt, &e.LocalCreatedAt, &e.LocalUpdatedAt, &e.DeletedAt); err != nil {
+			return nil, fmt.Errorf("scan recurring master: %w", err)
+		}
+		e.AllDay = (allDay == 1)
+		events = append(events, e)
+	}
+	return events, rows.Err()
+}
+
+// ListRecurrenceExceptions returns occurrence start times that have been detached or
+// modified for the given master event IDs, keyed by recurrence_parent ID or provider UID.
+func (s *Store) ListRecurrenceExceptions(ctx context.Context, masterIDs []string) (map[string][]time.Time, error) {
+	exceptions := make(map[string][]time.Time)
+	if len(masterIDs) == 0 {
+		return exceptions, nil
+	}
+
+	placeholders := make([]string, len(masterIDs))
+	args := make([]any, len(masterIDs))
+	for i, id := range masterIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`SELECT recurrence_parent, start_at FROM events
+		WHERE recurrence_parent IN (%s);`, strings.Join(placeholders, ","))
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list recurrence exceptions: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var parent string
+		var t time.Time
+		if err := rows.Scan(&parent, &t); err != nil {
+			return nil, fmt.Errorf("scan recurrence exception: %w", err)
+		}
+		exceptions[parent] = append(exceptions[parent], t)
+	}
+	return exceptions, rows.Err()
 }
 
 func (s *Store) ListAllEventsForExport(ctx context.Context) ([]models.Event, error) {

@@ -138,6 +138,7 @@ pi-bootstrap-check:
 	@"$(BASH_BIN)" -n scripts/generate_sbom.sh
 	@"$(BASH_BIN)" -n scripts/generate_notices.sh
 	@"$(BASH_BIN)" -n scripts/check_docs.sh
+	@"$(BASH_BIN)" -n scripts/build_image.sh
 	@echo "All shell scripts passed syntax checks."
 
 check-docs:
@@ -149,7 +150,7 @@ notices:
 prepare-sd:
 	@"$(BASH_BIN)" scripts/prepare_sd.sh $(SD)
 
-release-check: check-version fmt-check vet security-check verify-mod verify-tidy check-frontend check-runtime-deps check-powershell test test-race build build-arm64 radxa-check pi-bootstrap-check check-systemd
+release-check: check-version fmt-check vet security-check verify-mod verify-tidy check-frontend check-runtime-deps check-powershell check-docs test test-race build build-arm64 radxa-check pi-bootstrap-check check-systemd
 	@echo "=== FamilyBoard Canonical Release Gate PASSED ==="
 
 release-package: release-check package-all

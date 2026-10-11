@@ -2359,12 +2359,28 @@
       };
 
       sseEventSource.onmessage = function(e) {
+        if (!e.data) return;
         if (e.data === 'reload') {
           triggerHaptic(10);
           updateStatus('syncing', 'Updating…');
           renderView().finally(() => {
             updateStatus('', 'Synced');
           });
+          return;
+        }
+        if (e.data.startsWith('{')) {
+          try {
+            const payload = JSON.parse(e.data);
+            if (payload && payload.action) {
+              triggerHaptic(10);
+              updateStatus('syncing', 'Updating…');
+              renderView().finally(() => {
+                updateStatus('', 'Synced');
+              });
+            }
+          } catch (_) {
+            renderView();
+          }
         }
       };
 
