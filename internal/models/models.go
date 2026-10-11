@@ -282,4 +282,3 @@ type WorkerStatus struct {
 	ItemsProcessed int64     `json:"items_processed"`
 	Health         string    `json:"health"` // "healthy", "degraded", "stopped"
 }
-

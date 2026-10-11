@@ -25,18 +25,18 @@ type MetricsSnapshot struct {
 }
 
 type Registry struct {
-	mu                 sync.RWMutex
-	startTime          time.Time
-	syncCount          int64
-	syncFailures       int64
-	totalSyncDuration  time.Duration
-	lastSyncDuration   time.Duration
-	providerFailures   map[string]int64
-	queuePending       int
-	queueRetry         int
-	queueDeadLetter    int
-	databaseSizeBytes  int64
-	lastBackupTime     time.Time
+	mu                sync.RWMutex
+	startTime         time.Time
+	syncCount         int64
+	syncFailures      int64
+	totalSyncDuration time.Duration
+	lastSyncDuration  time.Duration
+	providerFailures  map[string]int64
+	queuePending      int
+	queueRetry        int
+	queueDeadLetter   int
+	databaseSizeBytes int64
+	lastBackupTime    time.Time
 }
 
 var defaultRegistry = NewRegistry()

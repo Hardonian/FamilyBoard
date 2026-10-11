@@ -14,6 +14,7 @@ import (
 	"github.com/Hardonian/FamilyBoard/internal/clock"
 	"github.com/Hardonian/FamilyBoard/internal/db"
 	"github.com/Hardonian/FamilyBoard/internal/errdefs"
+	"github.com/Hardonian/FamilyBoard/internal/metrics"
 	"github.com/Hardonian/FamilyBoard/internal/models"
 	"github.com/Hardonian/FamilyBoard/internal/oauth"
 )
@@ -180,6 +181,10 @@ func (e *Engine) ProcessBatch(ctx context.Context, batchSize int) error {
 			processErrors = append(processErrors, fmt.Errorf("mutation %s: %w", item.ID, err))
 		}
 	}
+
+	pendingCount, _ := e.store.CountPendingMutations(ctx)
+	deadCount, _ := e.store.CountDeadLetterMutations(ctx)
+	metrics.Default().RecordQueue(pendingCount, 0, deadCount)
 
 	if len(processErrors) > 0 {
 		joined := errors.Join(processErrors...)

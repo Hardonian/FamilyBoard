@@ -231,4 +231,3 @@ func PruneBackups(backupDir string, maxKeep int) (int, error) {
 	}
 	return pruned, nil
 }
-

@@ -611,7 +611,6 @@ func (s *Server) handleAPIUploadPhoto(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-
 // handleAPIDeletePhoto removes a photo from the FotoCube slideshow directory.
 func (s *Server) handleAPIDeletePhoto(w http.ResponseWriter, r *http.Request) {
 	filename := r.PathValue("filename")

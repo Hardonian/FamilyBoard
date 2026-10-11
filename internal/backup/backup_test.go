@@ -80,4 +80,3 @@ func TestPruneBackups(t *testing.T) {
 		t.Fatalf("expected 3 remaining backups, got %d", len(entries))
 	}
 }
-

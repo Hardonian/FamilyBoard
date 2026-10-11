@@ -10,7 +10,7 @@ else
     EXE_EXT :=
 endif
 
-.PHONY: all fmt fmt-check vet lint staticcheck vuln security-check tools-check verify-mod verify-tidy check-version check-js check-runtime-deps check-powershell check-systemd test test-race test-browser build build-arm64 package-arm64 package-all pi-bootstrap-check release-check release-package clean
+.PHONY: all fmt fmt-check vet lint staticcheck vuln security-check tools-check verify-mod verify-tidy check-version check-js check-frontend check-runtime-deps check-powershell check-systemd test test-race test-browser build build-arm64 package-arm64 package-all pi-bootstrap-check release-check release-package clean
 
 VERSION ?= $(strip $(file <VERSION))
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
@@ -55,6 +55,9 @@ check-js:
 	node --check web/static/js/admin.js
 	node --check web/static/js/setup.js
 	node --check web/static/sw.js
+
+check-frontend: check-js
+	node tests/frontend_test.js
 
 test-browser:
 	npm ci
@@ -129,12 +132,15 @@ pi-bootstrap-check:
 	@"$(BASH_BIN)" -n scripts/package_release.sh
 	@"$(BASH_BIN)" -n scripts/package_portable.sh
 	@"$(BASH_BIN)" -n scripts/check_version.sh
+	@"$(BASH_BIN)" -n scripts/test_env.sh
+	@"$(BASH_BIN)" -n scripts/check_frontend.sh
+	@"$(BASH_BIN)" -n scripts/check_coverage.sh
 	@echo "All shell scripts passed syntax checks."
 
 prepare-sd:
 	@"$(BASH_BIN)" scripts/prepare_sd.sh $(SD)
 
-release-check: check-version fmt-check vet security-check verify-mod verify-tidy check-js check-runtime-deps check-powershell test test-race build build-arm64 radxa-check pi-bootstrap-check check-systemd
+release-check: check-version fmt-check vet security-check verify-mod verify-tidy check-frontend check-runtime-deps check-powershell test test-race build build-arm64 radxa-check pi-bootstrap-check check-systemd
 	@echo "=== FamilyBoard Canonical Release Gate PASSED ==="
 
 release-package: release-check package-all
