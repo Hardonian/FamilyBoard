@@ -4784,7 +4784,7 @@ body.kiosk-ambient-dim {
 .rail-events-list {
   transform: translateZ(0);
   backface-visibility: hidden;
-  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .kiosk-main-layout {
