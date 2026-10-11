@@ -29,6 +29,7 @@ func (s *Server) handleAdminOAuthStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if provider == "google" && s.googleOAuth != nil {
+		// Retrieve person email for login_hint
 		people, _ := s.store.ListPeople(r.Context())
 		loginHint := ""
 		for _, p := range people {
@@ -38,77 +39,85 @@ func (s *Server) handleAdminOAuthStart(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		authURL := s.googleOAuth.AuthURL(state, flow, loginHint)
-		http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+		http.Redirect(w, r, authURL, http.StatusSeeOther)
 		return
 	}
 
 	if provider == "microsoft" && s.msOAuth != nil {
-		authURL := s.msOAuth.AuthURL(state, flow)
-		http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
-		return
-	}
-
-	http.Error(w, "OAuth provider not configured", http.StatusBadRequest)
-}
-
-func (s *Server) handleOAuthCallbackGoogle(w http.ResponseWriter, r *http.Request) {
-	state := r.URL.Query().Get("state")
-	code := r.URL.Query().Get("code")
-	errParam := r.URL.Query().Get("error")
-
-	if errParam != "" {
-		slog.Warn("Google OAuth returned error", "error", errParam)
-		http.Redirect(w, r, "/admin?tab=accounts&err="+url.QueryEscape("Google OAuth error: "+errParam), http.StatusSeeOther)
-		return
-	}
-
-	parsedState, err := s.stateManager.ValidateState(state)
-	if err != nil {
-		slog.Warn("Invalid OAuth state parameter", "err", err)
-		http.Redirect(w, r, "/admin?tab=accounts&err=Invalid+or+expired+OAuth+session.+Please+try+again.", http.StatusSeeOther)
-		return
-	}
-
-	if s.googleOAuth == nil {
-		http.Error(w, "Google OAuth not configured", http.StatusInternalServerError)
-		return
-	}
-
-	token, userInfo, err := s.googleOAuth.ExchangeCode(r.Context(), code)
-	if err != nil {
-		slog.Error("Failed to exchange Google OAuth code", "err", err)
-		http.Redirect(w, r, "/admin?tab=accounts&err="+url.QueryEscape("Failed to complete Google authentication: "+err.Error()), http.StatusSeeOther)
-		return
-	}
-
-	if parsedState.PersonID != "" {
 		people, _ := s.store.ListPeople(r.Context())
-		var targetPerson *models.Person
+		loginHint := ""
 		for _, p := range people {
-			if p.ID == parsedState.PersonID {
-				targetPerson = &p
+			if p.ID == personID {
+				loginHint = p.Email
 				break
 			}
 		}
+		authURL := s.msOAuth.AuthURLWithFlow(state, flow, loginHint)
+		http.Redirect(w, r, authURL, http.StatusSeeOther)
+		return
+	}
 
-		expectedEmail := ""
-		if targetPerson != nil {
-			expectedEmail = targetPerson.Email
+	http.Error(w, "provider not configured", http.StatusBadRequest)
+}
+
+func (s *Server) handleOAuthCallbackGoogle(w http.ResponseWriter, r *http.Request) {
+	if s.googleOAuth == nil {
+		http.Redirect(w, r, "/admin?tab=accounts&err=Google+OAuth+is+not+configured", http.StatusSeeOther)
+		return
+	}
+	if errParam := r.URL.Query().Get("error"); errParam != "" {
+		if errParam == "admin_policy_enforced" {
+			http.Redirect(w, r, "/admin?tab=accounts&err=Google+Workspace+admin+policy+blocked+access.+Please+ask+your+Google+Workspace+administrator+to+trust+this+app+in+admin.google.com+(Security+->+API+Controls).", http.StatusSeeOther)
+			return
 		}
+		if errParam == "access_denied" {
+			http.Redirect(w, r, "/admin?tab=accounts&err=Access+was+denied+or+cancelled+during+Google+sign-in.", http.StatusSeeOther)
+			return
+		}
+		errMsg := url.QueryEscape(fmt.Sprintf("Google sign-in error (%s)", errParam))
+		http.Redirect(w, r, "/admin?tab=accounts&err="+errMsg, http.StatusSeeOther)
+		return
+	}
+	code := r.URL.Query().Get("code")
+	stateStr := r.URL.Query().Get("state")
 
-		if strings.EqualFold(userInfo.Email, expectedEmail) {
-			slog.Info("OAuth account verified against person email", "email", userInfo.Email, "person_id", parsedState.PersonID)
-		} else if strings.HasSuffix(expectedEmail, "@example.com") {
-			slog.Info("Updating seeded placeholder account email to real Google identity", "old", expectedEmail, "new", userInfo.Email, "person_id", parsedState.PersonID)
-			if targetPerson != nil {
-				targetPerson.Email = userInfo.Email
-				if targetPerson.DisplayName == "Alex" || targetPerson.DisplayName == "Jordan" {
-					if userInfo.Name != "" {
-						targetPerson.DisplayName = userInfo.Name
+	parsedState, err := s.stateManager.VerifyState(stateStr)
+	if err != nil {
+		http.Redirect(w, r, "/admin?tab=accounts&err=Invalid+or+expired+OAuth+state", http.StatusSeeOther)
+		return
+	}
+
+	token, userInfo, err := s.googleOAuth.Exchange(r.Context(), code)
+	if err != nil {
+		slog.Error("Google OAuth exchange failed", "err", err)
+		http.Redirect(w, r, "/admin?tab=accounts&err=Google+authentication+failed", http.StatusSeeOther)
+		return
+	}
+
+	// CRITICAL REQUIREMENT: Strict Account Isolation Check!
+	// Retrieve expected email for the personID
+	people, _ := s.store.ListPeople(r.Context())
+	var expectedEmail string
+	for _, p := range people {
+		if p.ID == parsedState.PersonID {
+			expectedEmail = p.Email
+			break
+		}
+	}
+
+	if err := oauth.VerifyAccountIsolation(expectedEmail, userInfo.Email); err != nil {
+		if strings.HasSuffix(strings.ToLower(expectedEmail), "@example.com") {
+			// Gracefully adopt verified Google Workspace or Gmail email from setup placeholder
+			for _, p := range people {
+				if p.ID == parsedState.PersonID {
+					p.Email = userInfo.Email
+					if strings.Contains(p.DisplayName, "Member") || p.DisplayName == "Alex" || p.DisplayName == "Jordan" {
+						if userInfo.Name != "" {
+							p.DisplayName = userInfo.Name
+						}
 					}
-				}
-				if err := s.store.UpsertPerson(r.Context(), targetPerson); err != nil {
-					slog.Error("Failed to update placeholder person identity", "err", err)
+					_ = s.store.UpsertPerson(r.Context(), &p)
+					break
 				}
 			}
 		} else {
@@ -121,6 +130,7 @@ func (s *Server) handleOAuthCallbackGoogle(w http.ResponseWriter, r *http.Reques
 
 	accountID := fmt.Sprintf("acc-g-%s", userInfo.Sub)
 
+	// Save token securely in 0600 storage
 	if err := s.tokenStorage.Save(accountID, token); err != nil {
 		slog.Error("Failed to store Google OAuth token", "account_id", accountID, "err", err)
 		http.Redirect(w, r, "/admin?tab=accounts&err=Could+not+securely+store+Google+credentials", http.StatusSeeOther)
@@ -150,6 +160,7 @@ func (s *Server) handleOAuthCallbackGoogle(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Discover and register all calendars if flow was calendar
 	if parsedState.Flow == "calendar" {
 		name := userInfo.Name
 		if name == "" {
@@ -182,6 +193,7 @@ func (s *Server) handleOAuthCallbackGoogle(w http.ResponseWriter, r *http.Reques
 		}()
 	}
 
+	// Enable mail source if flow was mail
 	if parsedState.Flow == "mail" {
 		_ = s.store.UpsertMailSource(r.Context(), &models.MailSource{
 			ID:                fmt.Sprintf("ms-g-%s", userInfo.Sub),
@@ -209,70 +221,36 @@ func (s *Server) handleOAuthCallbackGoogle(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handleOAuthCallbackMicrosoft(w http.ResponseWriter, r *http.Request) {
-	state := r.URL.Query().Get("state")
-	code := r.URL.Query().Get("code")
-	errParam := r.URL.Query().Get("error")
-
-	if errParam != "" {
-		slog.Warn("Microsoft OAuth returned error", "error", errParam)
-		http.Redirect(w, r, "/admin?tab=accounts&err="+url.QueryEscape("Microsoft OAuth error: "+errParam), http.StatusSeeOther)
-		return
-	}
-
-	parsedState, err := s.stateManager.ValidateState(state)
-	if err != nil {
-		slog.Warn("Invalid OAuth state parameter", "err", err)
-		http.Redirect(w, r, "/admin?tab=accounts&err=Invalid+or+expired+OAuth+session.+Please+try+again.", http.StatusSeeOther)
-		return
-	}
-
 	if s.msOAuth == nil {
-		http.Error(w, "Microsoft OAuth not configured", http.StatusInternalServerError)
+		http.Redirect(w, r, "/admin?tab=accounts&err=Microsoft+OAuth+is+not+configured", http.StatusSeeOther)
 		return
 	}
-
-	token, err := s.msOAuth.ExchangeCode(r.Context(), code)
-	if err != nil {
-		slog.Error("Failed to exchange Microsoft OAuth code", "err", err)
-		http.Redirect(w, r, "/admin?tab=accounts&err="+url.QueryEscape("Failed to complete Microsoft authentication: "+err.Error()), http.StatusSeeOther)
-		return
-	}
-
-	if parsedState.PersonID != "" {
-		people, _ := s.store.ListPeople(r.Context())
-		var targetPerson *models.Person
-		for _, p := range people {
-			if p.ID == parsedState.PersonID {
-				targetPerson = &p
-				break
-			}
-		}
-
-		expectedEmail := ""
-		if targetPerson != nil {
-			expectedEmail = targetPerson.Email
-		}
-
-		if strings.EqualFold(token.Email, expectedEmail) {
-			slog.Info("OAuth account verified against person email", "email", token.Email, "person_id", parsedState.PersonID)
-		} else if strings.HasSuffix(expectedEmail, "@example.com") {
-			slog.Info("Updating seeded placeholder account email to real Microsoft identity", "old", expectedEmail, "new", token.Email, "person_id", parsedState.PersonID)
-			if targetPerson != nil {
-				targetPerson.Email = token.Email
-				if err := s.store.UpsertPerson(r.Context(), targetPerson); err != nil {
-					slog.Error("Failed to update placeholder person identity", "err", err)
-				}
-			}
-		} else {
-			slog.Error("OAuth cross-assignment attempted and prevented", "expected", expectedEmail, "authenticated", token.Email)
-			message := fmt.Sprintf("Account mismatch: authenticated as %s but expected %s. Cross-assignment prevented.", token.Email, expectedEmail)
-			http.Redirect(w, r, "/admin?tab=accounts&err="+url.QueryEscape(message), http.StatusSeeOther)
+	if errParam := r.URL.Query().Get("error"); errParam != "" {
+		if errParam == "access_denied" {
+			http.Redirect(w, r, "/admin?tab=accounts&err=Access+was+denied+or+cancelled+during+Microsoft+sign-in.", http.StatusSeeOther)
 			return
 		}
+		errMsg := url.QueryEscape(fmt.Sprintf("Microsoft sign-in error (%s)", errParam))
+		http.Redirect(w, r, "/admin?tab=accounts&err="+errMsg, http.StatusSeeOther)
+		return
+	}
+	code := r.URL.Query().Get("code")
+	stateStr := r.URL.Query().Get("state")
+
+	parsedState, err := s.stateManager.VerifyState(stateStr)
+	if err != nil {
+		http.Redirect(w, r, "/admin?tab=accounts&err=Invalid+or+expired+OAuth+state", http.StatusSeeOther)
+		return
 	}
 
-	accountID := fmt.Sprintf("acc-ms-%s", token.Email)
+	token, profile, err := s.msOAuth.Exchange(r.Context(), code)
+	if err != nil {
+		slog.Error("Microsoft OAuth exchange failed", "err", err)
+		http.Redirect(w, r, "/admin?tab=accounts&err=Microsoft+authentication+failed", http.StatusSeeOther)
+		return
+	}
 
+	accountID := fmt.Sprintf("acc-ms-%s", profile.ID)
 	if err := s.tokenStorage.Save(accountID, token); err != nil {
 		slog.Error("Failed to store Microsoft OAuth token", "account_id", accountID, "err", err)
 		http.Redirect(w, r, "/admin?tab=accounts&err=Could+not+securely+store+Microsoft+credentials", http.StatusSeeOther)
@@ -283,9 +261,9 @@ func (s *Server) handleOAuthCallbackMicrosoft(w http.ResponseWriter, r *http.Req
 		ID:                  accountID,
 		PersonID:            parsedState.PersonID,
 		Provider:            "microsoft",
-		ProviderAccountID:   token.Email,
+		ProviderAccountID:   profile.ID,
 		VerifiedEmail:       token.Email,
-		Scopes:              "Calendars.ReadWrite",
+		Scopes:              "User.Read Calendars.ReadWrite Mail.Read",
 		CredentialReference: accountID,
 		ExpiresAt:           token.Expiry,
 		Status:              "active",
@@ -371,6 +349,7 @@ func (s *Server) handleAdminAppleConnect(w http.ResponseWriter, r *http.Request)
 		verifiedEmail = appleID
 	}
 
+	// Preflight validation of Apple calendar feed or CalDAV credentials
 	appleClient := apple.NewAppleCalendarClient("", nil)
 	if _, err := appleClient.ListCalendars(r.Context(), credential); err != nil {
 		if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "invalid apple credentials") {
