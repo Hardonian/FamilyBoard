@@ -21,6 +21,7 @@ import (
 	"github.com/Hardonian/FamilyBoard/internal/config"
 	"github.com/Hardonian/FamilyBoard/internal/db"
 	"github.com/Hardonian/FamilyBoard/internal/hardware"
+	"github.com/Hardonian/FamilyBoard/internal/i18n"
 	"github.com/Hardonian/FamilyBoard/internal/mail/parser"
 	"github.com/Hardonian/FamilyBoard/internal/oauth"
 	"github.com/Hardonian/FamilyBoard/internal/queue"
@@ -107,6 +108,7 @@ func (s *Server) initTemplates() error {
 			return a * b
 		},
 		"asset": assetURL,
+		"t":     func(key string) string { return i18n.T(s.cfg.Server.Locale, key) },
 		"conflictSummary": func(payload string) string {
 			var value map[string]interface{}
 			if json.Unmarshal([]byte(payload), &value) != nil {
@@ -205,6 +207,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /admin/backup/download", s.requireAuth(s.handleAdminBackupDownload))
 	s.mux.HandleFunc("GET /admin/diagnostics", s.requireAuth(s.handleAdminDiagnosticsDownload))
 	s.mux.HandleFunc("GET /admin/privacy/export", s.requireAuth(s.handleAdminPrivacyExport))
+	s.mux.HandleFunc("POST /admin/privacy/retention", s.requireAuth(s.requireCSRF(s.handleAdminPrivacyRetention)))
 	s.mux.HandleFunc("POST /admin/devices/{id}/revoke", s.requireAuth(s.requireCSRF(s.handleAdminDeviceRevoke)))
 	s.mux.HandleFunc("POST /admin/devices/revoke-all", s.requireAuth(s.requireCSRF(s.handleAdminDevicesRevokeAll)))
 

@@ -53,6 +53,43 @@ func (s *Store) ConsumePairingCode(ctx context.Context, tokenHash string) (bool,
 	return consumed, nil
 }
 
+// RedeemPairingCode atomically consumes a one-time code and creates the
+// corresponding device. A failed insert leaves the code unused for retry.
+func (s *Store) RedeemPairingCode(ctx context.Context, codeHash string, device *models.PairedDevice) (bool, error) {
+	if device == nil {
+		return false, fmt.Errorf("paired device is required")
+	}
+	redeemed := false
+	err := s.db.WithTx(ctx, func(tx *sql.Tx) error {
+		now := time.Now()
+		result, err := tx.ExecContext(ctx, `UPDATE pairing_codes SET used_at = ?
+			WHERE token_hash = ? AND used_at IS NULL AND expires_at >= ?;`, now, codeHash, now)
+		if err != nil {
+			return err
+		}
+		rows, err := result.RowsAffected()
+		if err != nil || rows != 1 {
+			return err
+		}
+		if device.CreatedAt.IsZero() {
+			device.CreatedAt = now
+		}
+		device.LastSeenAt = now
+		if _, err := tx.ExecContext(ctx, `INSERT INTO paired_devices
+			(id, name, token_hash, user_agent, created_at, last_seen_at, revoked_at)
+			VALUES (?, ?, ?, ?, ?, ?, NULL);`, device.ID, device.Name, device.TokenHash,
+			device.UserAgent, device.CreatedAt, device.LastSeenAt); err != nil {
+			return err
+		}
+		redeemed = true
+		return nil
+	})
+	if err != nil {
+		return false, fmt.Errorf("redeem pairing code: %w", err)
+	}
+	return redeemed, nil
+}
+
 func (s *Store) CreatePairedDevice(ctx context.Context, device *models.PairedDevice) error {
 	if device == nil {
 		return fmt.Errorf("paired device is required")
@@ -211,18 +248,30 @@ func (s *Store) UpsertPerson(ctx context.Context, p *models.Person) error {
 }
 
 func (s *Store) DeletePerson(ctx context.Context, id string) error {
-	result, err := s.db.ExecContext(ctx, "DELETE FROM people WHERE id = ?;", id)
-	if err != nil {
-		return fmt.Errorf("delete person: %w", err)
-	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("check person deletion: %w", err)
-	}
-	if rows != 1 {
-		return fmt.Errorf("family member not found")
-	}
-	return nil
+	return s.db.WithTx(ctx, func(tx *sql.Tx) error {
+		calendarIDs := `SELECT id FROM calendars WHERE oauth_account_id IN (SELECT id FROM oauth_accounts WHERE person_id = ?)`
+		if _, err := tx.ExecContext(ctx, "DELETE FROM mutation_queue WHERE calendar_id IN ("+calendarIDs+");", id); err != nil {
+			return fmt.Errorf("delete member mutation queue: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM conflicts WHERE local_event_id IN (SELECT id FROM events WHERE calendar_id IN ("+calendarIDs+"));", id); err != nil {
+			return fmt.Errorf("delete member conflicts: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, "UPDATE event_candidates SET suggested_calendar_id = NULL WHERE suggested_calendar_id IN ("+calendarIDs+");", id); err != nil {
+			return fmt.Errorf("detach member candidates: %w", err)
+		}
+		result, err := tx.ExecContext(ctx, "DELETE FROM people WHERE id = ?;", id)
+		if err != nil {
+			return fmt.Errorf("delete person: %w", err)
+		}
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("check person deletion: %w", err)
+		}
+		if rows != 1 {
+			return fmt.Errorf("family member not found")
+		}
+		return nil
+	})
 }
 
 // --- OAuth Accounts ---
@@ -569,6 +618,31 @@ func (s *Store) ListEventsRange(ctx context.Context, start, end time.Time) ([]mo
 		}
 		e.AllDay = (allDay == 1)
 		events = append(events, e)
+	}
+	return events, rows.Err()
+}
+
+func (s *Store) ListAllEventsForExport(ctx context.Context) ([]models.Event, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, provider, provider_event_id, provider_uid, calendar_id, etag, version, title, description, location,
+		start_at, end_at, timezone, all_day, status, recurrence_rule, recurrence_parent, organizer, source,
+		remote_created_at, remote_updated_at, local_created_at, local_updated_at, deleted_at
+		FROM events ORDER BY start_at ASC;`)
+	if err != nil {
+		return nil, fmt.Errorf("list all events for export: %w", err)
+	}
+	defer rows.Close()
+	var events []models.Event
+	for rows.Next() {
+		var event models.Event
+		var allDay int
+		if err := rows.Scan(&event.ID, &event.Provider, &event.ProviderEventID, &event.ProviderUID, &event.CalendarID, &event.ETag, &event.Version,
+			&event.Title, &event.Description, &event.Location, &event.StartAt, &event.EndAt, &event.Timezone, &allDay, &event.Status,
+			&event.RecurrenceRule, &event.RecurrenceParent, &event.Organizer, &event.Source, &event.RemoteCreatedAt, &event.RemoteUpdatedAt,
+			&event.LocalCreatedAt, &event.LocalUpdatedAt, &event.DeletedAt); err != nil {
+			return nil, fmt.Errorf("scan export event: %w", err)
+		}
+		event.AllDay = allDay == 1
+		events = append(events, event)
 	}
 	return events, rows.Err()
 }
@@ -1201,6 +1275,35 @@ func (s *Store) SetSetting(ctx context.Context, key, val string) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at;`, key, val, time.Now())
 	return err
+}
+
+func (s *Store) ApplyPrivacyRetention(ctx context.Context, deletedEventDays, auditDays int) (int64, int64, error) {
+	var removedEvents, removedAudit int64
+	err := s.db.WithTx(ctx, func(tx *sql.Tx) error {
+		cutoff := time.Now().AddDate(0, 0, -deletedEventDays)
+		if _, err := tx.ExecContext(ctx, `DELETE FROM conflicts WHERE local_event_id IN (
+			SELECT id FROM events WHERE deleted_at IS NOT NULL AND deleted_at < ?
+			AND NOT EXISTS (SELECT 1 FROM mutation_queue q WHERE q.local_event_id = events.id AND q.state IN ('pending','retry','processing'))
+		);`, cutoff); err != nil {
+			return err
+		}
+		eventResult, err := tx.ExecContext(ctx, `DELETE FROM events WHERE deleted_at IS NOT NULL AND deleted_at < ?
+			AND NOT EXISTS (SELECT 1 FROM mutation_queue q WHERE q.local_event_id = events.id AND q.state IN ('pending','retry','processing'));`, cutoff)
+		if err != nil {
+			return err
+		}
+		removedEvents, _ = eventResult.RowsAffected()
+		auditResult, err := tx.ExecContext(ctx, "DELETE FROM audit_log WHERE timestamp < ?;", time.Now().AddDate(0, 0, -auditDays))
+		if err != nil {
+			return err
+		}
+		removedAudit, _ = auditResult.RowsAffected()
+		return nil
+	})
+	if err != nil {
+		return 0, 0, fmt.Errorf("apply privacy retention: %w", err)
+	}
+	return removedEvents, removedAudit, nil
 }
 
 // --- Sessions ---

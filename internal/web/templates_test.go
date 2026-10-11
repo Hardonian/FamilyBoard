@@ -12,6 +12,7 @@ func TestEmbeddedTemplatesParse(t *testing.T) {
 	funcs := template.FuncMap{
 		"mul":             func(a, b float64) float64 { return a * b },
 		"asset":           func(path string) string { return path },
+		"t":               func(key string) string { return key },
 		"conflictSummary": func(payload string) string { return payload },
 	}
 	for _, page := range []string{"kiosk.html", "login.html", "setup.html", "admin.html"} {

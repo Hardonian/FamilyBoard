@@ -75,7 +75,7 @@ Every HTTP response emitted by `FamilyBoard` includes strict, modern security he
 
 - **Database Filesystem Location:** `/var/lib/familyboard/familyboard.db` owned by unprivileged system user `familyboard:familyboard` with mode `0640`.
 - **Token Directory:** `/var/lib/familyboard/tokens/` owned by `familyboard:familyboard` with mode `0700`.
-- **Photo Library:** uploads are decoded before acceptance, capped at 32 MiB/40 megapixels/12,000 pixels per side, constrained by a 1 GiB/2,000-file library quota, and stored under random private filenames.
+- **Photo Library:** uploads are fully decoded and freshly re-encoded to strip EXIF/GPS and embedded metadata, capped at 32 MiB/40 megapixels/12,000 pixels per side, constrained by a 1 GiB/2,000-file library quota, and stored under random private filenames with mode `0600`.
 - **Configuration File:** `/etc/familyboard/config.toml` owned by `root:familyboard` with mode `0640`.
 - **Log Privacy:** Passwords, OAuth tokens, and client secrets are automatically redacted by the diagnostics scrubber before report export.
 

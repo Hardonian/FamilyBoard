@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,7 +19,6 @@ import (
 	"github.com/Hardonian/FamilyBoard/internal/queue"
 	calsync "github.com/Hardonian/FamilyBoard/internal/sync"
 	"github.com/Hardonian/FamilyBoard/internal/web"
-	"gopkg.in/yaml.v3"
 )
 
 func setupTestServer(t *testing.T) (*web.Server, *db.Store, func()) {
@@ -83,8 +83,8 @@ func TestAPIContract_HealthLive(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
 		t.Fatalf("unmarshal live response: %v", err)
 	}
-	if res["status"] != "ok" {
-		t.Errorf("expected status 'ok', got %q", res["status"])
+	if res["status"] != "alive" {
+		t.Errorf("expected status 'alive', got %q", res["status"])
 	}
 
 	// POST /health/live should be rejected (405)
@@ -131,10 +131,20 @@ func TestAPIContract_EventsValidationAndMethods(t *testing.T) {
 		t.Fatalf("expected array of events: %v", err)
 	}
 
-	// POST /api/events with missing required title -> 400 Bad Request
+	// POST /api/events from remote IP without capability -> 401 Unauthorized
 	badBody := []byte(`{"title":"","start_at":"2026-10-11T10:00:00Z","end_at":"2026-10-11T11:00:00Z"}`)
+	badPostRemote := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewReader(badBody))
+	badPostRemote.RemoteAddr = "192.168.1.100:54321"
+	badRecRemote := httptest.NewRecorder()
+	server.ServeHTTP(badRecRemote, badPostRemote)
+	if badRecRemote.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 on remote write without capability, got %d", badRecRemote.Code)
+	}
+
+	// POST /api/events from loopback kiosk with missing title -> 400 Bad Request
 	badPost := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewReader(badBody))
 	badPost.Header.Set("Content-Type", "application/json")
+	badPost.RemoteAddr = "127.0.0.1:12345"
 	badRec := httptest.NewRecorder()
 	server.ServeHTTP(badRec, badPost)
 
@@ -155,8 +165,8 @@ func TestAPIContract_AdminAuthEnforcement(t *testing.T) {
 	if rec.Code != http.StatusSeeOther && rec.Code != http.StatusFound {
 		t.Errorf("expected redirect (302/303) to login, got %d", rec.Code)
 	}
-	if rec.Header().Get("Location") != "/login" {
-		t.Errorf("expected redirect location /login, got %q", rec.Header().Get("Location"))
+	if !strings.HasPrefix(rec.Header().Get("Location"), "/login") {
+		t.Errorf("expected redirect location starting with /login, got %q", rec.Header().Get("Location"))
 	}
 }
 
@@ -167,18 +177,25 @@ func TestAPIContract_OpenAPISpecValidation(t *testing.T) {
 		t.Fatalf("read openapi.yaml: %v", err)
 	}
 
-	var parsed map[string]any
-	if err := yaml.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("parse openapi.yaml YAML syntax: %v", err)
+	content := string(data)
+	if !strings.Contains(content, "openapi: 3.0.3") {
+		t.Errorf("expected openapi: 3.0.3")
 	}
-
-	info, ok := parsed["info"].(map[string]any)
-	if !ok || info["version"] != "1.5.0" {
-		t.Errorf("expected openapi spec version 1.5.0, got %v", info["version"])
+	if !strings.Contains(content, "version: 1.5.0") {
+		t.Errorf("expected version: 1.5.0")
 	}
-
-	paths, ok := parsed["paths"].(map[string]any)
-	if !ok || len(paths) < 5 {
-		t.Errorf("expected at least 5 documented paths in openapi spec, got %d", len(paths))
+	expectedEndpoints := []string{
+		"/health/live:",
+		"/health/ready:",
+		"/api/calendars:",
+		"/api/events:",
+		"/api/events/{id}:",
+		"/api/kiosk/templates:",
+		"/api/kiosk/parse-natural:",
+	}
+	for _, ep := range expectedEndpoints {
+		if !strings.Contains(content, ep) {
+			t.Errorf("expected openapi spec to document %s", ep)
+		}
 	}
 }

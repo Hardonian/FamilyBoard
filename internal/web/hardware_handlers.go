@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
-	_ "image/jpeg"
-	_ "image/png"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"net"
 	"net/http"
@@ -524,6 +524,11 @@ func (s *Server) handleAPIUploadPhoto(w http.ResponseWriter, r *http.Request) {
 		writeHardwareError(w, http.StatusBadRequest, "could not prepare image")
 		return
 	}
+	decodedImage, _, err := image.Decode(file)
+	if err != nil {
+		writeHardwareError(w, http.StatusBadRequest, "could not decode the complete image")
+		return
+	}
 
 	photosDir := s.getPhotosDir()
 	if err := os.MkdirAll(photosDir, 0755); err != nil {
@@ -551,7 +556,9 @@ func (s *Server) handleAPIUploadPhoto(w http.ResponseWriter, r *http.Request) {
 		writeHardwareError(w, http.StatusInsufficientStorage, "photo library quota reached; remove photos before uploading more")
 		return
 	}
-	canonicalExt := map[string]string{"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[contentType]
+	// Normalize to a fresh encoding so EXIF/GPS/comments and embedded
+	// thumbnails from the source file are never retained. WebP becomes PNG.
+	canonicalExt := map[string]string{"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".png"}[contentType]
 	randomName, err := auth.GenerateSecureToken(16)
 	if err != nil {
 		writeHardwareError(w, http.StatusInternalServerError, "failed to allocate a private photo name")
@@ -560,17 +567,33 @@ func (s *Server) handleAPIUploadPhoto(w http.ResponseWriter, r *http.Request) {
 	storedName := randomName + canonicalExt
 	dstPath := filepath.Join(photosDir, storedName)
 
-	dst, err := os.OpenFile(dstPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	dst, err := os.OpenFile(dstPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		writeHardwareError(w, http.StatusInternalServerError, "failed to save photo")
 		return
 	}
 	defer dst.Close()
 
-	if _, err := io.Copy(dst, io.LimitReader(file, maxPhotoUploadBytes+1)); err != nil {
+	if canonicalExt == ".jpg" {
+		err = jpeg.Encode(dst, decodedImage, &jpeg.Options{Quality: 90})
+	} else {
+		err = png.Encode(dst, decodedImage)
+	}
+	if err != nil {
 		_ = dst.Close()
 		_ = os.Remove(dstPath)
-		writeHardwareError(w, http.StatusInternalServerError, "failed to write photo content")
+		writeHardwareError(w, http.StatusInternalServerError, "failed to normalize photo content")
+		return
+	}
+	if err := dst.Close(); err != nil {
+		_ = os.Remove(dstPath)
+		writeHardwareError(w, http.StatusInternalServerError, "failed to finalize photo")
+		return
+	}
+	storedInfo, err := os.Stat(dstPath)
+	if err != nil || libraryBytes+storedInfo.Size() > maxPhotoLibraryBytes {
+		_ = os.Remove(dstPath)
+		writeHardwareError(w, http.StatusInsufficientStorage, "normalized photo would exceed the library quota")
 		return
 	}
 
@@ -578,7 +601,7 @@ func (s *Server) handleAPIUploadPhoto(w http.ResponseWriter, r *http.Request) {
 	_ = s.store.RecordAudit(r.Context(), &models.AuditEntry{
 		ID: models.NewID("aud"), Actor: "household_device", Action: "photo_upload",
 		ResourceType: "photo", ResourceID: storedName,
-		Details:   fmt.Sprintf("Uploaded validated %s photo (%dx%d, %d bytes)", contentType, imageConfig.Width, imageConfig.Height, header.Size),
+		Details:   fmt.Sprintf("Uploaded and metadata-stripped %s photo (%dx%d, %d bytes stored)", contentType, imageConfig.Width, imageConfig.Height, storedInfo.Size()),
 		IPAddress: remoteIP(r),
 	})
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{

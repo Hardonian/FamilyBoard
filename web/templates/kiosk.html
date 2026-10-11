@@ -25,10 +25,10 @@
     </div>
 
     <div class="view-selector" role="group" aria-label="Calendar view">
-      <button class="view-btn active" data-view="hybrid" id="btn-view-month" aria-pressed="true" title="Month calendar view (Key: M)">Month <kbd class="btn-kbd-badge" aria-hidden="true">M</kbd></button>
-      <button class="view-btn" data-view="week" id="btn-view-week" aria-pressed="false" title="7-day week view (Key: W)">Week <kbd class="btn-kbd-badge" aria-hidden="true">W</kbd></button>
-      <button class="view-btn" data-view="schedule" id="btn-view-schedule" aria-pressed="false" title="Schedule agenda view (Key: S)">Schedule <kbd class="btn-kbd-badge" aria-hidden="true">S</kbd></button>
-      <button class="view-btn" data-view="today" id="btn-view-today" aria-pressed="false" title="Today schedule view (Key: D)">Day <kbd class="btn-kbd-badge" aria-hidden="true">D</kbd></button>
+      <button class="view-btn active" data-view="hybrid" id="btn-view-month" aria-pressed="true" title="Month calendar view (Key: M)">{{t "view.month"}} <kbd class="btn-kbd-badge" aria-hidden="true">M</kbd></button>
+      <button class="view-btn" data-view="week" id="btn-view-week" aria-pressed="false" title="7-day week view (Key: W)">{{t "view.week"}} <kbd class="btn-kbd-badge" aria-hidden="true">W</kbd></button>
+      <button class="view-btn" data-view="schedule" id="btn-view-schedule" aria-pressed="false" title="Schedule agenda view (Key: S)">{{t "view.schedule"}} <kbd class="btn-kbd-badge" aria-hidden="true">S</kbd></button>
+      <button class="view-btn" data-view="today" id="btn-view-today" aria-pressed="false" title="Today schedule view (Key: D)">{{t "view.day"}} <kbd class="btn-kbd-badge" aria-hidden="true">D</kbd></button>
     </div>
 
     <button type="button" id="btn-toggle-photo-frame" class="btn btn-secondary btn-frame-toggle" title="FotoCube Ambient Photo Frame (Key: P)" aria-label="Toggle ambient photo frame">🖼️ Frame <kbd class="btn-kbd-badge" aria-hidden="true">P</kbd></button>
@@ -139,19 +139,19 @@
 <nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="Mobile Navigation">
   <button type="button" class="mobile-nav-btn active" data-view="hybrid" id="btn-m-month" aria-label="Month View">
     <span class="mobile-nav-icon">📅</span>
-    <span class="mobile-nav-label">Month</span>
+    <span class="mobile-nav-label">{{t "view.month"}}</span>
   </button>
   <button type="button" class="mobile-nav-btn" data-view="week" id="btn-m-week" aria-label="Week View">
     <span class="mobile-nav-icon">📆</span>
-    <span class="mobile-nav-label">Week</span>
+    <span class="mobile-nav-label">{{t "view.week"}}</span>
   </button>
   <button type="button" class="mobile-nav-btn" data-view="schedule" id="btn-m-schedule" aria-label="Schedule Agenda View">
     <span class="mobile-nav-icon">📋</span>
-    <span class="mobile-nav-label">Schedule</span>
+    <span class="mobile-nav-label">{{t "view.schedule"}}</span>
   </button>
   <button type="button" class="mobile-nav-btn" data-view="today" id="btn-m-today" aria-label="Day View">
     <span class="mobile-nav-icon">☀️</span>
-    <span class="mobile-nav-label">Day</span>
+    <span class="mobile-nav-label">{{t "view.day"}}</span>
   </button>
 </nav>
 

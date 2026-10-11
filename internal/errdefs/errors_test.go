@@ -29,6 +29,9 @@ func TestErrorTaxonomy(t *testing.T) {
 	if errdefs.HTTPStatusCode(authErr) != http.StatusUnauthorized {
 		t.Errorf("expected 401 for auth error, got %d", errdefs.HTTPStatusCode(authErr))
 	}
+	if authErr.Error() != "[authentication] invalid or expired oauth token" {
+		t.Errorf("unexpected error string: %s", authErr.Error())
+	}
 
 	valErr := errdefs.Validation("start time must precede end time")
 	if !errdefs.IsValidation(valErr) {
@@ -60,5 +63,19 @@ func TestErrorTaxonomy(t *testing.T) {
 	}
 	if !errdefs.IsRetryable(unavailErr) {
 		t.Errorf("unavailable should be treated as retryable")
+	}
+
+	// Boundary and negative conditions
+	if errdefs.IsRetryable(root) || errdefs.IsAuthentication(root) || errdefs.IsValidation(root) || errdefs.IsConflict(root) || errdefs.IsPermanent(root) || errdefs.IsUnavailable(root) {
+		t.Errorf("generic error should not match typed checks")
+	}
+	if _, ok := errdefs.AsTypedError(nil); ok {
+		t.Errorf("nil error should not be typed error")
+	}
+	if errdefs.HTTPStatusCode(nil) != http.StatusOK {
+		t.Errorf("nil error should yield 200 OK")
+	}
+	if errdefs.HTTPStatusCode(root) != http.StatusInternalServerError {
+		t.Errorf("generic error should yield 500")
 	}
 }

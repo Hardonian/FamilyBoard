@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -90,7 +91,7 @@ func (s *Server) handleAdminPrivacyExport(w http.ResponseWriter, r *http.Request
 	people, _ := s.store.ListPeople(ctx)
 	accounts, _ := s.store.ListOAuthAccounts(ctx)
 	calendars, _ := s.store.ListCalendars(ctx)
-	events, _ := s.store.ListEventsRange(ctx, time.Now().AddDate(-10, 0, 0), time.Now().AddDate(10, 0, 0))
+	events, _ := s.store.ListAllEventsForExport(ctx)
 	audit, _ := s.store.ListAuditLogs(ctx, 10000, 0)
 	for i := range accounts {
 		accounts[i].CredentialReference = "[REDACTED]"
@@ -138,4 +139,28 @@ func (s *Server) handleAPISystemStatus(w http.ResponseWriter, r *http.Request) {
 		"failed_mutations": dead, "calendar_count": len(calendars), "oldest_last_sync": oldestSync,
 		"calendars": calendars,
 	})
+}
+
+func (s *Server) handleAdminPrivacyRetention(w http.ResponseWriter, r *http.Request) {
+	eventDays, eventErr := strconv.Atoi(r.FormValue("deleted_event_days"))
+	auditDays, auditErr := strconv.Atoi(r.FormValue("audit_days"))
+	if eventErr != nil || auditErr != nil || eventDays < 7 || eventDays > 3650 || auditDays < 30 || auditDays > 3650 {
+		http.Redirect(w, r, "/admin?tab=privacy&err=Retention+must+be+7-3650+days+for+deleted+events+and+30-3650+days+for+audit+history", http.StatusSeeOther)
+		return
+	}
+	if err := s.store.SetSetting(r.Context(), "deleted_event_retention_days", strconv.Itoa(eventDays)); err != nil {
+		http.Redirect(w, r, "/admin?tab=privacy&err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+	if err := s.store.SetSetting(r.Context(), "audit_retention_days", strconv.Itoa(auditDays)); err != nil {
+		http.Redirect(w, r, "/admin?tab=privacy&err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+	removedEvents, removedAudit, err := s.store.ApplyPrivacyRetention(r.Context(), eventDays, auditDays)
+	if err != nil {
+		http.Redirect(w, r, "/admin?tab=privacy&err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+	s.recordAudit(r, "privacy_retention", "household", "local", fmt.Sprintf("Retention updated; removed %d deleted events and %d old audit records", removedEvents, removedAudit))
+	http.Redirect(w, r, "/admin?tab=privacy&msg=Retention+policy+saved+and+applied", http.StatusSeeOther)
 }

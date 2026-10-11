@@ -10,7 +10,7 @@ else
     EXE_EXT :=
 endif
 
-.PHONY: all fmt fmt-check vet lint staticcheck vuln security-check tools-check verify-mod verify-tidy check-version check-js check-runtime-deps check-powershell check-systemd test test-race build build-arm64 package-arm64 package-all pi-bootstrap-check release-check release-package clean
+.PHONY: all fmt fmt-check vet lint staticcheck vuln security-check tools-check verify-mod verify-tidy check-version check-js check-runtime-deps check-powershell check-systemd test test-race test-browser build build-arm64 package-arm64 package-all pi-bootstrap-check release-check release-package clean
 
 VERSION ?= $(strip $(file <VERSION))
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
@@ -53,7 +53,13 @@ check-version:
 check-js:
 	node --check web/static/js/kiosk.js
 	node --check web/static/js/admin.js
+	node --check web/static/js/setup.js
 	node --check web/static/sw.js
+
+test-browser:
+	npm ci
+	npx playwright install chromium
+	npm run test:e2e
 
 check-runtime-deps:
 	@go list -deps ./cmd/familyboard | grep -qx 'time/tzdata' || { echo "ERROR: standalone daemon must embed time/tzdata." >&2; exit 1; }

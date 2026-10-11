@@ -115,10 +115,6 @@ func (s *Server) generatePairingToken(ctx context.Context, ttl time.Duration) (s
 // redeemPairingToken consumes a one-time code and provisions a separately
 // revocable device capability.
 func (s *Server) redeemPairingToken(w http.ResponseWriter, r *http.Request, token string) (bool, error) {
-	consumed, err := s.store.ConsumePairingCode(r.Context(), auth.HashToken(token))
-	if err != nil || !consumed {
-		return consumed, err
-	}
 	deviceToken, err := auth.GenerateSecureToken(32)
 	if err != nil {
 		return false, err
@@ -136,7 +132,8 @@ func (s *Server) redeemPairingToken(w http.ResponseWriter, r *http.Request, toke
 	}
 	device := &models.PairedDevice{ID: models.NewID("device"), Name: deviceName,
 		TokenHash: auth.HashToken(deviceToken), UserAgent: userAgent}
-	if err := s.store.CreatePairedDevice(r.Context(), device); err != nil {
+	redeemed, err := s.store.RedeemPairingCode(r.Context(), auth.HashToken(token), device)
+	if err != nil || !redeemed {
 		return false, err
 	}
 	s.issueMobileKioskCapabilityCookie(w, deviceToken)

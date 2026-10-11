@@ -454,8 +454,10 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	accounts, _ := s.store.ListOAuthAccounts(ctx)
 	accountsMap := make(map[string]models.OAuthAccount)
+	accountsByPerson := make(map[string][]models.OAuthAccount)
 	for _, a := range accounts {
 		accountsMap[a.PersonID] = a
+		accountsByPerson[a.PersonID] = append(accountsByPerson[a.PersonID], a)
 	}
 
 	providerMap := make(map[string]string)
@@ -474,6 +476,14 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	activeEventCount, _ := s.store.CountActiveEvents(ctx)
 	conflicts, _ := s.store.ListPendingConflicts(ctx)
 	pairedDevices, _ := s.store.ListPairedDevices(ctx)
+	deletedEventRetention, _ := s.store.GetSetting(ctx, "deleted_event_retention_days")
+	if deletedEventRetention == "" {
+		deletedEventRetention = "365"
+	}
+	auditRetention, _ := s.store.GetSetting(ctx, "audit_retention_days")
+	if auditRetention == "" {
+		auditRetention = "730"
+	}
 	var auditEntries []models.AuditEntry
 	if tab == "audit" {
 		auditEntries, _ = s.store.ListAuditLogs(ctx, 100, 0)
@@ -504,6 +514,7 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		"People":                people,
 		"PeopleMap":             peopleMap,
 		"AccountsMap":           accountsMap,
+		"AccountsByPerson":      accountsByPerson,
 		"ProviderMap":           providerMap,
 		"Calendars":             calendars,
 		"MailSources":           mailSources,
@@ -511,6 +522,8 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		"TrustedSenders":        trustedSenders,
 		"Conflicts":             conflicts,
 		"PairedDevices":         pairedDevices,
+		"DeletedEventRetention": deletedEventRetention,
+		"AuditRetention":        auditRetention,
 		"AuditEntries":          auditEntries,
 		"Candidates":            candidates,
 		"QueueItems":            queueItems,
