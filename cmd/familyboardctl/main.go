@@ -54,6 +54,8 @@ func main() {
 		runUpdate(os.Args[2:])
 	case "os-update":
 		runOSUpdate()
+	case "generate-cert":
+		runGenerateCert(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command %q\n\n", subcmd)
 		printHelp()
@@ -77,6 +79,7 @@ func printHelp() {
 	fmt.Println("  repair        Verify and repair permissions, directories, and DB indexes")
 	fmt.Println("  update        Atomically replace the daemon and retain a rollback copy")
 	fmt.Println("  os-update     Perform supported same-major OS package maintenance")
+	fmt.Println("  generate-cert Generate local LAN TLS certificate and private key")
 }
 
 func runStatus() {

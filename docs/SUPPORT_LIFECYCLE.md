@@ -34,12 +34,15 @@ The FamilyBoard interactive frontend runs in two operational modes: Dedicated Ki
 ## 3. Release Lifecycle & Maintenance Cadence
 
 ### Release Versioning
+
 FamilyBoard adheres to Semantic Versioning (`MAJOR.MINOR.PATCH`):
+
 - **MAJOR** (`v2.0.0`): Breaking changes in database schema requiring non-automated migration, architectural shifts in authentication, or hardware deprecation.
 - **MINOR** (`v1.5.0`): New capabilities, provider updates (e.g. Microsoft Graph API revisions), hardware integrations, and performance improvements with forward-compatible database migrations.
 - **PATCH** (`v1.5.1`): Bug fixes, security patches, upstream dependency updates with zero schema changes.
 
 ### Support Windows
+
 - **Active Release (`Current`)**: Full feature updates, bug fixes, and security patches.
 - **Previous Minor (`N-1`)**: Critical security vulnerabilities and major bug fixes supported for 6 months post-supersession.
 - **Long-Term Appliance Maintenance**: Each minor release receives at least 12 months of backward database forward-migration qualification.
@@ -49,6 +52,7 @@ FamilyBoard adheres to Semantic Versioning (`MAJOR.MINOR.PATCH`):
 ## 4. End-of-Life (EOL) Policy & Appliance Survivability
 
 FamilyBoard is built for household permanence and digital sovereignty:
+
 1. **Zero Cloud Deprecation Kill-Switches**: If the FamilyBoard project ceases development or internet connectivity is disconnected, appliances continue serving sovereign local calendars indefinitely.
 2. **Local Data Portability**: Users can export full household records via `/admin/privacy/export` or snapshot databases via `/admin/backup/download` at any point in the appliance lifecycle.
 3. **Database Longevity**: All storage is plain SQLite3 adhering to strict backwards-compatible forward migrations (`migrations/*.sql`).

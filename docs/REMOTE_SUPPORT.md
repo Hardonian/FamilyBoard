@@ -48,6 +48,7 @@ stateDiagram-v2
 ## 4. Household Transparency & Audit Logging
 
 Every interaction during a support session is recorded to the immutable local audit log:
+
 - Timestamp of session initiation and termination
 - Authorized technician identity or ticket number
 - Diagnostic commands executed
