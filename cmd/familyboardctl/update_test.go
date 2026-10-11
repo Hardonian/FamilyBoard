@@ -111,4 +111,3 @@ func TestPrintUpdateStatus(t *testing.T) {
 	PrintUpdateStatus(string(ChannelBeta))
 	PrintUpdateStatus(string(ChannelDev))
 }
-
