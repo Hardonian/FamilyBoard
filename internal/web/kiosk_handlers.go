@@ -48,6 +48,10 @@ func (s *Server) handleKiosk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	calendars, _ := s.store.ListDisplayCalendars(r.Context())
+	if len(calendars) == 0 {
+		_ = s.store.EnsureDefaultHouseholdCalendar(r.Context())
+		calendars, _ = s.store.ListDisplayCalendars(r.Context())
+	}
 	people, _ := s.store.ListPeople(r.Context())
 	templates, _ := s.store.ListQuickTemplates(r.Context())
 
@@ -96,6 +100,11 @@ func (s *Server) handleAPICalendars(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Failed to list kiosk calendars", "err", err)
 		writeHardwareError(w, http.StatusInternalServerError, "failed to load calendars")
 		return
+	}
+
+	if len(calendars) == 0 {
+		_ = s.store.EnsureDefaultHouseholdCalendar(r.Context())
+		calendars, _ = s.store.ListDisplayCalendars(r.Context())
 	}
 
 	w.Header().Set("Content-Type", "application/json")

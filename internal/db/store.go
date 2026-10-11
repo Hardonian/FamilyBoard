@@ -345,6 +345,73 @@ func (s *Store) UpdateCalendarSyncCursor(ctx context.Context, calendarID, syncCu
 	return err
 }
 
+// EnsureDefaultHouseholdCalendar guarantees that at least one local sovereign calendar
+// ("Family") exists so the kiosk calendar works immediately without requiring cloud OAuth.
+func (s *Store) EnsureDefaultHouseholdCalendar(ctx context.Context) error {
+	cals, err := s.ListCalendars(ctx)
+	if err != nil {
+		return err
+	}
+	if len(cals) > 0 {
+		return nil
+	}
+	now := time.Now()
+
+	// Ensure a person exists to satisfy FOREIGN KEY (person_id) REFERENCES people(id)
+	people, err := s.ListPeople(ctx)
+	if err != nil {
+		return fmt.Errorf("list people: %w", err)
+	}
+	personID := "person-household-default"
+	if len(people) > 0 {
+		personID = people[0].ID
+	} else {
+		if err := s.UpsertPerson(ctx, &models.Person{
+			ID:          personID,
+			DisplayName: "Family",
+			Email:       "family@localhost",
+			Enabled:     true,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}); err != nil {
+			return fmt.Errorf("ensure default person: %w", err)
+		}
+	}
+
+	localAcc := &models.OAuthAccount{
+		ID:                  "acc-local-household",
+		PersonID:            personID,
+		Provider:            "local",
+		ProviderAccountID:   "household-local",
+		VerifiedEmail:       "family@localhost",
+		Scopes:              "local",
+		CredentialReference: "local-sovereign",
+		ExpiresAt:           now.AddDate(50, 0, 0),
+		Status:              "active",
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	}
+	if err := s.UpsertOAuthAccount(ctx, localAcc); err != nil {
+		return fmt.Errorf("ensure default local account: %w", err)
+	}
+
+	defaultCal := &models.Calendar{
+		ID:                 "cal-family-default",
+		OAuthAccountID:     "acc-local-household",
+		Provider:           "local",
+		ProviderCalendarID: "cal-family-default",
+		Name:               "Family",
+		Timezone:           "America/Toronto",
+		DisplayColor:       "#3b82f6",
+		EnabledForDisplay:  true,
+		Writable:           true,
+		DefaultWriteTarget: true,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	}
+	return s.UpsertCalendar(ctx, defaultCal)
+}
+
 // --- Events ---
 
 func (s *Store) ListEventsRange(ctx context.Context, start, end time.Time) ([]models.Event, error) {
@@ -594,6 +661,16 @@ func (s *Store) GetPendingMutations(ctx context.Context, limit int) ([]models.Mu
 func (s *Store) UpdateMutationState(ctx context.Context, id string, state models.QueueState, attemptCount int, nextAttempt time.Time, lastError string) error {
 	_, err := s.db.ExecContext(ctx, "UPDATE mutation_queue SET state = ?, attempt_count = ?, next_attempt_at = ?, last_error = ?, updated_at = ? WHERE id = ?;",
 		string(state), attemptCount, nextAttempt, lastError, time.Now(), id)
+	return err
+}
+
+// CompletePendingMutationsForEvent retires queued local work that has been
+// explicitly superseded by an administrator's remote-conflict decision.
+func (s *Store) CompletePendingMutationsForEvent(ctx context.Context, eventID, reason string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE mutation_queue
+		SET state = ?, last_error = ?, updated_at = ?
+		WHERE local_event_id = ? AND state IN ('pending', 'retry', 'processing');`,
+		string(models.QueueCompleted), reason, time.Now(), eventID)
 	return err
 }
 

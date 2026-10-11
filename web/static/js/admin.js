@@ -16,6 +16,31 @@
     return window.fetch(url, requestOptions);
   }
 
+  function showToast(message, kind) {
+    const region = document.getElementById('app-toast-region');
+    if (!region) return;
+
+    const toast = document.createElement('div');
+    toast.className = 'app-toast app-toast-' + (kind || 'info');
+    toast.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+    const text = document.createElement('span');
+    text.textContent = message;
+    const dismiss = document.createElement('button');
+    dismiss.type = 'button';
+    dismiss.className = 'app-toast-dismiss';
+    dismiss.setAttribute('aria-label', 'Dismiss message');
+    dismiss.textContent = '×';
+    dismiss.addEventListener('click', function() { toast.remove(); });
+    toast.append(text, dismiss);
+    region.appendChild(toast);
+    window.setTimeout(function() { toast.remove(); }, kind === 'error' ? 8000 : 4500);
+  }
+
+  function refreshAfterFeedback(message, kind, delay) {
+    showToast(message, kind || 'success');
+    window.setTimeout(function() { window.location.reload(); }, delay || 650);
+  }
+
   function resetIdleTimer() {
     window.clearTimeout(idleTimer);
     idleTimer = window.setTimeout(function() {
@@ -114,7 +139,7 @@
           const aps = await resp.json();
           renderWifiNetworks(aps);
         } catch (err) {
-          alert('Wi-Fi scan failed: ' + err.message);
+          showToast('Wi-Fi scan failed: ' + err.message, 'error');
         } finally {
           btnRescanWifi.disabled = false;
           btnRescanWifi.textContent = 'Scan Networks';
@@ -160,10 +185,9 @@
           if (!resp.ok || res.error) {
             throw new Error(res.error || 'Connection failed');
           }
-          alert('Connected to ' + ssid + ' successfully!');
-          window.location.reload();
+          refreshAfterFeedback('Connected to ' + ssid + ' successfully.');
         } catch (err) {
-          alert('Failed to connect: ' + err.message);
+          showToast('Failed to connect: ' + err.message, 'error');
         } finally {
           btnSubmit.disabled = false;
           btnSubmit.textContent = 'Join Network';
@@ -185,9 +209,9 @@
           });
           const res = await resp.json();
           if (!resp.ok || res.error) throw new Error(res.error || 'Toggle failed');
-          window.location.reload();
+          refreshAfterFeedback(currentlyActive ? 'Setup hotspot disabled.' : 'Setup hotspot enabled.');
         } catch (err) {
-          alert('Failed to toggle hotspot: ' + err.message);
+          showToast('Failed to toggle hotspot: ' + err.message, 'error');
           btnToggleHotspot.disabled = false;
         }
       });
@@ -207,9 +231,9 @@
           });
           const res = await resp.json();
           if (!resp.ok || res.error) throw new Error(res.error || 'Bluetooth toggle failed');
-          window.location.reload();
+          refreshAfterFeedback(currentlyPowered ? 'Bluetooth turned off.' : 'Bluetooth turned on.');
         } catch (err) {
-          alert('Failed to toggle Bluetooth: ' + err.message);
+          showToast('Failed to toggle Bluetooth: ' + err.message, 'error');
           btnToggleBluetooth.disabled = false;
         }
       });
@@ -227,7 +251,7 @@
           const devices = await resp.json();
           renderBluetoothDevices(devices);
         } catch (err) {
-          alert('Bluetooth scan failed: ' + err.message);
+          showToast('Bluetooth scan failed: ' + err.message, 'error');
         } finally {
           btnRescanBluetooth.disabled = false;
           btnRescanBluetooth.textContent = 'Scan Devices';
@@ -252,9 +276,9 @@
           });
           const res = await resp.json();
           if (!resp.ok || res.error) throw new Error(res.error || 'Failed to register beacon');
-          window.location.reload();
+          refreshAfterFeedback('Presence beacon registered.');
         } catch (err) {
-          alert('Error registering beacon: ' + err.message);
+          showToast('Could not register beacon: ' + err.message, 'error');
         }
       });
     }
@@ -270,9 +294,9 @@
             method: 'DELETE'
           });
           if (!resp.ok) throw new Error('Delete failed');
-          window.location.reload();
+          refreshAfterFeedback('Presence beacon removed.');
         } catch (err) {
-          alert('Failed to remove beacon: ' + err.message);
+          showToast('Failed to remove beacon: ' + err.message, 'error');
         }
       }
     });
@@ -307,10 +331,9 @@
           });
           const res = await resp.json();
           if (!resp.ok || res.error) throw new Error(res.error || 'Failed to connect');
-          alert('Device paired and connected successfully! You can now use it on the kiosk.');
-          window.location.reload();
+          refreshAfterFeedback('Device paired and connected. It is ready for the kiosk.');
         } catch (err) {
-          alert('Bluetooth connect error: ' + err.message);
+          showToast('Bluetooth connect error: ' + err.message, 'error');
           btnConnect.disabled = false;
           btnConnect.textContent = 'Pair & Connect';
         }
@@ -331,9 +354,9 @@
           });
           const res = await resp.json();
           if (!resp.ok || res.error) throw new Error(res.error || 'Failed to disconnect');
-          window.location.reload();
+          refreshAfterFeedback('Bluetooth device disconnected.');
         } catch (err) {
-          alert('Bluetooth disconnect error: ' + err.message);
+          showToast('Bluetooth disconnect error: ' + err.message, 'error');
           btnDisconnect.disabled = false;
           btnDisconnect.textContent = 'Disconnect';
         }
@@ -354,9 +377,9 @@
           });
           const res = await resp.json();
           if (!resp.ok || res.error) throw new Error(res.error || 'Failed to remove device');
-          window.location.reload();
+          refreshAfterFeedback('Bluetooth device forgotten.');
         } catch (err) {
-          alert('Bluetooth remove error: ' + err.message);
+          showToast('Bluetooth remove error: ' + err.message, 'error');
           btnRemove.disabled = false;
         }
         return;
@@ -375,10 +398,10 @@
             body: JSON.stringify({ action: 'reboot' })
           });
           if (!resp.ok) throw new Error('Restart request was rejected');
-          alert('Appliance is restarting. This page will reload once ready.');
+          showToast('Appliance is restarting. This page will reload once ready.', 'warning');
           setTimeout(() => window.location.reload(), 15000);
         } catch (err) {
-          alert('Reboot request error: ' + err.message);
+          showToast('Reboot request error: ' + err.message, 'error');
         }
       });
     }
@@ -394,9 +417,9 @@
             body: JSON.stringify({ action: 'shutdown' })
           });
           if (!resp.ok) throw new Error('Shutdown request was rejected');
-          alert('Appliance is shutting down safely.');
+          showToast('Appliance is shutting down safely.', 'warning');
         } catch (err) {
-          alert('Shutdown request error: ' + err.message);
+          showToast('Shutdown request error: ' + err.message, 'error');
         }
       });
     }
@@ -416,10 +439,9 @@
           if (!resp.ok || !res.success) {
             throw new Error(res.error || 'NVMe migration failed');
           }
-          alert('NVMe migration completed successfully! When ready, shut down the appliance, remove the MicroSD card, and power on to boot directly from NVMe.');
-          window.location.reload();
+          refreshAfterFeedback('NVMe migration complete. Shut down, remove the MicroSD card, then boot from NVMe.', 'success', 1400);
         } catch (err) {
-          alert('Migration error: ' + err.message);
+          showToast('Migration error: ' + err.message, 'error');
           btnMigrateNVMe.disabled = false;
           btnMigrateNVMe.textContent = '🚀 Clone & Port System to NVMe SSD';
         }
@@ -510,7 +532,7 @@
         }
         await loadPhotos();
       } catch (err) {
-        alert('Could not remove photo: ' + err.message);
+        showToast('Could not remove photo: ' + err.message, 'error');
         deleteBtn.disabled = false;
         deleteBtn.textContent = '🗑️';
       }
@@ -595,8 +617,11 @@
 
       if (spinner) spinner.classList.add('hidden');
 
+      if (uploadedCount > 0) {
+        showToast(uploadedCount + (uploadedCount === 1 ? ' photo uploaded.' : ' photos uploaded.'), 'success');
+      }
       if (errorMessages.length > 0) {
-        alert('Upload notices:\n' + errorMessages.join('\n'));
+        showToast('Upload notices: ' + errorMessages.join(' · '), 'warning');
       }
 
       await loadPhotos();
@@ -665,8 +690,8 @@
         ? '<span class="badge-keyboard">⌨️ Wireless Keyboard</span>'
         : `<span class="badge-subtle">📡 ${escapeHtml(dev.device_type || 'BLE')}</span>`;
       const connBadge = dev.connected
-        ? '<span class="status-badge status-badge-home" style="padding: 2px 8px; font-size: 0.75rem;">Connected</span>'
-        : (dev.paired ? '<span class="status-badge" style="padding: 2px 8px; font-size: 0.75rem;">Paired</span>' : '');
+        ? '<span class="status-badge status-badge-home status-badge-compact">Connected</span>'
+        : (dev.paired ? '<span class="status-badge status-badge-compact">Paired</span>' : '');
 
       let actionBtns = '';
       if (dev.connected) {
@@ -683,7 +708,7 @@
       html += `<tr>
         <td><strong>${escapeHtml(name)}</strong></td>
         <td>
-          <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+          <div class="admin-inline-actions">
             ${typeBadge}
             ${connBadge}
           </div>
@@ -691,7 +716,7 @@
         <td><code>${escapeHtml(dev.mac_address)}</code></td>
         <td>${rssi}${rssi === '—' ? '' : ' dBm'}</td>
         <td>
-          <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+          <div class="admin-inline-actions">
             ${actionBtns}
           </div>
         </td>

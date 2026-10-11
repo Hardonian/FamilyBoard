@@ -102,6 +102,9 @@ func main() {
 	slog.Info("Database initialized successfully", "path", cfg.Database.Path, "schema_version", ver)
 
 	store := db.NewStore(database)
+	if err := store.EnsureDefaultHouseholdCalendar(ctx); err != nil {
+		slog.Warn("Failed to ensure default household calendar", "err", err)
+	}
 
 	// 4. Token Storage & State Manager
 	tokenStorage, err := oauth.NewTokenStorage(cfg.Security.CredentialsDir)

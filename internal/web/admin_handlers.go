@@ -434,12 +434,21 @@ func DetectEmailProvider(email string) string {
 
 func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	tab := r.URL.Query().Get("tab")
+	switch tab {
+	case "", "accounts", "calendars", "mail", "candidates", "conflicts", "queue", "senders", "audit", "hardware", "system":
+	default:
+		tab = "accounts"
+	}
 	if tab == "" {
 		tab = "accounts"
 	}
 
 	ctx := r.Context()
 	people, _ := s.store.ListPeople(ctx)
+	peopleMap := make(map[string]models.Person, len(people))
+	for _, person := range people {
+		peopleMap[person.ID] = person
+	}
 	accounts, _ := s.store.ListOAuthAccounts(ctx)
 	accountsMap := make(map[string]models.OAuthAccount)
 	for _, a := range accounts {
@@ -452,12 +461,18 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	calendars, _ := s.store.ListCalendars(ctx)
+	mailSources, _ := s.store.ListMailSources(ctx)
+	trustedSenders, _ := s.store.ListTrustedSenders(ctx)
 	candidates, _ := s.store.ListCandidates(ctx, models.CandidatePending, 50, 0)
 	queueItems, _ := s.store.ListAllMutations(ctx, 50, 0)
 	pendingCandidateCount, _ := s.store.CountPendingCandidates(ctx)
 	pendingQueueCount, _ := s.store.CountPendingMutations(ctx)
 	activeEventCount, _ := s.store.CountActiveEvents(ctx)
 	conflicts, _ := s.store.ListPendingConflicts(ctx)
+	var auditEntries []models.AuditEntry
+	if tab == "audit" {
+		auditEntries, _ = s.store.ListAuditLogs(ctx, 100, 0)
+	}
 
 	csrfToken := s.issueCSRFToken(w, r)
 
@@ -478,9 +493,15 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		"ActiveTab":             tab,
 		"CSRFToken":             csrfToken,
 		"People":                people,
+		"PeopleMap":             peopleMap,
 		"AccountsMap":           accountsMap,
 		"ProviderMap":           providerMap,
 		"Calendars":             calendars,
+		"MailSources":           mailSources,
+		"MailSourceCount":       len(mailSources),
+		"TrustedSenders":        trustedSenders,
+		"Conflicts":             conflicts,
+		"AuditEntries":          auditEntries,
 		"Candidates":            candidates,
 		"QueueItems":            queueItems,
 		"PendingCandidateCount": pendingCandidateCount,
@@ -659,6 +680,204 @@ func (s *Server) handleAdminCandidateReject(w http.ResponseWriter, r *http.Reque
 	id := r.PathValue("id")
 	_ = s.store.UpdateCandidateState(r.Context(), id, models.CandidateRejected, "admin")
 	http.Redirect(w, r, "/admin?tab=candidates&msg=Candidate+rejected", http.StatusSeeOther)
+}
+
+func (s *Server) handleAdminMailSourceUpdate(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	sources, err := s.store.ListMailSources(r.Context())
+	if err != nil {
+		http.Redirect(w, r, "/admin?tab=mail&err="+url.QueryEscape("Could not load mail sources"), http.StatusSeeOther)
+		return
+	}
+
+	var source *models.MailSource
+	for i := range sources {
+		if sources[i].ID == id {
+			source = &sources[i]
+			break
+		}
+	}
+	if source == nil {
+		http.Redirect(w, r, "/admin?tab=mail&err=Mail+source+not+found", http.StatusSeeOther)
+		return
+	}
+
+	filterMode := strings.TrimSpace(r.FormValue("filter_mode"))
+	switch filterMode {
+	case "label", "sender", "subject", "combined":
+	default:
+		http.Redirect(w, r, "/admin?tab=mail&err=Choose+a+valid+mail+filter+mode", http.StatusSeeOther)
+		return
+	}
+
+	source.Enabled = r.FormValue("enabled") == "1" || r.FormValue("enabled") == "true" || r.FormValue("enabled") == "on"
+	source.FilterMode = filterMode
+	source.FilterConfig = strings.TrimSpace(r.FormValue("filter_config"))
+	if source.Status == "" {
+		source.Status = "active"
+	}
+	if err := s.store.UpsertMailSource(r.Context(), source); err != nil {
+		http.Redirect(w, r, "/admin?tab=mail&err="+url.QueryEscape("Could not update mail source: "+err.Error()), http.StatusSeeOther)
+		return
+	}
+
+	_ = s.store.RecordAudit(r.Context(), &models.AuditEntry{
+		ID:           fmt.Sprintf("aud-%d", time.Now().UnixNano()),
+		Actor:        "admin",
+		Action:       "mail_source_update",
+		ResourceType: "mail_source",
+		ResourceID:   source.ID,
+		Details:      fmt.Sprintf("Updated %s mail intake for person %s (enabled=%t, filter=%s)", source.Provider, source.PersonID, source.Enabled, source.FilterMode),
+		IPAddress:    remoteIP(r),
+	})
+	http.Redirect(w, r, "/admin?tab=mail&msg=Mail+source+updated", http.StatusSeeOther)
+}
+
+func (s *Server) handleAdminConflictResolve(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	resolution := strings.TrimSpace(r.FormValue("resolution"))
+	validResolutions := map[string]string{
+		"resolved_local":  "Local record retained after review",
+		"resolved_remote": "Remote record accepted after review",
+		"dismissed":       "Conflict dismissed after review",
+	}
+	details, ok := validResolutions[resolution]
+	if id == "" || !ok {
+		http.Redirect(w, r, "/admin?tab=conflicts&err=Choose+a+valid+conflict+resolution", http.StatusSeeOther)
+		return
+	}
+	conflicts, err := s.store.ListPendingConflicts(r.Context())
+	if err != nil {
+		http.Redirect(w, r, "/admin?tab=conflicts&err=Could+not+load+the+conflict", http.StatusSeeOther)
+		return
+	}
+	var conflict *models.Conflict
+	for i := range conflicts {
+		if conflicts[i].ID == id {
+			conflict = &conflicts[i]
+			break
+		}
+	}
+	if conflict == nil {
+		http.Redirect(w, r, "/admin?tab=conflicts&err=Conflict+not+found+or+already+resolved", http.StatusSeeOther)
+		return
+	}
+
+	if resolution == "resolved_remote" {
+		localEvent, err := s.store.GetEvent(r.Context(), conflict.LocalEventID)
+		if err != nil || localEvent == nil {
+			http.Redirect(w, r, "/admin?tab=conflicts&err=The+local+event+for+this+conflict+is+no+longer+available", http.StatusSeeOther)
+			return
+		}
+		var remoteEvent models.Event
+		if err := json.Unmarshal([]byte(conflict.RemotePayload), &remoteEvent); err != nil {
+			http.Redirect(w, r, "/admin?tab=conflicts&err=The+remote+event+payload+is+invalid", http.StatusSeeOther)
+			return
+		}
+		remoteEvent.ID = localEvent.ID
+		remoteEvent.CalendarID = localEvent.CalendarID
+		remoteEvent.LocalCreatedAt = localEvent.LocalCreatedAt
+		remoteEvent.LocalUpdatedAt = time.Now()
+		remoteEvent.Source = "remote_sync"
+		if err := s.store.UpsertEvent(r.Context(), &remoteEvent); err != nil {
+			http.Redirect(w, r, "/admin?tab=conflicts&err="+url.QueryEscape("Could not apply remote event: "+err.Error()), http.StatusSeeOther)
+			return
+		}
+		if err := s.store.CompletePendingMutationsForEvent(r.Context(), localEvent.ID, "Superseded by remote conflict resolution"); err != nil {
+			http.Redirect(w, r, "/admin?tab=conflicts&err="+url.QueryEscape("Could not retire local sync work: "+err.Error()), http.StatusSeeOther)
+			return
+		}
+	}
+
+	if err := s.store.ResolveConflict(r.Context(), id, resolution, details); err != nil {
+		http.Redirect(w, r, "/admin?tab=conflicts&err="+url.QueryEscape("Could not resolve conflict: "+err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.store.RecordAudit(r.Context(), &models.AuditEntry{
+		ID:           fmt.Sprintf("aud-%d", time.Now().UnixNano()),
+		Actor:        "admin",
+		Action:       "conflict_resolve",
+		ResourceType: "conflict",
+		ResourceID:   id,
+		Details:      details,
+		IPAddress:    remoteIP(r),
+	})
+
+	if resolution == "resolved_local" {
+		go func() {
+			_ = s.queueEngine.ProcessBatch(context.Background(), 5)
+			s.BroadcastReload()
+		}()
+	} else {
+		s.BroadcastReload()
+	}
+	http.Redirect(w, r, "/admin?tab=conflicts&msg=Conflict+resolved", http.StatusSeeOther)
+}
+
+func (s *Server) handleAdminTrustedSenderAdd(w http.ResponseWriter, r *http.Request) {
+	target := strings.ToLower(strings.TrimSpace(r.FormValue("sender")))
+	description := strings.TrimSpace(r.FormValue("description"))
+	if target == "" || strings.ContainsAny(target, " \t\n\r") {
+		http.Redirect(w, r, "/admin?tab=senders&err=Enter+a+valid+email+address+or+domain", http.StatusSeeOther)
+		return
+	}
+
+	trusted := &models.TrustedSender{
+		ID:          fmt.Sprintf("sender-%d", time.Now().UnixNano()),
+		Description: description,
+		Enabled:     true,
+	}
+	if strings.Contains(target, "@") {
+		parts := strings.Split(target, "@")
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" || !strings.Contains(parts[1], ".") {
+			http.Redirect(w, r, "/admin?tab=senders&err=Enter+a+valid+email+address", http.StatusSeeOther)
+			return
+		}
+		trusted.Email = target
+	} else {
+		trusted.Domain = strings.TrimPrefix(target, "@")
+		if !strings.Contains(trusted.Domain, ".") {
+			http.Redirect(w, r, "/admin?tab=senders&err=Enter+a+valid+domain", http.StatusSeeOther)
+			return
+		}
+	}
+
+	if err := s.store.AddTrustedSender(r.Context(), trusted); err != nil {
+		http.Redirect(w, r, "/admin?tab=senders&err="+url.QueryEscape("Could not add trusted sender: "+err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.store.RecordAudit(r.Context(), &models.AuditEntry{
+		ID:           fmt.Sprintf("aud-%d", time.Now().UnixNano()),
+		Actor:        "admin",
+		Action:       "trusted_sender_add",
+		ResourceType: "trusted_sender",
+		ResourceID:   trusted.ID,
+		Details:      fmt.Sprintf("Added trusted sender %s%s", trusted.Email, trusted.Domain),
+		IPAddress:    remoteIP(r),
+	})
+	http.Redirect(w, r, "/admin?tab=senders&msg=Trusted+sender+added", http.StatusSeeOther)
+}
+
+func (s *Server) handleAdminTrustedSenderDelete(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		http.Redirect(w, r, "/admin?tab=senders&err=Trusted+sender+ID+required", http.StatusSeeOther)
+		return
+	}
+	if err := s.store.DeleteTrustedSender(r.Context(), id); err != nil {
+		http.Redirect(w, r, "/admin?tab=senders&err="+url.QueryEscape("Could not remove trusted sender: "+err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.store.RecordAudit(r.Context(), &models.AuditEntry{
+		ID:           fmt.Sprintf("aud-%d", time.Now().UnixNano()),
+		Actor:        "admin",
+		Action:       "trusted_sender_delete",
+		ResourceType: "trusted_sender",
+		ResourceID:   id,
+		Details:      "Removed trusted sender",
+		IPAddress:    remoteIP(r),
+	})
+	http.Redirect(w, r, "/admin?tab=senders&msg=Trusted+sender+removed", http.StatusSeeOther)
 }
 
 func (s *Server) handleAdminOAuthStart(w http.ResponseWriter, r *http.Request) {

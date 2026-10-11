@@ -39,6 +39,20 @@
     </div>
     {{end}}
 
+    <section class="admin-topology" aria-label="FamilyBoard workflow">
+      <div class="admin-topology-heading">
+        <span class="admin-eyebrow">Connected family flow</span>
+        <span class="admin-topology-status"><span class="status-dot"></span> Local-first appliance</span>
+      </div>
+      <div class="admin-topology-nodes">
+        <a class="admin-topology-node" href="/admin?tab=accounts"><strong>1. People</strong><span>{{len .People}} family accounts</span></a>
+        <a class="admin-topology-node" href="/admin?tab=calendars"><strong>2. Calendars</strong><span>{{len .Calendars}} connected sources</span></a>
+        <a class="admin-topology-node" href="/admin?tab=mail"><strong>3. Email intake</strong><span>{{.MailSourceCount}} active sources</span></a>
+        <a class="admin-topology-node" href="/admin?tab=candidates"><strong>4. Review</strong><span>{{.PendingCandidateCount}} pending approvals</span></a>
+        <a class="admin-topology-node" href="/"><strong>5. FamilyBoard</strong><span>{{.ActiveEventCount}} cached events</span></a>
+      </div>
+    </section>
+
     {{if eq .ActiveTab "accounts"}}
     <div class="admin-card">
       <h2 class="admin-section-heading">Family Accounts &amp; Provider Identity</h2>
@@ -252,6 +266,52 @@
     </div>
     {{end}}
 
+    {{if eq .ActiveTab "mail"}}
+    <div class="admin-card">
+      <div class="admin-card-header">
+        <div>
+          <h2>Mail Sources &amp; Event Intake</h2>
+          <p class="admin-section-sub">Each connected inbox is filtered locally before calendar candidates are created. Changes take effect on the next intake cycle.</p>
+        </div>
+        <a href="/admin?tab=accounts" class="btn btn-secondary btn-sm">Connect an inbox</a>
+      </div>
+      <div class="admin-callout"><strong>Safe by default.</strong> New email-derived events go to the Approval Queue unless their sender is trusted. Configure trusted senders only for sources you recognize.</div>
+      <table class="admin-table">
+        <thead><tr><th>Family member</th><th>Provider</th><th>Intake state</th><th>Local filter</th><th>Last checked</th><th>Action</th></tr></thead>
+        <tbody>
+          {{range .MailSources}}
+          <tr>
+            <td><strong>{{with index $.PeopleMap .PersonID}}{{.DisplayName}}{{else}}Unknown member{{end}}</strong><br><small class="admin-text-muted">{{.PersonID}}</small></td>
+            <td><span class="status-badge status-badge-compact">{{.Provider}}</span></td>
+            <td>{{if .Enabled}}<span class="status-badge status-badge-home">Enabled</span>{{else}}<span class="status-badge offline">Paused</span>{{end}}<br><small class="admin-text-muted">{{.Status}}</small></td>
+            <td>
+              <form method="POST" action="/admin/mail-sources/{{.ID}}" id="mail-source-{{.ID}}" class="admin-table-form">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <label class="sr-only" for="mail-filter-mode-{{.ID}}">Filter type for {{.Provider}}</label>
+                <select class="form-input form-input-compact" id="mail-filter-mode-{{.ID}}" name="filter_mode">
+                  <option value="label" {{if eq .FilterMode "label"}}selected{{end}}>Label</option>
+                  <option value="sender" {{if eq .FilterMode "sender"}}selected{{end}}>Sender</option>
+                  <option value="subject" {{if eq .FilterMode "subject"}}selected{{end}}>Subject</option>
+                  <option value="combined" {{if eq .FilterMode "combined"}}selected{{end}}>Combined</option>
+                </select>
+                <label class="sr-only" for="mail-filter-config-{{.ID}}">Filter value for {{.Provider}}</label>
+                <input class="form-input form-input-compact" id="mail-filter-config-{{.ID}}" type="text" name="filter_config" value="{{.FilterConfig}}" placeholder="Filter value">
+              </form>
+            </td>
+            <td>{{if .LastCheckedAt}}{{.LastCheckedAt.Format "Jan 02 15:04"}}{{else}}<span class="admin-text-muted">Not checked yet</span>{{end}}</td>
+            <td>
+              <label class="admin-check-label" for="mail-enabled-{{.ID}}"><input type="checkbox" id="mail-enabled-{{.ID}}" name="enabled" value="1" form="mail-source-{{.ID}}" {{if .Enabled}}checked{{end}}><span>Enabled</span></label>
+              <button type="submit" form="mail-source-{{.ID}}" class="btn btn-primary btn-sm">Save intake</button>
+            </td>
+          </tr>
+          {{else}}
+          <tr><td colspan="6" class="admin-empty-cell">No mail sources are connected. Choose “Connect Gmail Intake” or “Connect Outlook Mail” from Accounts to begin.</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{end}}
+
     {{if eq .ActiveTab "candidates"}}
     <div class="admin-card">
       <h2>Email Event Approval Queue</h2>
@@ -297,6 +357,38 @@
     </div>
     {{end}}
 
+    {{if eq .ActiveTab "conflicts"}}
+    <div class="admin-card">
+      <h2>Calendar Conflict Resolution</h2>
+      <p class="admin-section-sub-spaced">A remote change arrived while an appliance edit was waiting to sync. Pick the version your family should keep; the alternate local queue entry is retired when you accept the remote version.</p>
+      <table class="admin-table">
+        <thead><tr><th>Conflict</th><th>Detected</th><th>Local / remote record</th><th>Resolution</th></tr></thead>
+        <tbody>
+          {{range .Conflicts}}
+          <tr>
+            <td><strong>{{.ConflictType}}</strong><br><small class="admin-text-muted">Local: {{.LocalEventID}}<br>Remote: {{.RemoteEventID}}</small></td>
+            <td>{{.CreatedAt.Format "Jan 02 15:04"}}</td>
+            <td>
+              <details class="admin-payload-details"><summary>Inspect local record</summary><pre>{{.LocalPayload}}</pre></details>
+              <details class="admin-payload-details"><summary>Inspect remote record</summary><pre>{{.RemotePayload}}</pre></details>
+            </td>
+            <td>
+              <form method="POST" action="/admin/conflicts/{{.ID}}/resolve" class="admin-resolution-form">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <button name="resolution" value="resolved_local" type="submit" class="btn btn-primary btn-sm">Keep local</button>
+                <button name="resolution" value="resolved_remote" type="submit" class="btn btn-secondary btn-sm">Use remote</button>
+                <button name="resolution" value="dismissed" type="submit" class="btn btn-ghost btn-sm">Dismiss</button>
+              </form>
+            </td>
+          </tr>
+          {{else}}
+          <tr><td colspan="4" class="admin-empty-cell">No conflicts need attention. Local and remote calendars are aligned.</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{end}}
+
     {{if eq .ActiveTab "queue"}}
     <div class="admin-card">
       <h2>Outbound Calendar Mutation Queue</h2>
@@ -327,6 +419,51 @@
           </tr>
           {{else}}
           <tr><td colspan="6" class="admin-empty-cell">Mutation queue is empty. All local changes are synced.</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{end}}
+
+    {{if eq .ActiveTab "senders"}}
+    <div class="admin-card">
+      <div class="admin-card-header admin-card-header-wrap">
+        <div>
+          <h2>Trusted Senders</h2>
+          <p class="admin-section-sub">Events from trusted email addresses or domains can pass the local policy engine without unnecessary family review.</p>
+        </div>
+      </div>
+      <form method="POST" action="/admin/trusted-senders" class="admin-add-sender-form">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <div class="form-group"><label class="form-label" for="trusted-sender">Email address or domain</label><input class="form-input" id="trusted-sender" name="sender" placeholder="school@example.org or example.org" required></div>
+        <div class="form-group"><label class="form-label" for="trusted-sender-description">Why is this trusted?</label><input class="form-input" id="trusted-sender-description" name="description" placeholder="School calendar service"></div>
+        <button type="submit" class="btn btn-primary">Add trusted sender</button>
+      </form>
+      <table class="admin-table">
+        <thead><tr><th>Trusted source</th><th>Notes</th><th>Added</th><th>Action</th></tr></thead>
+        <tbody>
+          {{range .TrustedSenders}}
+          <tr><td><strong>{{if .Email}}{{.Email}}{{else}}@{{.Domain}}{{end}}</strong></td><td>{{.Description}}</td><td>{{.CreatedAt.Format "Jan 02, 2006"}}</td><td><form method="POST" action="/admin/trusted-senders/{{.ID}}/delete"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><button type="submit" class="btn btn-danger btn-sm">Remove</button></form></td></tr>
+          {{else}}
+          <tr><td colspan="4" class="admin-empty-cell">No senders are trusted yet. Unknown email events will continue through the Approval Queue.</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{end}}
+
+    {{if eq .ActiveTab "audit"}}
+    <div class="admin-card">
+      <div class="admin-card-header">
+        <div><h2>Admin Audit Log</h2><p class="admin-section-sub">Recent appliance sign-ins, configuration changes, and resolution decisions. The newest 100 entries are shown.</p></div>
+      </div>
+      <table class="admin-table">
+        <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Resource</th><th>Details</th></tr></thead>
+        <tbody>
+          {{range .AuditEntries}}
+          <tr><td>{{.Timestamp.Format "Jan 02 15:04:05"}}</td><td>{{.Actor}}</td><td><span class="status-badge status-badge-compact">{{.Action}}</span></td><td>{{.ResourceType}}{{if .ResourceID}}<br><small class="admin-text-muted">{{.ResourceID}}</small>{{end}}</td><td>{{.Details}}</td></tr>
+          {{else}}
+          <tr><td colspan="5" class="admin-empty-cell">No audit entries have been recorded yet.</td></tr>
           {{end}}
         </tbody>
       </table>
@@ -602,7 +739,7 @@
       </div>
 
       <!-- Wireless Keyboards & Nearby Bluetooth Devices -->
-      <div class="admin-collapsible-section-wrapper" style="margin-top: 24px;">
+      <div class="admin-collapsible-section-wrapper admin-section-spaced">
         <h3 class="admin-subheading">Wireless Keyboards &amp; Discovered Bluetooth Devices</h3>
         <p class="admin-section-sub-spaced">Pair Bluetooth wireless keyboards (Logitech K380, MX Keys, Keychron, etc.) or connect USB keyboards directly to the Radxa Dragon. Typing on a physical keyboard automatically dismisses the touchscreen virtual keyboard for full-screen event viewing.</p>
 
@@ -623,23 +760,23 @@
                 <strong>{{if .Name}}{{.Name}}{{else}}Unknown BLE Device{{end}}</strong>
               </td>
               <td>
-                <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                <div class="admin-inline-actions">
                   {{if .IsKeyboard}}
                   <span class="badge-keyboard">⌨️ Wireless Keyboard</span>
                   {{else}}
                   <span class="badge-subtle">📡 {{.DeviceType}}</span>
                   {{end}}
                   {{if .Connected}}
-                  <span class="status-badge status-badge-home" style="padding: 2px 8px; font-size: 0.75rem;">Connected</span>
+                  <span class="status-badge status-badge-home status-badge-compact">Connected</span>
                   {{else if .Paired}}
-                  <span class="status-badge" style="padding: 2px 8px; font-size: 0.75rem;">Paired</span>
+                  <span class="status-badge status-badge-compact">Paired</span>
                   {{end}}
                 </div>
               </td>
               <td><code>{{.MACAddress}}</code></td>
               <td>{{.RSSI}} dBm</td>
               <td>
-                <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                <div class="admin-inline-actions">
                   {{if .Connected}}
                   <button type="button" class="btn btn-secondary btn-sm btn-bt-disconnect" data-mac="{{.MACAddress}}" aria-label="Disconnect {{.Name}}">
                     Disconnect
@@ -668,7 +805,7 @@
       </div>
 
       <!-- Kiosk Physical Keyboard Shortcuts Reference -->
-      <div class="admin-shortcuts-box" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+      <div class="admin-shortcuts-box admin-shortcuts-box-separated">
         <h4 class="admin-subheading-small">⌨️ Kiosk Physical Keyboard Shortcuts</h4>
         <p class="admin-section-sub">Use any connected wireless or USB keyboard directly on the kiosk screen:</p>
         <div class="shortcuts-grid">

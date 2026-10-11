@@ -285,6 +285,11 @@ func (e *Engine) SyncAll(ctx context.Context) error {
 
 // SyncCalendar performs full or incremental sync for a single calendar.
 func (e *Engine) SyncCalendar(ctx context.Context, cal *models.Calendar) error {
+	if cal.Provider == "local" {
+		// Sovereign local calendars reside completely in SQLite and do not sync with an external cloud API
+		return nil
+	}
+
 	e.mu.Lock()
 	prov, ok := e.providers[cal.Provider]
 	e.mu.Unlock()

@@ -25,6 +25,7 @@
 <body>
   <noscript><div class="noscript-banner" role="alert">FamilyBoard needs JavaScript for the interactive calendar. Admin sign-in and setup forms remain available.</div></noscript>
   {{template "content" .}}
+  <div id="app-toast-region" class="app-toast-region" aria-live="polite" aria-atomic="true"></div>
   {{block "scripts" .}}{{end}}
 </body>
 </html>
