@@ -53,3 +53,31 @@ func TestVerifyBackupRejectsInvalidArchive(t *testing.T) {
 		t.Fatal("verify backup succeeded for invalid archive")
 	}
 }
+
+func TestPruneBackups(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	for i := 1; i <= 5; i++ {
+		name := filepath.Join(dir, fmt.Sprintf("familyboard-backup-2026010%d-000000.tar.gz", i))
+		if err := os.WriteFile(name, []byte("backup"), 0600); err != nil {
+			t.Fatalf("write file: %v", err)
+		}
+		modTime := time.Now().Add(time.Duration(i) * time.Hour)
+		_ = os.Chtimes(name, modTime, modTime)
+	}
+
+	pruned, err := backup.PruneBackups(dir, 3)
+	if err != nil {
+		t.Fatalf("prune error: %v", err)
+	}
+	if pruned != 2 {
+		t.Fatalf("expected 2 pruned backups, got %d", pruned)
+	}
+
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 remaining backups, got %d", len(entries))
+	}
+}
+
