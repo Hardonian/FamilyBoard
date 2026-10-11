@@ -19,7 +19,7 @@ for (const file of jsFiles) {
 }
 
 // 2. Validate CSS syntax (balanced curly braces and no empty font-family)
-const cssFile = path.join(__dirname, '..', 'web', 'static', 'css', 'appliance.css');
+const cssFile = path.join(__dirname, '..', 'web', 'static', 'css', 'app.css');
 assert(fs.existsSync(cssFile), `CSS file must exist: ${cssFile}`);
 const cssContent = fs.readFileSync(cssFile, 'utf8');
 let openBraces = 0;
