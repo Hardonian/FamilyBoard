@@ -227,3 +227,71 @@ func TestDB_EventCRUDAndRangeQueries(t *testing.T) {
 
 	_ = database
 }
+
+func TestStoreApplyRemoteConflictResolutionIsAtomic(t *testing.T) {
+	database, store, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	account := &models.OAuthAccount{
+		ID: "acc-conflict", PersonID: "person-1", Provider: "google", ProviderAccountID: "google-conflict",
+		VerifiedEmail: "alex@example.com", Scopes: "calendar", CredentialReference: "test", ExpiresAt: now.Add(time.Hour), Status: "active",
+	}
+	if err := store.UpsertOAuthAccount(ctx, account); err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	calendar := &models.Calendar{
+		ID: "cal-conflict", OAuthAccountID: account.ID, Provider: "google", ProviderCalendarID: "remote-cal", Name: "Family",
+		Timezone: "America/Toronto", DisplayColor: "#3b82f6", EnabledForDisplay: true, Writable: true,
+	}
+	if err := store.UpsertCalendar(ctx, calendar); err != nil {
+		t.Fatalf("create calendar: %v", err)
+	}
+	local := &models.Event{
+		ID: "evt-conflict", Provider: "google", ProviderEventID: "remote-event", CalendarID: calendar.ID, Title: "Local title",
+		StartAt: now, EndAt: now.Add(time.Hour), Timezone: "America/Toronto", Status: "confirmed", Source: "local_ui", LocalCreatedAt: now, LocalUpdatedAt: now,
+	}
+	if err := store.UpsertEvent(ctx, local); err != nil {
+		t.Fatalf("create local event: %v", err)
+	}
+	if err := store.EnqueueMutation(ctx, &models.MutationQueueItem{
+		ID: "mut-conflict", Operation: "update", Provider: "google", CalendarID: calendar.ID, LocalEventID: local.ID,
+		Payload: "{}", IdempotencyKey: "idemp-conflict", NextAttemptAt: now, State: models.QueuePending,
+	}); err != nil {
+		t.Fatalf("enqueue local mutation: %v", err)
+	}
+	if err := store.CreateConflict(ctx, &models.Conflict{
+		ID: "conflict-1", LocalEventID: local.ID, RemoteEventID: "remote-event", ConflictType: "concurrent_edit", State: "pending",
+	}); err != nil {
+		t.Fatalf("create conflict: %v", err)
+	}
+
+	remote := *local
+	remote.Title = "Remote title"
+	remote.ETag = "remote-etag"
+	remote.Source = "remote_sync"
+	remote.LocalUpdatedAt = now.Add(time.Minute)
+	if err := store.ApplyRemoteConflictResolution(ctx, "conflict-1", &remote, "Remote record accepted after review"); err != nil {
+		t.Fatalf("apply remote conflict resolution: %v", err)
+	}
+
+	resolved, err := store.GetEvent(ctx, local.ID)
+	if err != nil || resolved == nil {
+		t.Fatalf("load resolved event: %v", err)
+	}
+	if resolved.Title != "Remote title" || resolved.ETag != "remote-etag" {
+		t.Fatalf("remote event was not applied: %#v", resolved)
+	}
+	pending, err := store.CountPendingMutations(ctx)
+	if err != nil || pending != 0 {
+		t.Fatalf("expected no pending mutations after accepting remote, got %d (err: %v)", pending, err)
+	}
+	var state, details string
+	if err := database.QueryRowContext(ctx, "SELECT state, resolution FROM conflicts WHERE id = ?", "conflict-1").Scan(&state, &details); err != nil {
+		t.Fatalf("load resolved conflict: %v", err)
+	}
+	if state != "resolved_remote" || details != "Remote record accepted after review" {
+		t.Fatalf("unexpected conflict resolution: state=%q details=%q", state, details)
+	}
+}

@@ -664,14 +664,18 @@ func (s *Store) UpdateMutationState(ctx context.Context, id string, state models
 	return err
 }
 
-// CompletePendingMutationsForEvent retires queued local work that has been
-// explicitly superseded by an administrator's remote-conflict decision.
-func (s *Store) CompletePendingMutationsForEvent(ctx context.Context, eventID, reason string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE mutation_queue
+func completePendingMutationsForEvent(ctx context.Context, exec contextExecer, eventID, reason string) error {
+	_, err := exec.ExecContext(ctx, `UPDATE mutation_queue
 		SET state = ?, last_error = ?, updated_at = ?
 		WHERE local_event_id = ? AND state IN ('pending', 'retry', 'processing');`,
 		string(models.QueueCompleted), reason, time.Now(), eventID)
 	return err
+}
+
+// CompletePendingMutationsForEvent retires queued local work that has been
+// explicitly superseded by an administrator's remote-conflict decision.
+func (s *Store) CompletePendingMutationsForEvent(ctx context.Context, eventID, reason string) error {
+	return completePendingMutationsForEvent(ctx, s.db, eventID, reason)
 }
 
 func (s *Store) CountPendingMutations(ctx context.Context) (int, error) {
@@ -905,6 +909,35 @@ func (s *Store) ResolveConflict(ctx context.Context, id, resolutionState, resolu
 	_, err := s.db.ExecContext(ctx, "UPDATE conflicts SET state = ?, resolved_at = ?, resolution = ? WHERE id = ?;",
 		resolutionState, now, resolutionDetails, id)
 	return err
+}
+
+// ApplyRemoteConflictResolution atomically accepts a remote event, retires
+// conflicting local mutations, and records the administrator's decision.
+func (s *Store) ApplyRemoteConflictResolution(ctx context.Context, conflictID string, remoteEvent *models.Event, resolutionDetails string) error {
+	if remoteEvent == nil {
+		return fmt.Errorf("remote event is required")
+	}
+	return s.db.WithTx(ctx, func(tx *sql.Tx) error {
+		result, err := tx.ExecContext(ctx, "UPDATE conflicts SET state = ?, resolved_at = ?, resolution = ? WHERE id = ? AND state = 'pending';",
+			"resolved_remote", time.Now(), resolutionDetails, conflictID)
+		if err != nil {
+			return fmt.Errorf("resolve conflict: %w", err)
+		}
+		changed, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("check conflict resolution: %w", err)
+		}
+		if changed != 1 {
+			return fmt.Errorf("conflict %s is not pending", conflictID)
+		}
+		if err := upsertEvent(ctx, tx, remoteEvent); err != nil {
+			return fmt.Errorf("upsert remote event: %w", err)
+		}
+		if err := completePendingMutationsForEvent(ctx, tx, remoteEvent.ID, "Superseded by remote conflict resolution"); err != nil {
+			return fmt.Errorf("retire pending mutations: %w", err)
+		}
+		return nil
+	})
 }
 
 // --- Trusted Senders ---

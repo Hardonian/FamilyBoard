@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - First-run setup now shows the exact Google OAuth redirect URI and explains that provider connections can be completed after the appliance is online.
 - Backup, recovery, operations, troubleshooting, and CLI documentation now match the implemented archive format and recovery workflow.
 
+### Fixed
+
+- Accepting a remote calendar conflict now applies the remote event, retires the conflicting local mutations, and records the resolution in one SQLite transaction.
+
 ## [1.4.0] - 2026-10-10
 
 ### Added

@@ -763,6 +763,7 @@ func (s *Server) handleAdminConflictResolve(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	remoteResolved := false
 	if resolution == "resolved_remote" {
 		localEvent, err := s.store.GetEvent(r.Context(), conflict.LocalEventID)
 		if err != nil || localEvent == nil {
@@ -779,19 +780,18 @@ func (s *Server) handleAdminConflictResolve(w http.ResponseWriter, r *http.Reque
 		remoteEvent.LocalCreatedAt = localEvent.LocalCreatedAt
 		remoteEvent.LocalUpdatedAt = time.Now()
 		remoteEvent.Source = "remote_sync"
-		if err := s.store.UpsertEvent(r.Context(), &remoteEvent); err != nil {
-			http.Redirect(w, r, "/admin?tab=conflicts&err="+url.QueryEscape("Could not apply remote event: "+err.Error()), http.StatusSeeOther)
+		if err := s.store.ApplyRemoteConflictResolution(r.Context(), id, &remoteEvent, details); err != nil {
+			http.Redirect(w, r, "/admin?tab=conflicts&err="+url.QueryEscape("Could not apply remote conflict resolution: "+err.Error()), http.StatusSeeOther)
 			return
 		}
-		if err := s.store.CompletePendingMutationsForEvent(r.Context(), localEvent.ID, "Superseded by remote conflict resolution"); err != nil {
-			http.Redirect(w, r, "/admin?tab=conflicts&err="+url.QueryEscape("Could not retire local sync work: "+err.Error()), http.StatusSeeOther)
-			return
-		}
+		remoteResolved = true
 	}
 
-	if err := s.store.ResolveConflict(r.Context(), id, resolution, details); err != nil {
-		http.Redirect(w, r, "/admin?tab=conflicts&err="+url.QueryEscape("Could not resolve conflict: "+err.Error()), http.StatusSeeOther)
-		return
+	if !remoteResolved {
+		if err := s.store.ResolveConflict(r.Context(), id, resolution, details); err != nil {
+			http.Redirect(w, r, "/admin?tab=conflicts&err="+url.QueryEscape("Could not resolve conflict: "+err.Error()), http.StatusSeeOther)
+			return
+		}
 	}
 	_ = s.store.RecordAudit(r.Context(), &models.AuditEntry{
 		ID:           fmt.Sprintf("aud-%d", time.Now().UnixNano()),
