@@ -4563,6 +4563,7 @@ body.kiosk-ambient-dim {
 .admin-inline-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .admin-section-spaced { margin-top: var(--space-5); }
 .admin-shortcuts-box-separated { margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--border-color); }
+.status-badge-compact { padding: 2px 8px; font-size: 0.75rem; }
 .admin-resolution-form { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .admin-payload-details { margin-bottom: var(--space-2); }
 .admin-payload-details summary { color: var(--accent-primary); font-size: 0.8rem; font-weight: var(--font-weight-semibold); cursor: pointer; }
