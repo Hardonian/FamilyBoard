@@ -80,6 +80,10 @@ func TestReleaseGate_RequiredReleaseFilesExist(t *testing.T) {
 		"../docs/openapi.yaml",
 		"../docs/SUPPORT_LIFECYCLE.md",
 		"../docs/REMOTE_SUPPORT.md",
+		"../docs/LAN_HTTPS.md",
+		"../docs/NETWORK_TRUST.md",
+		"../docs/SECURITY_AUDIT_READINESS.md",
+		"../docs/VOCABULARY.md",
 	}
 
 	for _, path := range requiredFiles {

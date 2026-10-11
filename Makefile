@@ -135,6 +135,7 @@ pi-bootstrap-check:
 	@"$(BASH_BIN)" -n scripts/test_env.sh
 	@"$(BASH_BIN)" -n scripts/check_frontend.sh
 	@"$(BASH_BIN)" -n scripts/check_coverage.sh
+	@"$(BASH_BIN)" -n scripts/generate_sbom.sh
 	@echo "All shell scripts passed syntax checks."
 
 prepare-sd:
