@@ -1,0 +1,38 @@
+name: Bug report
+description: Something on the board, kiosk, phone app, or admin is not working
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not paste passwords, tokens, or calendar contents.
+        Download the redacted bundle from Admin, System, "Download redacted diagnostics" and attach it.
+  - type: input
+    id: version
+    attributes:
+      label: FamilyBoard version
+      description: Shown in Admin, System
+    validations:
+      required: true
+  - type: dropdown
+    id: hardware
+    attributes:
+      label: Hardware
+      options: [Raspberry Pi, Radxa Dragon, Other Linux ARM64, Windows (development)]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+  - type: textarea
+    id: bundle
+    attributes:
+      label: Redacted diagnostics
+      description: Attach the file or paste the relevant section.

@@ -590,6 +590,10 @@ func (s *Store) EnsureDefaultHouseholdCalendar(ctx context.Context) error {
 
 // --- Events ---
 
+// MaxEventsPerWindow bounds the rows returned for a single calendar window so a
+// pathological calendar cannot exhaust memory on low-end appliances.
+const MaxEventsPerWindow = 5000
+
 func (s *Store) ListEventsRange(ctx context.Context, start, end time.Time) ([]models.Event, error) {
 	query := `SELECT e.id, e.provider, e.provider_event_id, e.provider_uid, e.calendar_id, e.etag, e.version, e.title, e.description, e.location,
 		e.start_at, e.end_at, e.timezone, e.all_day, e.status, e.recurrence_rule, e.recurrence_parent, e.organizer, e.source,
@@ -599,9 +603,10 @@ func (s *Store) ListEventsRange(ctx context.Context, start, end time.Time) ([]mo
 		WHERE c.enabled_for_display = 1
 		  AND e.deleted_at IS NULL
 		  AND e.start_at < ? AND e.end_at > ?
-		ORDER BY e.start_at ASC;`
+		ORDER BY e.start_at ASC
+		LIMIT ?;`
 
-	rows, err := s.db.QueryContext(ctx, query, end, start)
+	rows, err := s.db.QueryContext(ctx, query, end, start, MaxEventsPerWindow)
 	if err != nil {
 		return nil, fmt.Errorf("list events range: %w", err)
 	}

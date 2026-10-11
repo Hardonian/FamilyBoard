@@ -83,4 +83,4 @@ make security-check
 
 ## 4. Coordinated Vulnerability Disclosure
 
-Security researchers can report findings according to our policy in [SECURITY.md](file:///c:/Users/scott/GitHub/FamilyBoard/SECURITY.md).
+Security researchers can report findings according to our policy in [SECURITY.md](../SECURITY.md).

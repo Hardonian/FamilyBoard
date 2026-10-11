@@ -44,4 +44,27 @@ for (const tpl of templates) {
     console.log(`PASS: Template validation on ${tpl}`);
 }
 
+// 4. Performance budgets for low-end kiosk hardware (raw / gzip bytes).
+// Raise a budget only with a documented reason in docs/PERFORMANCE_BUDGETS.md.
+const zlib = require('zlib');
+const budgets = [
+    { file: ['web', 'static', 'js', 'kiosk.js'], raw: 160 * 1024, gzip: 40 * 1024 },
+    { file: ['web', 'static', 'js', 'admin.js'], raw: 80 * 1024, gzip: 22 * 1024 },
+    { file: ['web', 'static', 'js', 'setup.js'], raw: 16 * 1024, gzip: 5 * 1024 },
+    { file: ['web', 'static', 'sw.js'], raw: 12 * 1024, gzip: 4 * 1024 },
+    { file: ['web', 'static', 'css', 'app.css'], raw: 160 * 1024, gzip: 28 * 1024 },
+    { file: ['web', 'templates', 'kiosk.html'], raw: 60 * 1024, gzip: 12 * 1024 },
+    { file: ['web', 'templates', 'admin.html'], raw: 100 * 1024, gzip: 16 * 1024 },
+    { file: ['web', 'templates', 'setup.html'], raw: 20 * 1024, gzip: 5 * 1024 }
+];
+for (const b of budgets) {
+    const full = path.join(__dirname, '..', ...b.file);
+    const buf = fs.readFileSync(full);
+    const gz = zlib.gzipSync(buf, { level: 9 }).length;
+    const name = b.file.slice(-1)[0];
+    assert(buf.length <= b.raw, `Budget exceeded: ${name} raw ${buf.length} > ${b.raw}`);
+    assert(gz <= b.gzip, `Budget exceeded: ${name} gzip ${gz} > ${b.gzip}`);
+    console.log(`PASS: budget ${name} raw=${buf.length} gzip=${gz}`);
+}
+
 console.log('All frontend static quality checks passed!');

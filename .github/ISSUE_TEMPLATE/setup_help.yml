@@ -1,0 +1,22 @@
+name: Setup help
+description: You are stuck during installation, Wi-Fi, or connecting an account
+labels: [setup-help]
+body:
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where are you stuck?
+      options: [Flashing or installing, Wi-Fi or network, First-run setup, Connecting Google, Connecting Microsoft, Connecting Apple, Pairing a phone, Other]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: FamilyBoard version (if you can see it)
+  - type: textarea
+    id: details
+    attributes:
+      label: What did you try and what did you see?
+      description: Include any message shown on screen. Never include passwords or tokens.
+    validations:
+      required: true

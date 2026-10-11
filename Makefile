@@ -10,7 +10,7 @@ else
     EXE_EXT :=
 endif
 
-.PHONY: all fmt fmt-check vet lint staticcheck vuln security-check tools-check verify-mod verify-tidy check-version check-js check-frontend check-runtime-deps check-powershell check-systemd test test-race test-browser build build-arm64 package-arm64 package-all pi-bootstrap-check release-check release-package clean
+.PHONY: all fmt fmt-check vet lint staticcheck vuln security-check tools-check verify-mod verify-tidy check-version check-js check-frontend check-docs notices check-runtime-deps check-powershell check-systemd test test-race test-browser build build-arm64 package-arm64 package-all pi-bootstrap-check release-check release-package clean
 
 VERSION ?= $(strip $(file <VERSION))
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
@@ -136,7 +136,15 @@ pi-bootstrap-check:
 	@"$(BASH_BIN)" -n scripts/check_frontend.sh
 	@"$(BASH_BIN)" -n scripts/check_coverage.sh
 	@"$(BASH_BIN)" -n scripts/generate_sbom.sh
+	@"$(BASH_BIN)" -n scripts/generate_notices.sh
+	@"$(BASH_BIN)" -n scripts/check_docs.sh
 	@echo "All shell scripts passed syntax checks."
+
+check-docs:
+	@"$(BASH_BIN)" scripts/check_docs.sh
+
+notices:
+	@"$(BASH_BIN)" scripts/generate_notices.sh THIRD_PARTY_NOTICES.md
 
 prepare-sd:
 	@"$(BASH_BIN)" scripts/prepare_sd.sh $(SD)
