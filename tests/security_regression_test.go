@@ -16,8 +16,8 @@ import (
 	"time"
 
 	"github.com/Hardonian/FamilyBoard/internal/auth"
-	"github.com/Hardonian/FamilyBoard/internal/models"
 	"github.com/Hardonian/FamilyBoard/internal/oauth"
+	"github.com/Hardonian/FamilyBoard/internal/web"
 )
 
 func TestSecurity_CSRF_Rejection(t *testing.T) {
@@ -128,6 +128,20 @@ func TestSecurity_PhotoUpload_ValidImageAccepted(t *testing.T) {
 	}
 }
 
+func csrfForTest(t *testing.T, srv *web.Server, path string) (*http.Cookie, string) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	for _, cookie := range w.Result().Cookies() {
+		if cookie.Name == "fb_csrf" && cookie.Value != "" {
+			return cookie, cookie.Value
+		}
+	}
+	t.Fatalf("expected CSRF cookie from %s", path)
+	return nil, ""
+}
+
 func TestSecurity_RateLimit_BruteForceProtection(t *testing.T) {
 	srv, _, tempDir := setupTestServer(t)
 	defer os.RemoveAll(tempDir)
@@ -137,14 +151,18 @@ func TestSecurity_RateLimit_BruteForceProtection(t *testing.T) {
 	// Trigger repeated failed logins
 	var lastStatus int
 	for i := 0; i < 7; i++ {
+		csrfCookie, csrfToken := csrfForTest(t, srv, "/login")
+
 		form := url.Values{}
 		form.Set("username", "admin")
 		form.Set("password", "wrong-password-guess")
+		form.Set("csrf_token", csrfToken)
 
 		req := httptest.NewRequest("POST", "/login", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("X-Forwarded-For", limiterIP)
 		req.RemoteAddr = limiterIP + ":12345"
+		req.AddCookie(csrfCookie)
 		rec := httptest.NewRecorder()
 
 		srv.ServeHTTP(rec, req)
@@ -165,24 +183,24 @@ func TestSecurity_PairingReplayProtection(t *testing.T) {
 	rawCode := "PAIR-123456"
 	codeHash := auth.HashToken(rawCode)
 
-	err := store.CreatePairingCode(ctx, &models.PairingCode{
-		CodeHash:  codeHash,
-		ExpiresAt: time.Now().Add(10 * time.Minute),
-	})
+	err := store.CreatePairingCode(ctx, codeHash, time.Now().Add(10*time.Minute))
 	if err != nil {
 		t.Fatalf("create pairing code: %v", err)
 	}
 
 	// 1st consumption -> succeeds
-	code, err := store.ConsumePairingCode(ctx, codeHash)
-	if err != nil || code == nil {
+	consumed, err := store.ConsumePairingCode(ctx, codeHash)
+	if err != nil || !consumed {
 		t.Fatalf("first consumption should succeed: %v", err)
 	}
 
 	// 2nd consumption -> replay attack rejected
-	replayCode, err := store.ConsumePairingCode(ctx, codeHash)
-	if err == nil && replayCode != nil {
-		t.Fatalf("replay consumption should fail, but succeeded")
+	replayConsumed, err := store.ConsumePairingCode(ctx, codeHash)
+	if err != nil {
+		t.Fatalf("replay error: %v", err)
+	}
+	if replayConsumed {
+		t.Fatalf("replay consumption should return false, but returned true")
 	}
 }
 

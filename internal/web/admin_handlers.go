@@ -85,6 +85,7 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 	next := safeLocalRedirect(r.FormValue("next"), "/admin")
 	csrfToken := r.FormValue("csrf_token")
 	if !s.rateLimiter.Allow(ip) {
+		w.WriteHeader(http.StatusTooManyRequests)
 		s.render(w, "login.html", map[string]interface{}{
 			"Title": "Admin Login", "Theme": "dark", "CSRFToken": csrfToken,
 			"Next": next, "Error": "Too many failed attempts. Please try again later.",
