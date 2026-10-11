@@ -611,28 +611,6 @@ func (s *Server) handleAPIUploadPhoto(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func sanitizePhotoFilename(name, ext string) string {
-	base := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
-	var safe strings.Builder
-	lastWasUnderscore := false
-	for _, char := range base {
-		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') ||
-			(char >= '0' && char <= '9') || char == '-' || char == '_' {
-			safe.WriteRune(char)
-			lastWasUnderscore = char == '_'
-		} else if safe.Len() > 0 && !lastWasUnderscore {
-			safe.WriteByte('_')
-			lastWasUnderscore = true
-		}
-		if safe.Len() >= 80 {
-			break
-		}
-	}
-	if safe.Len() == 0 {
-		safe.WriteString("photo")
-	}
-	return safe.String() + ext
-}
 
 // handleAPIDeletePhoto removes a photo from the FotoCube slideshow directory.
 func (s *Server) handleAPIDeletePhoto(w http.ResponseWriter, r *http.Request) {

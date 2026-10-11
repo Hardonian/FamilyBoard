@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -177,3 +178,57 @@ func resolveArchivePath(outPath string) (string, error) {
 	timestamp := time.Now().Format("20060102-150405")
 	return filepath.Join(outPath, fmt.Sprintf("familyboard-backup-%s.tar.gz", timestamp)), nil
 }
+
+// PruneBackups removes older backup archives in backupDir, preserving the newest maxKeep archives.
+func PruneBackups(backupDir string, maxKeep int) (int, error) {
+	if maxKeep < 1 {
+		return 0, fmt.Errorf("maxKeep must be at least 1")
+	}
+	entries, err := os.ReadDir(backupDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("read backup dir: %w", err)
+	}
+
+	type backupFile struct {
+		path    string
+		modTime time.Time
+	}
+
+	var backups []backupFile
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasPrefix(name, "familyboard-backup-") && strings.HasSuffix(name, ".tar.gz") {
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			backups = append(backups, backupFile{
+				path:    filepath.Join(backupDir, name),
+				modTime: info.ModTime(),
+			})
+		}
+	}
+
+	if len(backups) <= maxKeep {
+		return 0, nil
+	}
+
+	sort.Slice(backups, func(i, j int) bool {
+		return backups[i].modTime.After(backups[j].modTime)
+	})
+
+	pruned := 0
+	for _, b := range backups[maxKeep:] {
+		if err := os.Remove(b.path); err == nil {
+			pruned++
+		}
+	}
+	return pruned, nil
+}
+
