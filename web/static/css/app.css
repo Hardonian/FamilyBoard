@@ -2546,6 +2546,10 @@ body.kiosk-ambient-dim {
 .admin-diag-val.success {
   color: var(--color-success);
 }
+
+.admin-diag-val.danger {
+  color: var(--danger);
+}
 .admin-footer-actions {
   display: flex;
   gap: 16px;

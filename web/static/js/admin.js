@@ -75,6 +75,50 @@
 
     setupAppleCalendarModal();
     setupHardwareTab();
+    setupUpdateCheck();
+  }
+
+  function setupUpdateCheck() {
+    const button = document.getElementById('btn-check-updates');
+    const status = document.getElementById('admin-update-status');
+    const detail = document.getElementById('admin-update-detail');
+    const releaseLink = document.getElementById('admin-release-link');
+    if (!button || !status || !detail) return;
+
+    button.addEventListener('click', async function() {
+      button.disabled = true;
+      status.classList.remove('success', 'danger');
+      status.textContent = 'Checking…';
+      detail.textContent = 'Contacting the official FamilyBoard release feed';
+      try {
+        const channel = button.dataset.channel || 'stable';
+        const response = await apiFetch('/admin/api/update?channel=' + encodeURIComponent(channel), {
+          headers: { 'Accept': 'application/json' }, cache: 'no-store'
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Release check failed');
+        if (result.update_available) {
+          status.classList.add('danger');
+          status.textContent = 'v' + result.latest + ' available';
+          detail.textContent = 'Installed v' + result.installed + ' · channel ' + result.channel;
+        } else {
+          status.classList.add('success');
+          status.textContent = 'Up to date';
+          detail.textContent = 'Installed v' + result.installed + ' · latest v' + result.latest;
+        }
+        if (releaseLink && typeof result.release_url === 'string' &&
+            result.release_url.startsWith('https://github.com/Hardonian/FamilyBoard/releases/')) {
+          releaseLink.href = result.release_url;
+          releaseLink.textContent = 'View v' + result.latest + ' Notes';
+        }
+      } catch (error) {
+        status.classList.add('danger');
+        status.textContent = 'Check unavailable';
+        detail.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
   }
 
   function setupAppleCalendarModal() {

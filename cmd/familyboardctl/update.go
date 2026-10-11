@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Hardonian/FamilyBoard/internal/buildinfo"
+	"github.com/Hardonian/FamilyBoard/internal/releasefeed"
 )
 
 // ReleaseChannel represents release channel tiers (P3 #70).
@@ -39,10 +41,28 @@ func PrintUpdateStatus(channel string) {
 	fmt.Printf("  Release Notes:         https://github.com/Hardonian/FamilyBoard/blob/main/CHANGELOG.md\n")
 	fmt.Printf("  Expected Downtime:     < 60 seconds (zero data loss)\n")
 	fmt.Printf("  Rollback Protection:   Automatic (.old executable and pre-upgrade SQLite snapshot)\n")
-	fmt.Printf("  Update Status:         Up to date on channel '%s'\n\n", channel)
+	fmt.Printf("  Update Status:         Not checked (run 'familyboardctl update check')\n\n")
 	fmt.Printf("Commands:\n")
 	fmt.Printf("  familyboardctl update check [--channel stable|beta|dev]\n")
 	fmt.Printf("  familyboardctl update [--channel <channel>] [--sha256 <digest>] [--target <daemon-path>] <binary-path>\n")
+}
+
+func CheckUpdateStatus(ctx context.Context, channel string) error {
+	result, err := releasefeed.Check(ctx, &http.Client{Timeout: 10 * time.Second}, releasefeed.OfficialEndpoint, buildinfo.Version, channel)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("FamilyBoard Appliance Update Status\n\n")
+	fmt.Printf("  Installed Version:     v%s\n", result.Installed)
+	fmt.Printf("  Latest %s Version: %s\n", result.Channel, "v"+result.Latest)
+	if result.UpdateAvailable {
+		fmt.Printf("  Update Status:         Update available\n")
+	} else {
+		fmt.Printf("  Update Status:         Up to date\n")
+	}
+	fmt.Printf("  Release Notes:         %s\n", result.ReleaseURL)
+	fmt.Printf("  Checked At:            %s\n", result.CheckedAt.Format(time.RFC3339))
+	return nil
 }
 
 // defaultDaemonPath resolves the FamilyBoard daemon next to familyboardctl.

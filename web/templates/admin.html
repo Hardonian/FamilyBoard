@@ -1147,7 +1147,7 @@
           <h2 class="admin-section-heading">Software Updates &amp; Release Channels</h2>
           <p class="admin-section-sub">Controlled appliance updates with automatic pre-upgrade backups and instant health verification.</p>
         </div>
-        <span class="status-badge status-badge-home">Release Channel: Stable</span>
+        <span class="status-badge status-badge-home">Release Channel: {{.ReleaseChannel}}</span>
       </div>
 
       <div class="admin-diagnostics-grid">
@@ -1158,8 +1158,8 @@
         </div>
         <div class="admin-diag-card">
           <div class="admin-diag-label">Update Status</div>
-          <div class="admin-diag-val success">Up to date</div>
-          <small class="admin-diag-sub">Checked against release feed</small>
+          <div class="admin-diag-val" id="admin-update-status" role="status" aria-live="polite">Not checked</div>
+          <small class="admin-diag-sub" id="admin-update-detail">Select “Check for Updates” to query the official release feed</small>
         </div>
         <div class="admin-diag-card">
           <div class="admin-diag-label">Expected Downtime</div>
@@ -1174,18 +1174,27 @@
       </div>
 
       <div class="admin-update-instructions admin-text-muted">
-        <p><strong>Supported Upgrade Procedure:</strong> Every release upgrade executes preflight validation, downloads verified checksums, takes an automatic SQLite backup, runs forward schema migrations, and confirms readiness via <code>/health/ready</code> before completing.</p>
-        <p>To trigger or verify updates from the host appliance console:</p>
-        <pre><code>sudo /opt/familyboard/bin/familyboardctl backup create
-sudo /opt/familyboard/deploy/pi/update.sh</code></pre>
+        <p><strong>Supported Upgrade Procedure:</strong> FamilyBoard verifies release metadata here. Installation remains behind the appliance’s root-only maintenance boundary: it verifies SHA-256, takes an automatic backup, installs both binaries, and confirms <code>/health/ready</code> before completing or rolling back.</p>
+        <p>After downloading and extracting the correct signed release archive on the host:</p>
+        <pre><code>sudo /opt/familyboard/deploy/pi/update.sh ./familyboard ./familyboardctl</code></pre>
         <p><strong>Emergency Rollback:</strong> If an update encounters host incompatibility, restore the pre-upgrade snapshot:</p>
-        <pre><code>sudo /opt/familyboard/bin/familyboardctl backup restore &lt;path-to-backup.db&gt;
+        <pre><code>sudo /opt/familyboard/bin/familyboardctl restore &lt;path-to-backup.tar.gz&gt;
 sudo systemctl restart familyboard</code></pre>
       </div>
 
       <div class="admin-footer-actions admin-footer-actions-spaced">
-        <button type="button" class="btn btn-secondary" onclick="alert('Appliance is running the latest stable release v{{.BuildVersion}}.')">Check for Updates</button>
-        <a href="https://github.com/Hardonian/FamilyBoard/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">View Release Notes</a>
+        <form method="POST" action="/admin/update/channel" class="admin-inline-form">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <label for="release-channel">Channel</label>
+          <select id="release-channel" name="channel" class="form-input">
+            <option value="stable"{{if eq .ReleaseChannel "stable"}} selected{{end}}>Stable</option>
+            <option value="beta"{{if eq .ReleaseChannel "beta"}} selected{{end}}>Beta</option>
+            <option value="dev"{{if eq .ReleaseChannel "dev"}} selected{{end}}>Development</option>
+          </select>
+          <button type="submit" class="btn btn-secondary">Save Channel</button>
+        </form>
+        <button type="button" class="btn btn-secondary" id="btn-check-updates" data-channel="{{.ReleaseChannel}}">Check for Updates</button>
+        <a href="https://github.com/Hardonian/FamilyBoard/releases" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" id="admin-release-link">View Releases</a>
       </div>
     </div>
     {{end}}

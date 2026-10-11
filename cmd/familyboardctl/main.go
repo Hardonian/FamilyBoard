@@ -477,7 +477,12 @@ func runUpdate(args []string) {
 		if err := fsCheck.Parse(args[1:]); err != nil {
 			os.Exit(1)
 		}
-		PrintUpdateStatus(*channel)
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+		defer cancel()
+		if err := CheckUpdateStatus(ctx, *channel); err != nil {
+			fmt.Fprintf(os.Stderr, "Update check failed: %v\n", err)
+			os.Exit(1)
+		}
 		return
 	}
 
