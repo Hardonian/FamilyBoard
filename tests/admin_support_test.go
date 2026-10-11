@@ -3,95 +3,51 @@ package tests
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/Hardonian/FamilyBoard/internal/auth"
-	"github.com/Hardonian/FamilyBoard/internal/config"
-	"github.com/Hardonian/FamilyBoard/internal/db"
 	"github.com/Hardonian/FamilyBoard/internal/models"
-	"github.com/Hardonian/FamilyBoard/internal/oauth"
-	"github.com/Hardonian/FamilyBoard/internal/queue"
-	calsync "github.com/Hardonian/FamilyBoard/internal/sync"
-	"github.com/Hardonian/FamilyBoard/internal/web"
 )
 
-func setupTestServer(t *testing.T) (*web.Server, string, func()) {
-	tmpDir, err := os.MkdirTemp("", "fb-support-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
+func createAdminCookie(t *testing.T, store any) *http.Cookie {
+	token := "admin-test-token-fixed-12345"
+	now := time.Now()
+	type sessionCreator interface {
+		CreateSession(ctx context.Context, s *models.Session) error
 	}
-
-	dbPath := filepath.Join(tmpDir, "test.db")
-	store, err := db.Open(dbPath)
-	if err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatalf("failed to open test db: %v", err)
+	sc, ok := store.(sessionCreator)
+	if !ok {
+		t.Fatalf("store does not implement CreateSession")
 	}
-	if err := db.Migrate(store.DB()); err != nil {
-		store.Close()
-		os.RemoveAll(tmpDir)
-		t.Fatalf("failed to run migrations: %v", err)
-	}
-
-	cfg := &config.Config{
-		Server: config.ServerConfig{
-			DeviceName: "Test Appliance",
-			Timezone:   "America/New_York",
-			Port:       8080,
-		},
-		Database: config.DatabaseConfig{
-			Path: dbPath,
-		},
-		Auth: config.AuthConfig{
-			AdminUsername: "admin",
-		},
-	}
-
-	tokenStorage := oauth.NewTokenStorage(filepath.Join(tmpDir, "tokens"))
-	stateManager := oauth.NewStateManager()
-	queueEngine := queue.NewEngine(store, nil, nil, nil, nil)
-	syncEngine := calsync.NewEngine(store, tokenStorage, nil, nil, nil, nil, nil)
-
-	srv, err := web.NewServer(cfg, store, tokenStorage, stateManager, nil, nil, syncEngine, queueEngine)
-	if err != nil {
-		store.Close()
-		os.RemoveAll(tmpDir)
-		t.Fatalf("failed to create web server: %v", err)
-	}
-
-	// Create valid admin session token
-	sessionToken := "admin-test-token-12345678901234567890"
-	_ = store.CreateSession(t.Context(), &models.Session{
-		TokenHash:    auth.HashToken(sessionToken),
+	if err := sc.CreateSession(context.Background(), &models.Session{
+		TokenHash:    auth.HashToken(token),
 		UserID:       "admin",
-		ExpiresAt:    time.Now().Add(1 * time.Hour),
-		CreatedAt:    time.Now(),
-		LastActiveAt: time.Now(),
-	})
-
-	cleanup := func() {
-		store.Close()
-		os.RemoveAll(tmpDir)
+		ExpiresAt:    now.Add(24 * time.Hour),
+		CreatedAt:    now,
+		LastActiveAt: now,
+	}); err != nil {
+		t.Fatalf("failed to create admin test session: %v", err)
 	}
-
-	return srv, sessionToken, cleanup
+	return &http.Cookie{
+		Name:  "fb_session",
+		Value: token,
+	}
 }
 
 func TestAdminAPIHealth(t *testing.T) {
-	srv, token, cleanup := setupTestServer(t)
-	defer cleanup()
+	srv, store, tempDir := setupTestServer(t)
+	defer os.RemoveAll(tempDir)
+
+	cookie := createAdminCookie(t, store)
 
 	req := httptest.NewRequest("GET", "/admin/api/health", nil)
-	req.AddCookie(&http.Cookie{
-		Name:  "fb_session",
-		Value: token,
-	})
+	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 
 	srv.ServeHTTP(rec, req)
@@ -117,20 +73,19 @@ func TestAdminAPIHealth(t *testing.T) {
 }
 
 func TestAdminSupportBundle(t *testing.T) {
-	srv, token, cleanup := setupTestServer(t)
-	defer cleanup()
+	srv, store, tempDir := setupTestServer(t)
+	defer os.RemoveAll(tempDir)
+
+	cookie := createAdminCookie(t, store)
 
 	req := httptest.NewRequest("GET", "/admin/support/bundle", nil)
-	req.AddCookie(&http.Cookie{
-		Name:  "fb_session",
-		Value: token,
-	})
+	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 
 	srv.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK, got: %d", rec.Code)
+		t.Fatalf("expected 200 OK, got: %d (%s)", rec.Code, rec.Body.String())
 	}
 
 	contentType := rec.Header().Get("Content-Type")
