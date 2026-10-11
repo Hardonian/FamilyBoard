@@ -206,6 +206,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /admin/apple/connect", s.requireAuth(s.requireCSRF(s.handleAdminAppleConnect)))
 	s.mux.HandleFunc("GET /admin/backup/download", s.requireAuth(s.handleAdminBackupDownload))
 	s.mux.HandleFunc("GET /admin/diagnostics", s.requireAuth(s.handleAdminDiagnosticsDownload))
+	s.mux.HandleFunc("GET /admin/support/bundle", s.requireAuth(s.handleAdminSupportBundle))
+	s.mux.HandleFunc("GET /admin/api/health", s.requireAuth(s.handleAdminHealth))
 	s.mux.HandleFunc("GET /admin/privacy/export", s.requireAuth(s.handleAdminPrivacyExport))
 	s.mux.HandleFunc("POST /admin/privacy/retention", s.requireAuth(s.requireCSRF(s.handleAdminPrivacyRetention)))
 	s.mux.HandleFunc("POST /admin/devices/{id}/revoke", s.requireAuth(s.requireCSRF(s.handleAdminDeviceRevoke)))

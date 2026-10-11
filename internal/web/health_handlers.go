@@ -6,6 +6,8 @@ import (
 
 	"github.com/Hardonian/FamilyBoard/internal/buildinfo"
 	"github.com/Hardonian/FamilyBoard/internal/db"
+	"github.com/Hardonian/FamilyBoard/internal/metrics"
+	"github.com/Hardonian/FamilyBoard/internal/timezone"
 )
 
 type ReadyStatus struct {
@@ -84,3 +86,52 @@ func (s *Server) handleHealthReady(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(status)
 }
+
+type AdminHealthReport struct {
+	Status           string                  `json:"status"`
+	ApplianceVersion string                  `json:"version"`
+	SchemaVersion    int                     `json:"schema_version"`
+	PendingMutations int                     `json:"pending_mutations"`
+	DeadLetterCount  int                     `json:"dead_letter_count"`
+	ClockHealth      timezone.ClockHealth    `json:"clock_health"`
+	Metrics          metrics.MetricsSnapshot `json:"metrics"`
+	RepairActions    []string                `json:"repair_actions"`
+}
+
+func (s *Server) handleAdminHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+
+	ctx := r.Context()
+	ver, _ := db.CurrentVersion(ctx, s.store.DB())
+	pending, _ := s.store.CountPendingMutations(ctx)
+	deadLetters, _ := s.store.CountDeadLetterMutations(ctx)
+
+	status := "ready"
+	if deadLetters > 0 {
+		status = "degraded"
+	}
+
+	clock := timezone.CheckClockHealth(s.cfg.Server.Timezone)
+	if clock.Status == "critical" {
+		status = "degraded"
+	}
+
+	report := AdminHealthReport{
+		Status:           status,
+		ApplianceVersion: buildinfo.Version,
+		SchemaVersion:    ver,
+		PendingMutations: pending,
+		DeadLetterCount:  deadLetters,
+		ClockHealth:      clock,
+		Metrics:          metrics.Default().Snapshot(),
+		RepairActions: []string{
+			"POST /admin/queue/reset/{id}",
+			"POST /admin/sync/all",
+			"POST /admin/system/storage/migrate-nvme",
+		},
+	}
+
+	_ = json.NewEncoder(w).Encode(report)
+}
+
