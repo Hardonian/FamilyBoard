@@ -1,10 +1,12 @@
 package web
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net"
 	"net/http"
@@ -14,12 +16,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hardonian/FamilyBoard/internal/auth"
 	"github.com/Hardonian/FamilyBoard/internal/hardware"
+	"github.com/Hardonian/FamilyBoard/internal/models"
 	qrcode "github.com/skip2/go-qrcode"
+	_ "golang.org/x/image/webp"
 )
 
 const maxJSONRequestBody = 64 << 10
 const presenceBeaconsSettingKey = "presence_beacons"
+const maxPhotoUploadBytes = 32 << 20
+const maxPhotoLibraryBytes = 1 << 30
+const maxPhotoPixels = 40_000_000
+const maxPhotoDimension = 12_000
 
 func decodeRequestJSON(w http.ResponseWriter, r *http.Request, dst interface{}) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, maxJSONRequestBody)
@@ -461,8 +470,8 @@ func (s *Server) handleAPIGetPhotos(w http.ResponseWriter, r *http.Request) {
 // handleAPIUploadPhoto handles uploading photos for the FotoCube ambient slideshow.
 func (s *Server) handleAPIUploadPhoto(w http.ResponseWriter, r *http.Request) {
 	// Keep request bodies bounded before multipart parsing writes overflow to disk.
-	r.Body = http.MaxBytesReader(w, r.Body, 33<<20)
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, maxPhotoUploadBytes+(1<<20))
+	if err := r.ParseMultipartForm(maxPhotoUploadBytes); err != nil {
 		writeHardwareError(w, http.StatusBadRequest, "file too large or invalid multipart form")
 		return
 	}
@@ -473,6 +482,10 @@ func (s *Server) handleAPIUploadPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
+	if header.Size <= 0 || header.Size > maxPhotoUploadBytes {
+		writeHardwareError(w, http.StatusBadRequest, "photo must be between 1 byte and 32 MiB")
+		return
+	}
 
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
@@ -496,15 +509,56 @@ func (s *Server) handleAPIUploadPhoto(w http.ResponseWriter, r *http.Request) {
 		writeHardwareError(w, http.StatusBadRequest, "image content does not match its filename extension")
 		return
 	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		writeHardwareError(w, http.StatusBadRequest, "could not inspect image")
+		return
+	}
+	imageConfig, _, err := image.DecodeConfig(file)
+	if err != nil || imageConfig.Width < 1 || imageConfig.Height < 1 ||
+		imageConfig.Width > maxPhotoDimension || imageConfig.Height > maxPhotoDimension ||
+		int64(imageConfig.Width)*int64(imageConfig.Height) > maxPhotoPixels {
+		writeHardwareError(w, http.StatusBadRequest, "image is corrupt or exceeds the 40-megapixel safety limit")
+		return
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		writeHardwareError(w, http.StatusBadRequest, "could not prepare image")
+		return
+	}
 
 	photosDir := s.getPhotosDir()
 	if err := os.MkdirAll(photosDir, 0755); err != nil {
 		writeHardwareError(w, http.StatusInternalServerError, "failed to prepare photo library")
 		return
 	}
-	cleanName := sanitizePhotoFilename(header.Filename, ext)
-	timestampedName := fmt.Sprintf("%d_%s", time.Now().UnixNano(), cleanName)
-	dstPath := filepath.Join(photosDir, timestampedName)
+	entries, err := os.ReadDir(photosDir)
+	if err != nil {
+		writeHardwareError(w, http.StatusInternalServerError, "failed to inspect photo library")
+		return
+	}
+	var libraryBytes int64
+	var photoCount int
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		info, infoErr := entry.Info()
+		if infoErr == nil {
+			libraryBytes += info.Size()
+			photoCount++
+		}
+	}
+	if photoCount >= 2000 || libraryBytes+header.Size > maxPhotoLibraryBytes {
+		writeHardwareError(w, http.StatusInsufficientStorage, "photo library quota reached; remove photos before uploading more")
+		return
+	}
+	canonicalExt := map[string]string{"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[contentType]
+	randomName, err := auth.GenerateSecureToken(16)
+	if err != nil {
+		writeHardwareError(w, http.StatusInternalServerError, "failed to allocate a private photo name")
+		return
+	}
+	storedName := randomName + canonicalExt
+	dstPath := filepath.Join(photosDir, storedName)
 
 	dst, err := os.OpenFile(dstPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
 	if err != nil {
@@ -513,8 +567,7 @@ func (s *Server) handleAPIUploadPhoto(w http.ResponseWriter, r *http.Request) {
 	}
 	defer dst.Close()
 
-	imageReader := io.MultiReader(bytes.NewReader(headerBytes[:n]), file)
-	if _, err := io.Copy(dst, imageReader); err != nil {
+	if _, err := io.Copy(dst, io.LimitReader(file, maxPhotoUploadBytes+1)); err != nil {
 		_ = dst.Close()
 		_ = os.Remove(dstPath)
 		writeHardwareError(w, http.StatusInternalServerError, "failed to write photo content")
@@ -522,10 +575,16 @@ func (s *Server) handleAPIUploadPhoto(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	_ = s.store.RecordAudit(r.Context(), &models.AuditEntry{
+		ID: models.NewID("aud"), Actor: "household_device", Action: "photo_upload",
+		ResourceType: "photo", ResourceID: storedName,
+		Details: fmt.Sprintf("Uploaded validated %s photo (%dx%d, %d bytes)", contentType, imageConfig.Width, imageConfig.Height, header.Size),
+		IPAddress: remoteIP(r),
+	})
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":  true,
-		"filename": timestampedName,
-		"url":      "/photos/" + timestampedName,
+		"filename": storedName,
+		"url":      "/photos/" + storedName,
 	})
 }
 
