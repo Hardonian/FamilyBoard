@@ -9,6 +9,10 @@ port = 8080
 base_url = "http://127.0.0.1:8080"
 timezone = "America/Toronto"
 device_name = "FamilyBoard Appliance"
+# Optional direct HTTPS. Configure both files, change base_url to https://, and
+# set security.cookie_secure=true. A LAN reverse proxy may terminate TLS instead.
+tls_cert_file = ""
+tls_key_file = ""
 
 [database]
 path = "familyboard.db"

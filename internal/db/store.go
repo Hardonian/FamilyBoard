@@ -21,6 +21,110 @@ func (s *Store) DB() *DB {
 	return s.db
 }
 
+// --- Pairing and household devices ---
+
+func (s *Store) CreatePairingCode(ctx context.Context, tokenHash string, expiresAt time.Time) error {
+	now := time.Now()
+	_, err := s.db.ExecContext(ctx, `INSERT INTO pairing_codes (token_hash, expires_at, used_at, created_at)
+		VALUES (?, ?, NULL, ?);`, tokenHash, expiresAt, now)
+	if err != nil {
+		return fmt.Errorf("create pairing code: %w", err)
+	}
+	_, _ = s.db.ExecContext(ctx, "DELETE FROM pairing_codes WHERE expires_at < ? OR used_at IS NOT NULL;", now.Add(-time.Hour))
+	return nil
+}
+
+func (s *Store) ConsumePairingCode(ctx context.Context, tokenHash string) (bool, error) {
+	consumed := false
+	err := s.db.WithTx(ctx, func(tx *sql.Tx) error {
+		now := time.Now()
+		result, err := tx.ExecContext(ctx, `UPDATE pairing_codes SET used_at = ?
+			WHERE token_hash = ? AND used_at IS NULL AND expires_at >= ?;`, now, tokenHash, now)
+		if err != nil {
+			return err
+		}
+		rows, err := result.RowsAffected()
+		consumed = rows == 1
+		return err
+	})
+	if err != nil {
+		return false, fmt.Errorf("consume pairing code: %w", err)
+	}
+	return consumed, nil
+}
+
+func (s *Store) CreatePairedDevice(ctx context.Context, device *models.PairedDevice) error {
+	if device == nil {
+		return fmt.Errorf("paired device is required")
+	}
+	now := time.Now()
+	if device.CreatedAt.IsZero() {
+		device.CreatedAt = now
+	}
+	device.LastSeenAt = now
+	_, err := s.db.ExecContext(ctx, `INSERT INTO paired_devices
+		(id, name, token_hash, user_agent, created_at, last_seen_at, revoked_at)
+		VALUES (?, ?, ?, ?, ?, ?, NULL);`, device.ID, device.Name, device.TokenHash,
+		device.UserAgent, device.CreatedAt, device.LastSeenAt)
+	if err != nil {
+		return fmt.Errorf("create paired device: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ValidatePairedDevice(ctx context.Context, tokenHash string) (*models.PairedDevice, error) {
+	var device models.PairedDevice
+	err := s.db.QueryRowContext(ctx, `SELECT id, name, token_hash, user_agent, created_at, last_seen_at, revoked_at
+		FROM paired_devices WHERE token_hash = ? AND revoked_at IS NULL;`, tokenHash).Scan(
+		&device.ID, &device.Name, &device.TokenHash, &device.UserAgent,
+		&device.CreatedAt, &device.LastSeenAt, &device.RevokedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("validate paired device: %w", err)
+	}
+	if time.Since(device.LastSeenAt) > time.Hour {
+		device.LastSeenAt = time.Now()
+		_, _ = s.db.ExecContext(ctx, "UPDATE paired_devices SET last_seen_at = ? WHERE id = ?;", device.LastSeenAt, device.ID)
+	}
+	return &device, nil
+}
+
+func (s *Store) ListPairedDevices(ctx context.Context) ([]models.PairedDevice, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, token_hash, user_agent, created_at, last_seen_at, revoked_at
+		FROM paired_devices ORDER BY revoked_at IS NULL DESC, last_seen_at DESC;`)
+	if err != nil {
+		return nil, fmt.Errorf("list paired devices: %w", err)
+	}
+	defer rows.Close()
+	var devices []models.PairedDevice
+	for rows.Next() {
+		var device models.PairedDevice
+		if err := rows.Scan(&device.ID, &device.Name, &device.TokenHash, &device.UserAgent,
+			&device.CreatedAt, &device.LastSeenAt, &device.RevokedAt); err != nil {
+			return nil, fmt.Errorf("scan paired device: %w", err)
+		}
+		devices = append(devices, device)
+	}
+	return devices, rows.Err()
+}
+
+func (s *Store) RevokePairedDevice(ctx context.Context, id string) error {
+	result, err := s.db.ExecContext(ctx, "UPDATE paired_devices SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL;", time.Now(), id)
+	if err != nil {
+		return fmt.Errorf("revoke paired device: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check paired device revocation: %w", err)
+	}
+	if rows != 1 {
+		return fmt.Errorf("paired device not found or already revoked")
+	}
+	return nil
+}
+
 // --- People ---
 
 func (s *Store) ListPeople(ctx context.Context) ([]models.Person, error) {

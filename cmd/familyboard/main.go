@@ -185,7 +185,13 @@ func main() {
 	serveErrCh := make(chan error, 1)
 	go func() {
 		slog.Info("FamilyBoard listening", "address", addr, "kiosk_url", fmt.Sprintf("http://%s/", addr))
-		err := httpServer.ListenAndServe()
+		var err error
+		if cfg.Server.TLSCertFile != "" && cfg.Server.TLSKeyFile != "" {
+			slog.Info("Direct HTTPS enabled", "certificate", cfg.Server.TLSCertFile)
+			err = httpServer.ListenAndServeTLS(cfg.Server.TLSCertFile, cfg.Server.TLSKeyFile)
+		} else {
+			err = httpServer.ListenAndServe()
+		}
 		if errors.Is(err, http.ErrServerClosed) {
 			err = nil
 		}

@@ -48,6 +48,8 @@ type ServerConfig struct {
 	BaseURL    string `toml:"base_url"`
 	Timezone   string `toml:"timezone"`
 	DeviceName string `toml:"device_name"`
+	TLSCertFile string `toml:"tls_cert_file"`
+	TLSKeyFile  string `toml:"tls_key_file"`
 }
 
 type DatabaseConfig struct {
@@ -295,6 +297,20 @@ func (c *Config) Validate() error {
 		add("server.port must be between 1 and 65535")
 	}
 	validURL("server.base_url", c.Server.BaseURL, true)
+	tlsCert := strings.TrimSpace(c.Server.TLSCertFile)
+	tlsKey := strings.TrimSpace(c.Server.TLSKeyFile)
+	if (tlsCert == "") != (tlsKey == "") {
+		add("server.tls_cert_file and server.tls_key_file must be configured together")
+	}
+	if tlsCert != "" {
+		base, err := url.Parse(c.Server.BaseURL)
+		if err != nil || base.Scheme != "https" {
+			add("server.base_url must use https when TLS certificate files are configured")
+		}
+		if !c.Security.CookieSecure {
+			add("security.cookie_secure must be true when TLS certificate files are configured")
+		}
+	}
 	if _, err := time.LoadLocation(c.Server.Timezone); err != nil {
 		add("server.timezone %q is invalid", c.Server.Timezone)
 	}

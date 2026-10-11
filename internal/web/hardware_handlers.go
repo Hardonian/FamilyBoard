@@ -613,7 +613,11 @@ func (s *Server) handleAPIMigrateNVMe(w http.ResponseWriter, r *http.Request) {
 
 // handleAPIGetMobilePair returns mobile onboarding pairing info, token, and target URLs.
 func (s *Server) handleAPIGetMobilePair(w http.ResponseWriter, r *http.Request) {
-	token := s.generatePairingToken(24 * time.Hour)
+	token, err := s.generatePairingToken(r.Context(), 10*time.Minute)
+	if err != nil {
+		writeHardwareError(w, http.StatusInternalServerError, "failed to create pairing code")
+		return
+	}
 	pairURL := s.buildPairingURL(r, token)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -622,12 +626,17 @@ func (s *Server) handleAPIGetMobilePair(w http.ResponseWriter, r *http.Request) 
 		"qr_url":      "/api/system/mobile-pair/qrcode",
 		"device_name": s.cfg.Server.DeviceName,
 		"token":       token,
+		"expires_in":  600,
 	})
 }
 
 // handleAPIGetMobilePairQRCode renders a high-contrast PNG QR code for camera pairing.
 func (s *Server) handleAPIGetMobilePairQRCode(w http.ResponseWriter, r *http.Request) {
-	token := s.generatePairingToken(24 * time.Hour)
+	token, err := s.generatePairingToken(r.Context(), 10*time.Minute)
+	if err != nil {
+		writeHardwareError(w, http.StatusInternalServerError, "failed to create pairing code")
+		return
+	}
 	pairURL := s.buildPairingURL(r, token)
 
 	pngBytes, err := qrcode.Encode(pairURL, qrcode.Medium, 280)
@@ -642,18 +651,20 @@ func (s *Server) handleAPIGetMobilePairQRCode(w http.ResponseWriter, r *http.Req
 }
 
 func (s *Server) buildPairingURL(r *http.Request, token string) string {
-	scheme := "http"
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-		scheme = "https"
+	base, err := url.Parse(s.cfg.Server.BaseURL)
+	if err != nil || base.Host == "" {
+		base = &url.URL{Scheme: "http", Host: r.Host}
 	}
-	host := r.Host
 	if s.isLocalhost(r) {
 		status := s.hwMgr.Wifi().GetStatus(r.Context())
 		if status.IPAddress != "" {
-			host = fmt.Sprintf("%s:%d", status.IPAddress, s.cfg.Server.Port)
+			base.Host = fmt.Sprintf("%s:%d", status.IPAddress, s.cfg.Server.Port)
 		} else {
-			host = fmt.Sprintf("familyboard.local:%d", s.cfg.Server.Port)
+			base.Host = fmt.Sprintf("familyboard.local:%d", s.cfg.Server.Port)
 		}
 	}
-	return fmt.Sprintf("%s://%s/?pair=%s", scheme, host, token)
+	base.Path = "/"
+	base.RawQuery = url.Values{"pair": []string{token}}.Encode()
+	base.Fragment = ""
+	return base.String()
 }

@@ -18,11 +18,16 @@ func (s *Server) handleKiosk(w http.ResponseWriter, r *http.Request) {
 
 	// Issue mobile capability cookie if a valid physical pairing token was scanned
 	if pairToken := r.URL.Query().Get("pair"); pairToken != "" {
-		if s.verifyPairingToken(pairToken) {
-			s.issueMobileKioskCapabilityCookie(w)
+		if paired, err := s.redeemPairingToken(w, r, pairToken); err == nil && paired {
+			_ = s.store.RecordAudit(r.Context(), &models.AuditEntry{
+				ID: models.NewID("aud"), Actor: "pairing", Action: "device_pair",
+				ResourceType: "paired_device", Details: "Paired a household device using a one-time code", IPAddress: remoteIP(r),
+			})
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
+		http.Redirect(w, r, "/?pairing=invalid", http.StatusSeeOther)
+		return
 	}
 
 	// Check if appliance needs first-run wizard setup

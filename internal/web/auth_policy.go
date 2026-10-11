@@ -58,9 +58,14 @@ func (s *Server) hasKioskCapability(r *http.Request) bool {
 
 	expected := s.generateKioskToken()
 
-	// 2. Cookie capability
+	// 2. Cookie capability. The physical kiosk uses an installation HMAC;
+	// paired phones use individually revocable opaque tokens stored by hash.
 	if cookie, err := r.Cookie(kioskCapabilityCookieName); err == nil && cookie.Value != "" {
 		if hmac.Equal([]byte(cookie.Value), []byte(expected)) {
+			return true
+		}
+		device, err := s.store.ValidatePairedDevice(r.Context(), auth.HashToken(cookie.Value))
+		if err == nil && device != nil {
 			return true
 		}
 	}
@@ -68,6 +73,10 @@ func (s *Server) hasKioskCapability(r *http.Request) bool {
 	// 3. Header capability
 	if hdr := r.Header.Get(kioskHeaderName); hdr != "" {
 		if hmac.Equal([]byte(hdr), []byte(expected)) {
+			return true
+		}
+		device, err := s.store.ValidatePairedDevice(r.Context(), auth.HashToken(hdr))
+		if err == nil && device != nil {
 			return true
 		}
 	}
@@ -90,43 +99,57 @@ func (s *Server) issueKioskCapabilityCookie(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-// generatePairingToken creates an HMAC-signed, time-bounded pairing token for mobile QR pairing.
-func (s *Server) generatePairingToken(ttl time.Duration) string {
-	exp := time.Now().Add(ttl).Unix()
-	msg := fmt.Sprintf("pair:%d", exp)
-	h := hmac.New(sha256.New, []byte(s.cfg.Security.SessionSecret))
-	h.Write([]byte(msg))
-	sig := hex.EncodeToString(h.Sum(nil))
-	return fmt.Sprintf("%d.%s", exp, sig)
+// generatePairingToken creates a random, one-time, time-bounded pairing code.
+// Only its hash is stored, so a database disclosure cannot redeem unused links.
+func (s *Server) generatePairingToken(ctx context.Context, ttl time.Duration) (string, error) {
+	token, err := auth.GenerateSecureToken(32)
+	if err != nil {
+		return "", err
+	}
+	if err := s.store.CreatePairingCode(ctx, auth.HashToken(token), time.Now().Add(ttl)); err != nil {
+		return "", err
+	}
+	return token, nil
 }
 
-// verifyPairingToken validates the mobile pairing token signature and ensures it has not expired.
-func (s *Server) verifyPairingToken(token string) bool {
-	parts := strings.Split(token, ".")
-	if len(parts) != 2 {
-		return false
+// redeemPairingToken consumes a one-time code and provisions a separately
+// revocable device capability.
+func (s *Server) redeemPairingToken(w http.ResponseWriter, r *http.Request, token string) (bool, error) {
+	consumed, err := s.store.ConsumePairingCode(r.Context(), auth.HashToken(token))
+	if err != nil || !consumed {
+		return consumed, err
 	}
-	var exp int64
-	if _, err := fmt.Sscanf(parts[0], "%d", &exp); err != nil {
-		return false
+	deviceToken, err := auth.GenerateSecureToken(32)
+	if err != nil {
+		return false, err
 	}
-	if time.Now().Unix() > exp {
-		return false
+	deviceName := strings.TrimSpace(r.URL.Query().Get("device"))
+	if deviceName == "" {
+		deviceName = "Household phone"
 	}
-	msg := fmt.Sprintf("pair:%d", exp)
-	h := hmac.New(sha256.New, []byte(s.cfg.Security.SessionSecret))
-	h.Write([]byte(msg))
-	expected := hex.EncodeToString(h.Sum(nil))
-	return hmac.Equal([]byte(parts[1]), []byte(expected))
+	if len(deviceName) > 80 {
+		deviceName = deviceName[:80]
+	}
+	userAgent := r.UserAgent()
+	if len(userAgent) > 240 {
+		userAgent = userAgent[:240]
+	}
+	device := &models.PairedDevice{ID: models.NewID("device"), Name: deviceName,
+		TokenHash: auth.HashToken(deviceToken), UserAgent: userAgent}
+	if err := s.store.CreatePairedDevice(r.Context(), device); err != nil {
+		return false, err
+	}
+	s.issueMobileKioskCapabilityCookie(w, deviceToken)
+	return true, nil
 }
 
 // issueMobileKioskCapabilityCookie grants trusted household write capability to a paired smartphone.
-func (s *Server) issueMobileKioskCapabilityCookie(w http.ResponseWriter) {
+func (s *Server) issueMobileKioskCapabilityCookie(w http.ResponseWriter, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     kioskCapabilityCookieName,
-		Value:    s.generateKioskToken(),
+		Value:    token,
 		Path:     "/",
-		MaxAge:   86400 * 365, // 1 year trusted household phone
+		MaxAge:   86400 * 90,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode, // Lax allows top-level navigation from camera QR scan / PWA icon
 		Secure:   s.cfg.Security.CookieSecure,

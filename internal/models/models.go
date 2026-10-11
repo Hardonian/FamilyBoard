@@ -227,6 +227,18 @@ type Session struct {
 	LastActiveAt time.Time `json:"last_active_at"`
 }
 
+// PairedDevice is a revocable household device capability. Only the hash of
+// the opaque browser token is persisted.
+type PairedDevice struct {
+	ID         string     `json:"id"`
+	Name       string     `json:"name"`
+	TokenHash  string     `json:"-"`
+	UserAgent  string     `json:"user_agent"`
+	CreatedAt  time.Time  `json:"created_at"`
+	LastSeenAt time.Time  `json:"last_seen_at"`
+	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+}
+
 // DeviceMetadata stores appliance identification and state.
 type DeviceMetadata struct {
 	DeviceName    string    `json:"device_name"`
