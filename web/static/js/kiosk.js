@@ -19,6 +19,7 @@
   let timeFormat = '12h';
   let birthdayHighlight = true;
   let eventSearchQuery = '';
+  let renderCacheOnly = false;
 
   // --- DOM Elements ---
   const elClockTime = document.getElementById('clock-time');
@@ -747,15 +748,23 @@
     const startStr = startDate.toISOString();
     const endStr = endDate.toISOString();
 
+    if (renderCacheOnly) {
+      return filterVisibleEvents(cachedEvents.filter((event) => eventOverlapsRange(event, startDate, endDate)));
+    }
+
     try {
       const resp = await fetch(`/api/events?start=${encodeURIComponent(startStr)}&end=${encodeURIComponent(endStr)}`);
       if (resp.ok) {
         const events = await resp.json();
         if (!Array.isArray(events)) throw new Error('Invalid event response');
-        cachedEvents = events;
+        const returnedIDs = new Set(events.map((event) => event.id));
+        cachedEvents = cachedEvents.filter((event) => {
+          return !returnedIDs.has(event.id) && !eventOverlapsRange(event, startDate, endDate);
+        }).concat(events).sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
+        if (cachedEvents.length > 5000) cachedEvents = cachedEvents.slice(-5000);
         safeStorageSet('fb_cached_events', JSON.stringify(cachedEvents));
         updateStatus('', 'Up to date');
-        return filterVisibleEvents(cachedEvents);
+        return filterVisibleEvents(events);
       }
       throw new Error(`Event request failed (${resp.status})`);
     } catch (e) {
@@ -769,51 +778,63 @@
           cachedEvents = [];
         }
         updateStatus('offline', 'Showing cached events');
-        return filterVisibleEvents(cachedEvents);
+        return filterVisibleEvents(cachedEvents.filter((event) => eventOverlapsRange(event, startDate, endDate)));
       }
       updateStatus('error', 'Could not load events');
     }
-    return filterVisibleEvents(cachedEvents || []);
+    return filterVisibleEvents((cachedEvents || []).filter((event) => eventOverlapsRange(event, startDate, endDate)));
+  }
+
+  function eventOverlapsRange(event, startDate, endDate) {
+    const start = new Date(event.start_at);
+    const end = new Date(event.end_at);
+    return !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && start < endDate && end > startDate;
   }
 
   // --- Master View Switcher ---
-  async function renderView() {
+  async function renderView(useCachedEvents) {
     const sequence = ++renderSequence;
+    const priorCacheOnly = renderCacheOnly;
+    renderCacheOnly = Boolean(useCachedEvents);
     updateNavTitle();
     syncViewButtons();
 
-    if (currentView === 'hybrid') {
-      if (elMonthContainer) elMonthContainer.style.display = 'flex';
-      if (elWeekContainer) elWeekContainer.style.display = 'none';
-      if (elScheduleContainer) elScheduleContainer.style.display = 'none';
-      if (elTodayContainer) elTodayContainer.style.display = 'none';
-      if (elTodaySideRail) elTodaySideRail.style.display = 'flex';
-      await renderMonthGrid();
-      if (sequence !== renderSequence) return;
-      await renderTodayRail();
-    } else if (currentView === 'week') {
-      if (elMonthContainer) elMonthContainer.style.display = 'none';
-      if (elWeekContainer) elWeekContainer.style.display = 'flex';
-      if (elScheduleContainer) elScheduleContainer.style.display = 'none';
-      if (elTodayContainer) elTodayContainer.style.display = 'none';
-      if (elTodaySideRail) elTodaySideRail.style.display = 'flex';
-      await renderWeekGrid();
-      if (sequence !== renderSequence) return;
-      await renderTodayRail();
-    } else if (currentView === 'schedule') {
-      if (elMonthContainer) elMonthContainer.style.display = 'none';
-      if (elWeekContainer) elWeekContainer.style.display = 'none';
-      if (elScheduleContainer) elScheduleContainer.style.display = 'flex';
-      if (elTodayContainer) elTodayContainer.style.display = 'none';
-      if (elTodaySideRail) elTodaySideRail.style.display = 'none';
-      await renderScheduleView();
-    } else { // 'today'
-      if (elMonthContainer) elMonthContainer.style.display = 'none';
-      if (elWeekContainer) elWeekContainer.style.display = 'none';
-      if (elScheduleContainer) elScheduleContainer.style.display = 'none';
-      if (elTodayContainer) elTodayContainer.style.display = 'flex';
-      if (elTodaySideRail) elTodaySideRail.style.display = 'none';
-      await renderTodayFull();
+    try {
+      if (currentView === 'hybrid') {
+        if (elMonthContainer) elMonthContainer.style.display = 'flex';
+        if (elWeekContainer) elWeekContainer.style.display = 'none';
+        if (elScheduleContainer) elScheduleContainer.style.display = 'none';
+        if (elTodayContainer) elTodayContainer.style.display = 'none';
+        if (elTodaySideRail) elTodaySideRail.style.display = 'flex';
+        await renderMonthGrid();
+        if (sequence !== renderSequence) return;
+        await renderTodayRail();
+      } else if (currentView === 'week') {
+        if (elMonthContainer) elMonthContainer.style.display = 'none';
+        if (elWeekContainer) elWeekContainer.style.display = 'flex';
+        if (elScheduleContainer) elScheduleContainer.style.display = 'none';
+        if (elTodayContainer) elTodayContainer.style.display = 'none';
+        if (elTodaySideRail) elTodaySideRail.style.display = 'flex';
+        await renderWeekGrid();
+        if (sequence !== renderSequence) return;
+        await renderTodayRail();
+      } else if (currentView === 'schedule') {
+        if (elMonthContainer) elMonthContainer.style.display = 'none';
+        if (elWeekContainer) elWeekContainer.style.display = 'none';
+        if (elScheduleContainer) elScheduleContainer.style.display = 'flex';
+        if (elTodayContainer) elTodayContainer.style.display = 'none';
+        if (elTodaySideRail) elTodaySideRail.style.display = 'none';
+        await renderScheduleView();
+      } else { // 'today'
+        if (elMonthContainer) elMonthContainer.style.display = 'none';
+        if (elWeekContainer) elWeekContainer.style.display = 'none';
+        if (elScheduleContainer) elScheduleContainer.style.display = 'none';
+        if (elTodayContainer) elTodayContainer.style.display = 'flex';
+        if (elTodaySideRail) elTodaySideRail.style.display = 'none';
+        await renderTodayFull();
+      }
+    } finally {
+      renderCacheOnly = priorCacheOnly;
     }
   }
 
@@ -2338,7 +2359,38 @@
   let sseEventSource = null;
   let sseReconnectTimer = null;
   let sseRetryDelay = 1000;
+  let lastSSERevision = 0;
   const MAX_RETRY_DELAY = 10000;
+
+  async function applyEventDelta(payload) {
+    const ids = Array.isArray(payload.event_ids) ? payload.event_ids : (payload.id ? [payload.id] : []);
+    if (payload.resync || ids.length === 0 || ids.length > 100) return false;
+
+    const response = await fetch(`/api/events/changes?ids=${encodeURIComponent(ids.join(','))}`, {
+      cache: 'no-store',
+      headers: { 'Accept': 'application/json' }
+    });
+    if (!response.ok) return false;
+    const delta = await response.json();
+    if (!delta || !Array.isArray(delta.events) || !Array.isArray(delta.deleted_ids)) return false;
+    if (delta.events.some((event) => event.recurrence_rule)) return false;
+
+    const removed = new Set(delta.deleted_ids);
+    const updates = new Map(delta.events.map((event) => [event.id, event]));
+    cachedEvents = cachedEvents.filter((event) => !removed.has(event.id) && !updates.has(event.id));
+    cachedEvents.push(...delta.events);
+    cachedEvents.sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
+    if (cachedEvents.length > 5000) cachedEvents = cachedEvents.slice(-5000);
+    safeStorageSet('fb_cached_events', JSON.stringify(cachedEvents));
+    await renderView(true);
+    return true;
+  }
+
+  async function resyncVisibleWindow() {
+    updateStatus('syncing', 'Updating…');
+    await renderView();
+    updateStatus('', 'Synced');
+  }
 
   function setupSSE() {
     if (sseReconnectTimer) {
@@ -2362,10 +2414,8 @@
         if (!e.data) return;
         if (e.data === 'reload') {
           triggerHaptic(10);
-          updateStatus('syncing', 'Updating…');
-          renderView().finally(() => {
-            updateStatus('', 'Synced');
-          });
+          lastSSERevision = 0;
+          resyncVisibleWindow();
           return;
         }
         if (e.data.startsWith('{')) {
@@ -2373,25 +2423,21 @@
             const payload = JSON.parse(e.data);
             if (payload && payload.action) {
               triggerHaptic(10);
-              // P3 #62: Incremental delta application to local window cache
-              if (payload.action === 'delete' && (payload.id || (payload.event_ids && payload.event_ids.length > 0))) {
-                const targetId = payload.id || payload.event_ids[0];
-                const existingIndex = cachedEvents.findIndex(ev => ev.id === targetId);
-                if (existingIndex !== -1) {
-                  cachedEvents.splice(existingIndex, 1);
-                  safeStorageSet('fb_cached_events', JSON.stringify(cachedEvents));
-                  renderView();
-                  updateStatus('', 'Synced');
-                  return;
-                }
-              }
+              const revision = Number(payload.revision || 0);
+              const revisionGap = lastSSERevision > 0 && revision !== lastSSERevision + 1;
+              if (revision > 0) lastSSERevision = revision;
               updateStatus('syncing', 'Updating…');
-              renderView().finally(() => {
+              if (revisionGap || payload.resync) {
+                resyncVisibleWindow();
+                return;
+              }
+              applyEventDelta(payload).then((applied) => {
+                if (!applied) return resyncVisibleWindow();
                 updateStatus('', 'Synced');
-              });
+              }).catch(() => resyncVisibleWindow());
             }
           } catch (_) {
-            renderView();
+            resyncVisibleWindow();
           }
         }
       };

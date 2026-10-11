@@ -18,6 +18,7 @@ import (
 	"github.com/Hardonian/FamilyBoard/internal/metrics"
 	"github.com/Hardonian/FamilyBoard/internal/models"
 	"github.com/Hardonian/FamilyBoard/internal/oauth"
+	"github.com/Hardonian/FamilyBoard/internal/releasefeed"
 	"github.com/Hardonian/FamilyBoard/internal/timezone"
 )
 
@@ -502,6 +503,10 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	if auditRetention == "" {
 		auditRetention = "730"
 	}
+	releaseChannel, _ := s.store.GetSetting(ctx, "release_channel")
+	if releaseChannel != "beta" && releaseChannel != "dev" {
+		releaseChannel = "stable"
+	}
 	var auditEntries []models.AuditEntry
 	if tab == "audit" {
 		auditEntries, _ = s.store.ListAuditLogs(ctx, 100, 0)
@@ -564,6 +569,7 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		"PendingConflictCount":  len(conflicts),
 		"ActiveEventCount":      activeEventCount,
 		"BuildVersion":          buildinfo.Version,
+		"ReleaseChannel":        releaseChannel,
 		"Diagnostics":           diagnosticReport,
 		"ClockHealth":           clockHealth,
 		"MetricsSnapshot":       metricsSnapshot,
@@ -581,6 +587,38 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.render(w, "admin.html", data)
+}
+
+func (s *Server) handleAdminUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	channel, _ := s.store.GetSetting(r.Context(), "release_channel")
+	if requested := strings.TrimSpace(r.URL.Query().Get("channel")); requested != "" {
+		channel = requested
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+	result, err := releasefeed.Check(ctx, &http.Client{Timeout: 8 * time.Second}, releasefeed.OfficialEndpoint, buildinfo.Version, channel)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "release check unavailable: " + err.Error()})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(result)
+}
+
+func (s *Server) handleAdminUpdateChannel(w http.ResponseWriter, r *http.Request) {
+	channel := strings.ToLower(strings.TrimSpace(r.FormValue("channel")))
+	if channel != "stable" && channel != "beta" && channel != "dev" {
+		http.Redirect(w, r, "/admin?tab=system&err=Invalid+release+channel", http.StatusSeeOther)
+		return
+	}
+	if err := s.store.SetSetting(r.Context(), "release_channel", channel); err != nil {
+		http.Redirect(w, r, "/admin?tab=system&err="+url.QueryEscape("Could not save release channel: "+err.Error()), http.StatusSeeOther)
+		return
+	}
+	s.recordAudit(r, "release_channel_update", "appliance", "local", "Changed release channel to "+channel)
+	http.Redirect(w, r, "/admin?tab=system&msg=Release+channel+updated", http.StatusSeeOther)
 }
 
 func (s *Server) handleAdminSyncNow(w http.ResponseWriter, r *http.Request) {

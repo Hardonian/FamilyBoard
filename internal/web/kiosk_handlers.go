@@ -134,6 +134,79 @@ type KioskEventView struct {
 	Status         string    `json:"status"`
 }
 
+func kioskEventView(ev *models.Event) KioskEventView {
+	return KioskEventView{
+		ID: ev.ID, CalendarID: ev.CalendarID, Title: ev.Title,
+		StartAt: ev.StartAt, EndAt: ev.EndAt, AllDay: ev.AllDay,
+		Location: ev.Location, Description: ev.Description,
+		RecurrenceRule: ev.RecurrenceRule, Status: ev.Status,
+	}
+}
+
+// handleAPIGetEventChanges returns a bounded set of current event records and
+// tombstones for incremental SSE reconciliation. It intentionally exposes the
+// same kiosk-safe shape as the window endpoint and excludes hidden calendars.
+func (s *Server) handleAPIGetEventChanges(w http.ResponseWriter, r *http.Request) {
+	rawIDs := strings.Split(r.URL.Query().Get("ids"), ",")
+	if len(rawIDs) == 0 || (len(rawIDs) == 1 && strings.TrimSpace(rawIDs[0]) == "") {
+		writeHardwareError(w, http.StatusBadRequest, "ids is required")
+		return
+	}
+	if len(rawIDs) > maxSSEEventIDs {
+		writeHardwareError(w, http.StatusBadRequest, "no more than 100 event ids may be requested")
+		return
+	}
+
+	calendars, err := s.store.ListDisplayCalendars(r.Context())
+	if err != nil {
+		writeHardwareError(w, http.StatusInternalServerError, "failed to load visible calendars")
+		return
+	}
+	visibleCalendars := make(map[string]struct{}, len(calendars))
+	for i := range calendars {
+		visibleCalendars[calendars[i].ID] = struct{}{}
+	}
+
+	seen := make(map[string]struct{}, len(rawIDs))
+	events := make([]KioskEventView, 0, len(rawIDs))
+	deletedIDs := make([]string, 0)
+	for _, rawID := range rawIDs {
+		id := strings.TrimSpace(rawID)
+		if id == "" || len(id) > 200 {
+			writeHardwareError(w, http.StatusBadRequest, "event ids must be non-empty and at most 200 characters")
+			return
+		}
+		if _, duplicate := seen[id]; duplicate {
+			continue
+		}
+		seen[id] = struct{}{}
+		event, err := s.store.GetEvent(r.Context(), id)
+		if err != nil {
+			writeHardwareError(w, http.StatusInternalServerError, "failed to load event changes")
+			return
+		}
+		_, visible := visibleCalendars[eventCalendarID(event)]
+		if event == nil || event.DeletedAt != nil || !visible {
+			deletedIDs = append(deletedIDs, id)
+			continue
+		}
+		events = append(events, kioskEventView(event))
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"events": events, "deleted_ids": deletedIDs,
+	})
+}
+
+func eventCalendarID(event *models.Event) string {
+	if event == nil {
+		return ""
+	}
+	return event.CalendarID
+}
+
 func (s *Server) handleAPIGetEvents(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	startStr := q.Get("start")
@@ -194,18 +267,7 @@ func (s *Server) handleAPIGetEvents(w http.ResponseWriter, r *http.Request) {
 	var views []KioskEventView
 	for _, ev := range events {
 		if ev.RecurrenceRule == "" {
-			views = append(views, KioskEventView{
-				ID:             ev.ID,
-				CalendarID:     ev.CalendarID,
-				Title:          ev.Title,
-				StartAt:        ev.StartAt,
-				EndAt:          ev.EndAt,
-				AllDay:         ev.AllDay,
-				Location:       ev.Location,
-				Description:    ev.Description,
-				RecurrenceRule: ev.RecurrenceRule,
-				Status:         ev.Status,
-			})
+			views = append(views, kioskEventView(&ev))
 		}
 	}
 

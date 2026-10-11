@@ -161,6 +161,41 @@ paths:
         '404':
           description: Event not found
 
+  /api/events/changes:
+    get:
+      summary: Fetch a bounded event delta
+      description: Returns current kiosk-safe records and tombstones for up to 100 comma-separated event IDs announced by the event stream.
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          schema:
+            type: string
+          example: evt-one,evt-two
+      responses:
+        '200':
+          description: Current records and deleted or no-longer-visible IDs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events, deleted_ids]
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+                  deleted_ids:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: Missing, malformed, or oversized ID set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/events/{id}/restore:
     post:
       summary: Restore deleted event

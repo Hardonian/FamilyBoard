@@ -153,6 +153,56 @@ func TestAPIContract_EventsValidationAndMethods(t *testing.T) {
 	}
 }
 
+func TestAPIContract_EventChangesReturnsSafeDeltasAndTombstones(t *testing.T) {
+	server, store, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	event := &models.Event{
+		ID: "evt-delta", Provider: "local", CalendarID: "cal-family-default",
+		Title: "Delta event", Description: "Only kiosk-safe fields are returned",
+		StartAt: now, EndAt: now.Add(time.Hour), Status: "confirmed",
+		LocalCreatedAt: now, LocalUpdatedAt: now,
+	}
+	if err := store.UpsertEvent(context.Background(), event); err != nil {
+		t.Fatalf("seed event: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/events/changes?ids=evt-delta,missing", nil)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var response struct {
+		Events     []map[string]any `json:"events"`
+		DeletedIDs []string         `json:"deleted_ids"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode delta response: %v", err)
+	}
+	if len(response.Events) != 1 || response.Events[0]["id"] != "evt-delta" {
+		t.Fatalf("unexpected events: %+v", response.Events)
+	}
+	if _, leaked := response.Events[0]["provider_event_id"]; leaked {
+		t.Fatal("delta response leaked provider metadata")
+	}
+	if len(response.DeletedIDs) != 1 || response.DeletedIDs[0] != "missing" {
+		t.Fatalf("unexpected tombstones: %+v", response.DeletedIDs)
+	}
+
+	tooMany := make([]string, 101)
+	for i := range tooMany {
+		tooMany[i] = "evt"
+	}
+	overflowReq := httptest.NewRequest(http.MethodGet, "/api/events/changes?ids="+strings.Join(tooMany, ","), nil)
+	overflowRec := httptest.NewRecorder()
+	server.ServeHTTP(overflowRec, overflowReq)
+	if overflowRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected bounded request rejection, got %d", overflowRec.Code)
+	}
+}
+
 func TestAPIContract_AdminAuthEnforcement(t *testing.T) {
 	server, _, cleanup := setupTestServer(t)
 	defer cleanup()
@@ -189,6 +239,7 @@ func TestAPIContract_OpenAPISpecValidation(t *testing.T) {
 		"/health/ready:",
 		"/api/calendars:",
 		"/api/events:",
+		"/api/events/changes:",
 		"/api/events/{id}:",
 		"/api/kiosk/templates:",
 		"/api/kiosk/parse-natural:",

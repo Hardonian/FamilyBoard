@@ -179,6 +179,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /{$}", s.handleKiosk)
 	s.mux.HandleFunc("GET /api/calendars", s.handleAPICalendars)
 	s.mux.HandleFunc("GET /api/events", s.handleAPIGetEvents)
+	s.mux.HandleFunc("GET /api/events/changes", s.handleAPIGetEventChanges)
 	s.mux.HandleFunc("POST /api/events", s.requireKioskWriteAccess(s.handleAPICreateEvent))
 	s.mux.HandleFunc("PUT /api/events/{id}", s.requireKioskWriteAccess(s.handleAPIUpdateEvent))
 	s.mux.HandleFunc("DELETE /api/events/{id}", s.requireKioskWriteAccess(s.handleAPIDeleteEvent))
@@ -219,6 +220,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /admin/diagnostics", s.requireAuth(s.handleAdminDiagnosticsDownload))
 	s.mux.HandleFunc("GET /admin/support/bundle", s.requireAuth(s.handleAdminSupportBundle))
 	s.mux.HandleFunc("GET /admin/api/health", s.requireAuth(s.handleAdminHealth))
+	s.mux.HandleFunc("GET /admin/api/update", s.requireAuth(s.handleAdminUpdateCheck))
+	s.mux.HandleFunc("POST /admin/update/channel", s.requireAuth(s.requireCSRF(s.handleAdminUpdateChannel)))
 	s.mux.HandleFunc("GET /admin/privacy/export", s.requireAuth(s.handleAdminPrivacyExport))
 	s.mux.HandleFunc("POST /admin/privacy/retention", s.requireAuth(s.requireCSRF(s.handleAdminPrivacyRetention)))
 	s.mux.HandleFunc("POST /admin/database/vacuum", s.requireAuth(s.requireCSRF(s.handleAdminDatabaseVacuum)))
@@ -326,6 +329,8 @@ type SSEEventPayload struct {
 	Resync     bool     `json:"resync,omitempty"`
 }
 
+const maxSSEEventIDs = 100
+
 // BroadcastEventChange broadcasts a granular change notification to connected kiosks.
 func (s *Server) BroadcastEventChange(action, eventID, calendarID string) {
 	s.sseMu.Lock()
@@ -349,6 +354,33 @@ func (s *Server) BroadcastEventChange(action, eventID, calendarID string) {
 		return
 	}
 	s.BroadcastMessage(string(payload))
+}
+
+// BroadcastEventChanges broadcasts a bounded event delta. Larger changes use
+// an explicit resync marker so clients cannot receive a truncated update.
+func (s *Server) BroadcastEventChanges(action string, eventIDs []string, calendarID string) {
+	s.sseMu.Lock()
+	s.sseRevision++
+	rev := s.sseRevision
+	s.sseMu.Unlock()
+
+	payload := SSEEventPayload{
+		Action: action, CalendarID: calendarID, Revision: rev,
+	}
+	if len(eventIDs) > maxSSEEventIDs {
+		payload.Resync = true
+	} else {
+		payload.EventIDs = append([]string(nil), eventIDs...)
+		if len(eventIDs) == 1 {
+			payload.ID = eventIDs[0]
+		}
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		s.BroadcastReload()
+		return
+	}
+	s.BroadcastMessage(string(encoded))
 }
 
 // BroadcastMessage sends a message string to all connected SSE clients.
