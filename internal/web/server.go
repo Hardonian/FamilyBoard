@@ -298,7 +298,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	withGzip(s.mux).ServeHTTP(w, r)
+	withCorrelationID(withGzip(s.mux)).ServeHTTP(w, r)
 }
 
 // BroadcastReload notifies all open kiosk clients via SSE to reload event data.
