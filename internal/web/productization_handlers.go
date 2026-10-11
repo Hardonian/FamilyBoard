@@ -88,11 +88,31 @@ func (s *Server) handleAdminPersonDelete(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) handleAdminPrivacyExport(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	people, _ := s.store.ListPeople(ctx)
-	accounts, _ := s.store.ListOAuthAccounts(ctx)
-	calendars, _ := s.store.ListCalendars(ctx)
-	events, _ := s.store.ListAllEventsForExport(ctx)
-	audit, _ := s.store.ListAuditLogs(ctx, 10000, 0)
+	people, err := s.store.ListPeople(ctx)
+	if err != nil {
+		http.Error(w, "failed to export household data", http.StatusInternalServerError)
+		return
+	}
+	accounts, err := s.store.ListOAuthAccounts(ctx)
+	if err != nil {
+		http.Error(w, "failed to export household data", http.StatusInternalServerError)
+		return
+	}
+	calendars, err := s.store.ListCalendars(ctx)
+	if err != nil {
+		http.Error(w, "failed to export household data", http.StatusInternalServerError)
+		return
+	}
+	events, err := s.store.ListAllEventsForExport(ctx)
+	if err != nil {
+		http.Error(w, "failed to export household data", http.StatusInternalServerError)
+		return
+	}
+	audit, err := s.store.ListAuditLogs(ctx, 1_000_000, 0)
+	if err != nil {
+		http.Error(w, "failed to export household data", http.StatusInternalServerError)
+		return
+	}
 	for i := range accounts {
 		accounts[i].CredentialReference = "[REDACTED]"
 	}
@@ -146,14 +166,6 @@ func (s *Server) handleAdminPrivacyRetention(w http.ResponseWriter, r *http.Requ
 	auditDays, auditErr := strconv.Atoi(r.FormValue("audit_days"))
 	if eventErr != nil || auditErr != nil || eventDays < 7 || eventDays > 3650 || auditDays < 30 || auditDays > 3650 {
 		http.Redirect(w, r, "/admin?tab=privacy&err=Retention+must+be+7-3650+days+for+deleted+events+and+30-3650+days+for+audit+history", http.StatusSeeOther)
-		return
-	}
-	if err := s.store.SetSetting(r.Context(), "deleted_event_retention_days", strconv.Itoa(eventDays)); err != nil {
-		http.Redirect(w, r, "/admin?tab=privacy&err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
-		return
-	}
-	if err := s.store.SetSetting(r.Context(), "audit_retention_days", strconv.Itoa(auditDays)); err != nil {
-		http.Redirect(w, r, "/admin?tab=privacy&err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
 		return
 	}
 	removedEvents, removedAudit, err := s.store.ApplyPrivacyRetention(r.Context(), eventDays, auditDays)

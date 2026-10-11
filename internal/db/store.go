@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1358,7 +1359,17 @@ func (s *Store) SetSetting(ctx context.Context, key, val string) error {
 func (s *Store) ApplyPrivacyRetention(ctx context.Context, deletedEventDays, auditDays int) (int64, int64, error) {
 	var removedEvents, removedAudit int64
 	err := s.db.WithTx(ctx, func(tx *sql.Tx) error {
-		cutoff := time.Now().AddDate(0, 0, -deletedEventDays)
+		now := time.Now()
+		for key, value := range map[string]string{
+			"deleted_event_retention_days": strconv.Itoa(deletedEventDays),
+			"audit_retention_days":         strconv.Itoa(auditDays),
+		} {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+				ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at;`, key, value, now); err != nil {
+				return err
+			}
+		}
+		cutoff := now.AddDate(0, 0, -deletedEventDays)
 		if _, err := tx.ExecContext(ctx, `DELETE FROM conflicts WHERE local_event_id IN (
 			SELECT id FROM events WHERE deleted_at IS NOT NULL AND deleted_at < ?
 			AND NOT EXISTS (SELECT 1 FROM mutation_queue q WHERE q.local_event_id = events.id AND q.state IN ('pending','retry','processing'))
@@ -1371,7 +1382,7 @@ func (s *Store) ApplyPrivacyRetention(ctx context.Context, deletedEventDays, aud
 			return err
 		}
 		removedEvents, _ = eventResult.RowsAffected()
-		auditResult, err := tx.ExecContext(ctx, "DELETE FROM audit_log WHERE timestamp < ?;", time.Now().AddDate(0, 0, -auditDays))
+		auditResult, err := tx.ExecContext(ctx, "DELETE FROM audit_log WHERE timestamp < ?;", now.AddDate(0, 0, -auditDays))
 		if err != nil {
 			return err
 		}
