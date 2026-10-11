@@ -181,6 +181,7 @@ func (s *Server) routes() {
 	// Auth & Setup
 	s.mux.HandleFunc("GET /setup", s.handleSetupGet)
 	s.mux.HandleFunc("POST /setup", s.requireCSRF(s.handleSetupPost))
+	s.mux.HandleFunc("GET /setup/diagnostics", s.handleSetupDiagnostics)
 	s.mux.HandleFunc("GET /login", s.handleLoginGet)
 	s.mux.HandleFunc("POST /login", s.requireCSRF(s.handleLoginPost))
 	s.mux.HandleFunc("POST /logout", s.requireAuth(s.requireCSRF(s.handleLogout)))

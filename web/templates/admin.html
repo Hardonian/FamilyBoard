@@ -419,7 +419,13 @@
     {{if eq .ActiveTab "conflicts"}}
     <div class="admin-card">
       <h2>Calendar Conflict Resolution</h2>
-      <p class="admin-section-sub-spaced">A remote change arrived while an appliance edit was waiting to sync. Pick the version your family should keep; the alternate local queue entry is retired when you accept the remote version.</p>
+      <p class="admin-section-sub-spaced">A remote calendar change arrived while an appliance edit was waiting to sync. Compare the versions side by side below and pick how to resolve it:</p>
+      <ul class="admin-help-bullets">
+        <li><strong>Keep my edit:</strong> Re-queues your local appliance change to push upstream to the calendar provider.</li>
+        <li><strong>Keep provider version:</strong> Accepts the remote provider version and updates your local appliance.</li>
+        <li><strong>Keep both (merge):</strong> Preserves the provider's version while saving your local edit as a distinct new event so nothing is lost.</li>
+        <li><strong>Dismiss:</strong> Closes this conflict alert without altering event records.</li>
+      </ul>
       <table class="admin-table">
         <thead><tr><th>Conflict</th><th>Detected</th><th>Side-by-side comparison</th><th>Resolution</th></tr></thead>
         <tbody>
@@ -437,9 +443,10 @@
             <td>
               <form method="POST" action="/admin/conflicts/{{.ID}}/resolve" class="admin-resolution-form">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                <button name="resolution" value="resolved_local" type="submit" class="btn btn-primary btn-sm">Keep my edit</button>
-                <button name="resolution" value="resolved_remote" type="submit" class="btn btn-secondary btn-sm">Keep provider version</button>
-                <button name="resolution" value="dismissed" type="submit" class="btn btn-ghost btn-sm">Dismiss</button>
+                <button name="resolution" value="resolved_local" type="submit" class="btn btn-primary btn-sm" title="Push appliance edit to remote provider">Keep my edit</button>
+                <button name="resolution" value="resolved_remote" type="submit" class="btn btn-secondary btn-sm" title="Accept remote version and overwrite local">Keep provider version</button>
+                <button name="resolution" value="keep_both" type="submit" class="btn btn-secondary btn-sm" title="Keep remote version and save local edit as a separate event">Keep both (merge)</button>
+                <button name="resolution" value="dismissed" type="submit" class="btn btn-ghost btn-sm" title="Dismiss notification">Dismiss</button>
               </form>
             </td>
           </tr>

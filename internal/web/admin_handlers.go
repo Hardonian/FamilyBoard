@@ -213,6 +213,23 @@ func (s *Server) handleSetupGet(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleSetupDiagnostics(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store, private")
+	report, err := diagnostics.Generate(r.Context(), s.store, s.cfg.Database.Path)
+	if err != nil {
+		http.Error(w, "generate diagnostics: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if r.URL.Query().Get("download") == "1" {
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"familyboard-setup-diagnostics-%s.json\"", time.Now().Format("20060102-150405")))
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(report)
+}
+
 func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store, private")
 	s.setupMu.Lock()
@@ -769,6 +786,7 @@ func (s *Server) handleAdminConflictResolve(w http.ResponseWriter, r *http.Reque
 	validResolutions := map[string]string{
 		"resolved_local":  "Local record retained after review",
 		"resolved_remote": "Remote record accepted after review",
+		"keep_both":       "Both local and remote records retained after review",
 		"dismissed":       "Conflict dismissed after review",
 	}
 	details, ok := validResolutions[resolution]
@@ -794,7 +812,39 @@ func (s *Server) handleAdminConflictResolve(w http.ResponseWriter, r *http.Reque
 	}
 
 	remoteResolved := false
-	if resolution == "resolved_remote" {
+	if resolution == "keep_both" {
+		localEvent, err := s.store.GetEvent(r.Context(), conflict.LocalEventID)
+		if err != nil || localEvent == nil {
+			http.Redirect(w, r, "/admin?tab=conflicts&err=The+local+event+for+this+conflict+is+no+longer+available", http.StatusSeeOther)
+			return
+		}
+		var remoteEvent models.Event
+		if err := json.Unmarshal([]byte(conflict.RemotePayload), &remoteEvent); err != nil {
+			http.Redirect(w, r, "/admin?tab=conflicts&err=The+remote+event+payload+is+invalid", http.StatusSeeOther)
+			return
+		}
+		// Clone local event so family edit is not lost
+		clonedLocal := *localEvent
+		clonedLocal.ID = fmt.Sprintf("%s-local-%d", localEvent.ID, time.Now().Unix())
+		clonedLocal.Title = localEvent.Title + " (Local Edit)"
+		clonedLocal.LocalUpdatedAt = time.Now()
+		if err := s.store.UpsertEvent(r.Context(), &clonedLocal); err != nil {
+			http.Redirect(w, r, "/admin?tab=conflicts&err="+url.QueryEscape("Could not save local clone: "+err.Error()), http.StatusSeeOther)
+			return
+		}
+
+		// Apply remote event to original event ID
+		remoteEvent.ID = localEvent.ID
+		remoteEvent.CalendarID = localEvent.CalendarID
+		remoteEvent.LocalCreatedAt = localEvent.LocalCreatedAt
+		remoteEvent.LocalUpdatedAt = time.Now()
+		remoteEvent.Source = "remote_sync"
+		if err := s.store.ApplyRemoteConflictResolution(r.Context(), id, &remoteEvent, details); err != nil {
+			http.Redirect(w, r, "/admin?tab=conflicts&err="+url.QueryEscape("Could not apply remote conflict resolution: "+err.Error()), http.StatusSeeOther)
+			return
+		}
+		remoteResolved = true
+	} else if resolution == "resolved_remote" {
 		localEvent, err := s.store.GetEvent(r.Context(), conflict.LocalEventID)
 		if err != nil || localEvent == nil {
 			http.Redirect(w, r, "/admin?tab=conflicts&err=The+local+event+for+this+conflict+is+no+longer+available", http.StatusSeeOther)

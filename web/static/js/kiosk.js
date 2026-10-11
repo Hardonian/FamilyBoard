@@ -481,6 +481,19 @@
       renderView();
     });
 
+    const jumpDate = document.getElementById('calendar-jump-date');
+    if (jumpDate) {
+      jumpDate.addEventListener('change', (e) => {
+        if (!e.target.value) return;
+        triggerHaptic(10);
+        const parts = e.target.value.split('-');
+        if (parts.length === 3) {
+          currentDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+          renderView();
+        }
+      });
+    }
+
     document.querySelectorAll('.view-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         triggerHaptic(12);
@@ -820,6 +833,10 @@
       elNavTitle.textContent = `${currentDate.toLocaleDateString([], { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`;
     } else {
       elNavTitle.textContent = currentDate.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    }
+    const jumpDate = document.getElementById('calendar-jump-date');
+    if (jumpDate) {
+      jumpDate.value = formatDateForInput(currentDate);
     }
   }
 
@@ -1395,6 +1412,12 @@
       }
     });
 
+    document.getElementById('btn-detail-duplicate')?.addEventListener('click', () => {
+      const ev = btnDelete.eventObject;
+      closeEventDetailSheet();
+      if (ev) duplicateEvent(ev);
+    });
+
     document.getElementById('btn-detail-edit')?.addEventListener('click', () => {
       const ev = btnDelete.eventObject;
       closeEventDetailSheet();
@@ -1528,6 +1551,12 @@
     if (btnDelete) {
       btnDelete.dataset.eventId = ev.id;
       btnDelete.eventObject = ev;
+    }
+
+    const calTarget = document.getElementById('detail-delete-calendar-target');
+    if (calTarget) {
+      const cal = cachedCalendars.find(c => c.id === ev.calendar_id);
+      calTarget.textContent = (cal && cal.name) ? cal.name : (ev.calendar_name || 'FamilyBoard');
     }
 
     if (elEventDetailModal) {
@@ -1940,6 +1969,45 @@
 
     const btnSave = document.getElementById('btn-save-event');
     if (btnSave) btnSave.textContent = 'Save Changes';
+  }
+
+  function duplicateEvent(ev) {
+    openQuickAddModal(new Date(ev.start_at));
+
+    document.getElementById('event-id').value = '';
+    document.getElementById('event-title').value = ev.title;
+    document.getElementById('event-location').value = ev.location || '';
+    document.getElementById('event-description').value = ev.description || '';
+
+    const start = new Date(ev.start_at);
+    const end = new Date(ev.end_at);
+
+    document.getElementById('event-start-date').value = formatDateForInput(start);
+    document.getElementById('event-start-time').value = start.toTimeString().substring(0, 5);
+    document.getElementById('event-end-time').value = end.toTimeString().substring(0, 5);
+    const durationMinutes = Math.max(30, Math.round((end - start) / 60000));
+    document.getElementById('event-duration-min').value = durationMinutes;
+    document.querySelectorAll('#time-chips-grid .time-chip').forEach(button => button.classList.toggle('selected', button.dataset.time === start.toTimeString().substring(0, 5)));
+    document.querySelectorAll('#durations-row .dur-chip').forEach(button => button.classList.toggle('selected', Number(button.dataset.dur) === durationMinutes));
+
+    const recurrenceRule = ev.recurrence_rule || '';
+    document.getElementById('event-rrule').value = recurrenceRule;
+    document.querySelectorAll('#recurrence-row .dur-chip').forEach(button => button.classList.toggle('selected', button.dataset.recur === recurrenceRule));
+    if (ev.location || ev.description || recurrenceRule) {
+      document.getElementById('more-options-container').style.display = 'flex';
+      document.getElementById('btn-toggle-more').innerHTML = '<span>− Less Options</span>';
+      document.getElementById('btn-toggle-more').setAttribute('aria-expanded', 'true');
+    }
+
+    if (ev.all_day) {
+      document.getElementById('event-all-day').checked = true;
+      toggleAllDayControls(true);
+    }
+
+    selectCalendarDestination(ev.calendar_id);
+
+    const btnSave = document.getElementById('btn-save-event');
+    if (btnSave) btnSave.textContent = 'Create Duplicate';
   }
 
   function closeQuickAddModal() {

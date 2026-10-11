@@ -1,9 +1,15 @@
 {{define "content"}}
 <main class="setup-wrapper" aria-labelledby="setup-title">
   <div class="setup-header">
-    <h1 id="setup-title" class="setup-title">Welcome to FamilyBoard</h1>
-    <p class="setup-sub">First-Run Appliance Setup & Initialization Wizard</p>
-    <p class="setup-mobile-hint">📱 Setting up from your iPhone or Android phone? Complete these 4 steps to launch your board!</p>
+    <div class="setup-header-titles">
+      <h1 id="setup-title" class="setup-title">Welcome to FamilyBoard</h1>
+      <p class="setup-sub">First-Run Appliance Setup &amp; Initialization Wizard</p>
+      <p class="setup-mobile-hint">📱 Setting up from your smartphone or tablet? Complete these guided steps to launch your board!</p>
+    </div>
+    <div class="setup-header-actions">
+      <a href="/setup/diagnostics?download=1" class="btn btn-secondary btn-sm" title="Download privacy-scrubbed diagnostic report">Download Diagnostics</a>
+      <button type="button" id="btn-view-diagnostics" class="btn btn-secondary btn-sm">View System Readiness</button>
+    </div>
   </div>
 
   {{if .Error}}
@@ -13,18 +19,20 @@
   {{end}}
 
   <ol class="setup-progress" aria-label="Setup progress">
-    <li data-progress-step="1" class="active">Device</li>
-    <li data-progress-step="2">Security</li>
-    <li data-progress-step="3">Providers</li>
-    <li data-progress-step="4">Household</li>
+    <li data-progress-step="1" class="active">1. Device</li>
+    <li data-progress-step="2">2. Security</li>
+    <li data-progress-step="3">3. Providers</li>
+    <li data-progress-step="4">4. Household</li>
+    <li data-progress-step="5">5. Review</li>
   </ol>
 
   <form method="POST" action="/setup" class="setup-form" id="setup-form">
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
 
     <!-- Step 1: Device Configuration -->
-    <div class="admin-card" data-setup-step="1">
-      <h3 class="setup-section-title">1. Device & Appliance Identity</h3>
+    <div class="admin-card setup-step-card" data-setup-step="1">
+      <h3 class="setup-section-title">1. Device &amp; Appliance Identity</h3>
+      <p class="setup-section-desc">Give your kitchen board a friendly name and specify its primary timezone for calendar calculations.</p>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label" for="device_name">Device Name</label>
@@ -32,8 +40,12 @@
         </div>
         <div class="form-group">
           <label class="form-label" for="timezone">Appliance Timezone</label>
-          <input type="text" id="timezone" name="timezone" class="form-input" value="{{.Timezone}}" list="timezone-options" required autocomplete="off" autocorrect="off" spellcheck="false"{{if .Error}} aria-describedby="timezone-help setup-error"{{else}} aria-describedby="timezone-help"{{end}}>
-          <small id="timezone-help" class="form-help">Use an IANA timezone such as America/Toronto.</small>
+          <div class="timezone-input-group">
+            <input type="text" id="timezone" name="timezone" class="form-input" value="{{.Timezone}}" list="timezone-options" required autocomplete="off" autocorrect="off" spellcheck="false"{{if .Error}} aria-describedby="timezone-help setup-error"{{else}} aria-describedby="timezone-help"{{end}}>
+            <button type="button" id="btn-validate-tz" class="btn btn-secondary btn-sm">Verify Timezone</button>
+          </div>
+          <small id="timezone-help" class="form-help">Use an IANA timezone such as America/Toronto or UTC.</small>
+          <div id="timezone-feedback" class="form-help-inline" role="status" aria-live="polite"></div>
           <datalist id="timezone-options">
             <option value="America/Toronto"></option>
             <option value="America/New_York"></option>
@@ -48,12 +60,16 @@
           </datalist>
         </div>
       </div>
+      <div class="setup-step-nav">
+        <div></div>
+        <button type="button" class="btn btn-primary js-next-step" data-next="2">Next: Create Admin Password →</button>
+      </div>
     </div>
 
     <!-- Step 2: Admin Credentials -->
-    <div class="admin-card" data-setup-step="2">
+    <div class="admin-card setup-step-card" data-setup-step="2">
       <h3 class="setup-section-title">2. Create Admin Password</h3>
-      <p class="setup-section-desc">Set a secure password for appliance management via local network.</p>
+      <p class="setup-section-desc">Set a secure password for appliance management via your local network. Password must be at least 8 characters.</p>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label" for="admin_password">Password</label>
@@ -63,14 +79,19 @@
         <div class="form-group">
           <label class="form-label" for="admin_password_confirm">Confirm Password</label>
           <input type="password" id="admin_password_confirm" name="admin_password_confirm" class="form-input" required minlength="8" autocomplete="new-password"{{if .Error}} aria-describedby="setup-error"{{end}}>
+          <div id="password-feedback" class="form-help-inline" role="status" aria-live="polite"></div>
         </div>
+      </div>
+      <div class="setup-step-nav">
+        <button type="button" class="btn btn-secondary js-prev-step" data-prev="1">← Back</button>
+        <button type="button" class="btn btn-primary js-next-step" data-next="3">Next: Cloud Integrations →</button>
       </div>
     </div>
 
     <!-- Step 3: Google OAuth Configuration -->
-    <div class="admin-card" data-setup-step="3">
+    <div class="admin-card setup-step-card" data-setup-step="3">
       <h3 class="setup-section-title">3. Google Cloud OAuth Credentials</h3>
-      <p class="setup-section-desc">Optional. Add Google Cloud OAuth 2.0 Web Application credentials now, or configure providers later from Admin.</p>
+      <p class="setup-section-desc">Optional. Add Google Cloud OAuth 2.0 Web Application credentials now, or configure providers later from the Admin portal.</p>
       <p class="setup-member-note">In Google Cloud Console, add this exact authorized redirect URI: <code>{{.GoogleRedirectURL}}</code>. You can safely skip this step; after setup, Admin → Accounts guides Google, Microsoft, and Apple calendar connections.</p>
       <div class="form-group">
         <label class="form-label" for="google_client_id">Google Client ID</label>
@@ -80,10 +101,14 @@
         <label class="form-label" for="google_client_secret">Google Client Secret</label>
         <input type="password" id="google_client_secret" name="google_client_secret" class="form-input" autocomplete="off" autocorrect="off" spellcheck="false">
       </div>
+      <div class="setup-step-nav">
+        <button type="button" class="btn btn-secondary js-prev-step" data-prev="2">← Back</button>
+        <button type="button" class="btn btn-primary js-next-step" data-next="4">Next: Family Members →</button>
+      </div>
     </div>
 
     <!-- Step 4: Primary Family Accounts & Email Providers -->
-    <div class="admin-card" data-setup-step="4">
+    <div class="admin-card setup-step-card" data-setup-step="4">
       <h3 class="setup-section-title">4. Family Member Accounts &amp; Email Providers</h3>
       <p class="setup-section-desc">Enter your family members' names and email addresses. FamilyBoard automatically detects Google Workspace / Gmail, Microsoft Exchange / Outlook, and Apple iCloud to configure calendar synchronization.</p>
       <div class="form-row">
@@ -107,12 +132,68 @@
         </div>
       </div>
       <p class="setup-member-note">Supports Google Workspace / G Suite (custom domains), personal Gmail, Microsoft Exchange / Office 365, and Apple iCloud (CalDAV / Shared Calendar link). Any shared family calendars (like your shared <strong>"HOME"</strong> calendar) will automatically sync once authorized in the Admin dashboard.</p>
+      <div class="setup-step-nav">
+        <button type="button" class="btn btn-secondary js-prev-step" data-prev="3">← Back</button>
+        <button type="button" class="btn btn-primary js-next-step" data-next="5">Next: Review &amp; Launch →</button>
+      </div>
     </div>
 
-    <div class="setup-actions">
-      <button type="submit" class="btn btn-primary setup-submit-btn">Complete Setup & Launch</button>
+    <!-- Step 5: Final Readiness Checklist & Launch -->
+    <div class="admin-card setup-step-card" data-setup-step="5">
+      <h3 class="setup-section-title">5. Readiness Checklist &amp; Confirmation</h3>
+      <p class="setup-section-desc">Review your configured settings before initializing the appliance. All parameters can be adjusted at any time from the Admin portal.</p>
+
+      <div class="setup-review-grid">
+        <div class="setup-review-item">
+          <strong>Appliance Name:</strong>
+          <span id="review-device-name">—</span>
+        </div>
+        <div class="setup-review-item">
+          <strong>Appliance Timezone:</strong>
+          <span id="review-timezone">—</span>
+        </div>
+        <div class="setup-review-item">
+          <strong>Admin Password:</strong>
+          <span id="review-password-status" class="status-badge status-badge-home">Configured &amp; Verified</span>
+        </div>
+        <div class="setup-review-item">
+          <strong>Google OAuth:</strong>
+          <span id="review-google-status">Optional (Skipped)</span>
+        </div>
+        <div class="setup-review-item">
+          <strong>Household Members:</strong>
+          <span id="review-members">—</span>
+        </div>
+        <div class="setup-review-item">
+          <strong>Database &amp; Storage:</strong>
+          <span class="status-badge status-badge-home">Ready (Encrypted at rest)</span>
+        </div>
+      </div>
+
+      <div class="setup-step-nav setup-step-nav-final">
+        <button type="button" class="btn btn-secondary js-prev-step" data-prev="4">← Back</button>
+        <button type="submit" id="btn-complete-setup" class="btn btn-primary setup-submit-btn">Complete Setup &amp; Launch FamilyBoard</button>
+      </div>
     </div>
   </form>
+
+  <!-- Modal: System Readiness & Diagnostics Viewer -->
+  <dialog id="setup-diagnostics-modal" class="admin-native-dialog" aria-labelledby="diag-modal-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="diag-modal-title">Appliance Setup Diagnostics</h2>
+        <button type="button" class="btn-close-modal" id="btn-close-diag-modal" aria-label="Close diagnostics dialog">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="admin-section-sub">Redacted system readiness state. No passwords or tokens are included.</p>
+        <pre id="setup-diag-content" class="setup-diag-pre">Loading diagnostics...</pre>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btn-copy-diag-json" class="btn btn-secondary">Copy JSON</button>
+        <button type="button" class="btn btn-primary" id="btn-done-diag-modal">Close</button>
+      </div>
+    </div>
+  </dialog>
 </main>
 {{end}}
 

@@ -8,6 +8,7 @@ console.log('=== Running Static Frontend Quality Gate ===');
 const jsFiles = [
     path.join(__dirname, '..', 'web', 'static', 'js', 'kiosk.js'),
     path.join(__dirname, '..', 'web', 'static', 'js', 'admin.js'),
+    path.join(__dirname, '..', 'web', 'static', 'js', 'setup.js'),
     path.join(__dirname, '..', 'web', 'static', 'sw.js')
 ];
 

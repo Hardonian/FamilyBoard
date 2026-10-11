@@ -61,6 +61,8 @@
         <input id="calendar-search" class="calendar-search" type="search" placeholder="Search events" autocomplete="off" spellcheck="false">
       </div>
       <div class="nav-arrows">
+        <label for="calendar-jump-date" class="sr-only">Jump to specific date</label>
+        <input type="date" id="calendar-jump-date" class="calendar-jump-date" aria-label="Jump to specific date" title="Jump to date">
         <button id="btn-today" class="btn btn-today" title="Jump to Today (Key: T)">Today <kbd class="btn-kbd-badge" aria-hidden="true">T</kbd></button>
         <button id="btn-prev" class="arrow-btn" aria-label="Previous period" title="Previous (Key: ←)">‹</button>
         <button id="btn-next" class="arrow-btn" aria-label="Next period" title="Next (Key: →)">›</button>
@@ -397,7 +399,8 @@
 
       <!-- Delete Confirmation Box (Hidden initially) -->
       <div id="detail-delete-confirm-box" class="kiosk-delete-confirm-box" role="group" aria-label="Confirm event deletion">
-        <p class="kiosk-delete-confirm-title">Delete this event from FamilyBoard?</p>
+        <p class="kiosk-delete-confirm-title">Delete this event from <strong id="detail-delete-calendar-target">FamilyBoard</strong>?</p>
+        <p class="kiosk-delete-confirm-sub">You can immediately undo this action from the notification banner.</p>
         <div class="kiosk-delete-confirm-actions">
           <button type="button" id="btn-cancel-delete" class="btn btn-secondary kiosk-btn-compact">Cancel</button>
           <button type="button" id="btn-confirm-delete" class="btn btn-danger kiosk-btn-compact">Yes, Delete</button>
@@ -407,6 +410,7 @@
 
     <div class="modal-actions" id="detail-normal-actions">
       <button type="button" id="btn-detail-delete" class="btn btn-danger kiosk-btn-delete-left">Delete</button>
+      <button type="button" id="btn-detail-duplicate" class="btn btn-secondary">Duplicate</button>
       <button type="button" id="btn-detail-edit" class="btn btn-secondary">Edit</button>
       <button type="button" id="btn-detail-ok" class="btn btn-primary">Close</button>
     </div>
