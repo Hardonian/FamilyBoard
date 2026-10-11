@@ -8,7 +8,7 @@ module.exports = defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? [['html', { open: 'never' }], ['github']] : 'list',
   use: {
-    baseURL: 'http://127.0.0.1:18080',
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:18080',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     reducedMotion: 'reduce'
@@ -17,7 +17,7 @@ module.exports = defineConfig({
     { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 1000 } } },
     { name: 'mobile-chromium', use: { ...devices['Pixel 7'] } }
   ],
-  webServer: {
+  webServer: process.env.PLAYWRIGHT_EXTERNAL ? undefined : {
     command: 'go run scripts/seed_demo.go && go run ./cmd/familyboard -config demo_run/demo.toml -port 18080',
     url: 'http://127.0.0.1:18080/health/ready',
     reuseExistingServer: !process.env.CI,

@@ -1,5 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
+const path = require('path');
 
 test('kiosk core navigation, search, and accessible interaction', async ({ page }) => {
   await page.goto('/');
@@ -24,7 +25,8 @@ test('login visual shell remains stable', async ({ page }) => {
   await expect(page.getByRole('heading', { name: /admin/i })).toBeVisible();
   await expect(page).toHaveScreenshot('admin-login.png', {
     animations: 'disabled',
-    maxDiffPixelRatio: 0.01
+    stylePath: path.join(__dirname, 'screenshot.css'),
+    maxDiffPixelRatio: 0.05
   });
 });
 

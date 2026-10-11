@@ -151,3 +151,54 @@ port = 8080
 		t.Errorf("expected already current config not to be modified")
 	}
 }
+
+func TestConfig_ValidationBranches(t *testing.T) {
+	// Nil config
+	var nilCfg *Config
+	if err := nilCfg.Validate(); err == nil {
+		t.Errorf("expected error on nil config")
+	}
+
+	// Invalid ports, host, timezone, database
+	cfg := DefaultConfig()
+	cfg.Server.Port = 99999
+	cfg.Server.Host = "invalid host with spaces"
+	cfg.Server.BaseURL = "not-a-url"
+	cfg.Server.Timezone = "Invalid/Timezone"
+	cfg.Server.DeviceName = ""
+	cfg.Database.Path = ""
+	cfg.Database.BusyTimeoutMs = -1
+	cfg.Database.MaxOpenConns = 999
+	cfg.Kiosk.DayStartsAt = "25:00"
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Errorf("expected validation errors on invalid config")
+	}
+}
+
+func TestConfig_Redacted(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Security.SessionSecret = "secret-123"
+	cfg.Security.HotspotPassword = "password-abc"
+	cfg.Auth.AdminPasswordHash = "hash-xyz"
+	cfg.Google.ClientSecret = "g-secret"
+	cfg.Microsoft.ClientSecret = "ms-secret"
+
+	red := cfg.Redacted()
+	if red.Security.SessionSecret != "[REDACTED]" ||
+		red.Security.HotspotPassword != "[REDACTED]" ||
+		red.Auth.AdminPasswordHash != "[REDACTED]" ||
+		red.Google.ClientSecret != "[REDACTED]" ||
+		red.Microsoft.ClientSecret != "[REDACTED]" {
+		t.Errorf("expected sensitive fields to be redacted: %+v", red)
+	}
+}
+
+func TestConfig_SaveInvalid(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Server.Port = -1
+	if err := cfg.Save(filepath.Join(t.TempDir(), "invalid.toml")); err == nil {
+		t.Errorf("expected error when saving invalid config")
+	}
+}
