@@ -25,16 +25,17 @@
     </div>
 
     <div class="view-selector" role="group" aria-label="Calendar view">
-      <button class="view-btn active" data-view="hybrid" id="btn-view-month" aria-pressed="true" title="Month calendar view">Month</button>
-      <button class="view-btn" data-view="week" id="btn-view-week" aria-pressed="false" title="7-day week view">Week</button>
-      <button class="view-btn" data-view="schedule" id="btn-view-schedule" aria-pressed="false" title="Schedule agenda view">Schedule</button>
-      <button class="view-btn" data-view="today" id="btn-view-today" aria-pressed="false" title="Today schedule view">Day</button>
+      <button class="view-btn active" data-view="hybrid" id="btn-view-month" aria-pressed="true" title="Month calendar view (Key: M)">Month <kbd class="btn-kbd-badge" aria-hidden="true">M</kbd></button>
+      <button class="view-btn" data-view="week" id="btn-view-week" aria-pressed="false" title="7-day week view (Key: W)">Week <kbd class="btn-kbd-badge" aria-hidden="true">W</kbd></button>
+      <button class="view-btn" data-view="schedule" id="btn-view-schedule" aria-pressed="false" title="Schedule agenda view (Key: S)">Schedule <kbd class="btn-kbd-badge" aria-hidden="true">S</kbd></button>
+      <button class="view-btn" data-view="today" id="btn-view-today" aria-pressed="false" title="Today schedule view (Key: D)">Day <kbd class="btn-kbd-badge" aria-hidden="true">D</kbd></button>
     </div>
 
-    <button type="button" id="btn-toggle-photo-frame" class="btn btn-secondary btn-frame-toggle" title="FotoCube Ambient Photo Frame" aria-label="Toggle ambient photo frame">🖼️ Frame</button>
+    <button type="button" id="btn-toggle-photo-frame" class="btn btn-secondary btn-frame-toggle" title="FotoCube Ambient Photo Frame (Key: P)" aria-label="Toggle ambient photo frame">🖼️ Frame <kbd class="btn-kbd-badge" aria-hidden="true">P</kbd></button>
     <button type="button" id="btn-pair-phone" class="btn btn-secondary btn-pair-phone" title="Connect Apple iPhone or Poco F7 Android phone" aria-label="Connect smartphone">📱 Phone</button>
+    <button type="button" id="btn-shortcuts-help" class="btn btn-secondary btn-shortcuts-help" title="Keyboard Shortcuts Guide (Key: ?)" aria-label="Keyboard Shortcuts">⌨️ <kbd class="btn-kbd-badge" aria-hidden="true">?</kbd></button>
     <a href="/admin" class="btn-admin-link" id="link-admin" title="Appliance Settings">Admin</a>
-    <button id="btn-add-event" class="btn btn-create" title="Create new event">
+    <button id="btn-add-event" class="btn btn-create" title="Create new event (Key: C, N, +)">
       <svg class="google-create-icon" viewBox="0 0 36 36" width="22" height="22" aria-hidden="true">
         <path fill="#4285F4" d="M16 16v14h4V16h14v-4H20V-2h-4v14H2v4z"/>
         <path fill="#34A853" d="M30 16H20v-4h10z"/>
@@ -43,6 +44,7 @@
         <path fill="#EA4335" d="M16 6h4v10h-4z"/>
       </svg>
       <span>+ Create</span>
+      <kbd class="btn-kbd-badge" aria-hidden="true">C</kbd>
     </button>
   </div>
 </header>
@@ -56,9 +58,9 @@
         <h2 id="nav-title" class="nav-title">Loading Calendar...</h2>
       </div>
       <div class="nav-arrows">
-        <button id="btn-today" class="btn btn-today">Today</button>
-        <button id="btn-prev" class="arrow-btn" aria-label="Previous period">‹</button>
-        <button id="btn-next" class="arrow-btn" aria-label="Next period">›</button>
+        <button id="btn-today" class="btn btn-today" title="Jump to Today (Key: T)">Today <kbd class="btn-kbd-badge" aria-hidden="true">T</kbd></button>
+        <button id="btn-prev" class="arrow-btn" aria-label="Previous period" title="Previous (Key: ←)">‹</button>
+        <button id="btn-next" class="arrow-btn" aria-label="Next period" title="Next (Key: →)">›</button>
       </div>
     </div>
 
@@ -530,6 +532,61 @@
     <div class="modal-footer modal-footer-between">
       <div class="pair-footer-hint">🔒 Paired phones stay authenticated with trusted household capability.</div>
       <button type="button" id="btn-close-pair-modal-footer" class="btn btn-primary btn-sm">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- Interactive Keyboard Shortcuts Guide Modal -->
+<div id="modal-shortcuts-help" class="modal-overlay" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-shortcuts" role="dialog" aria-modal="true" aria-labelledby="shortcuts-modal-title">
+    <div class="modal-header-simple">
+      <div class="shortcuts-title-wrap">
+        <span class="shortcuts-icon">⌨️</span>
+        <h2 id="shortcuts-modal-title" class="modal-title-text">Keyboard Shortcuts Guide</h2>
+      </div>
+      <button type="button" id="btn-close-shortcuts-modal" class="btn-text-sm" aria-label="Close shortcuts guide">✕</button>
+    </div>
+
+    <div class="shortcuts-modal-body">
+      <div class="shortcuts-guide-grid">
+        <div class="shortcut-guide-card">
+          <div class="shortcut-group-title">🎯 Actions</div>
+          <div class="shortcut-row"><span class="shortcut-desc">Create / Add Event</span><span class="shortcut-keys"><kbd>C</kbd> / <kbd>N</kbd> / <kbd>+</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Save / Submit Event</span><span class="shortcut-keys"><kbd>Enter</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Submit &amp; Add Another</span><span class="shortcut-keys"><kbd>Shift</kbd> + <kbd>Enter</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Close Modal / Drawer</span><span class="shortcut-keys"><kbd>Esc</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Edit Selected Event</span><span class="shortcut-keys"><kbd>E</kbd></span></div>
+        </div>
+
+        <div class="shortcut-guide-card">
+          <div class="shortcut-group-title">🧭 Navigation</div>
+          <div class="shortcut-row"><span class="shortcut-desc">Jump to Today</span><span class="shortcut-keys"><kbd>T</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Previous Period</span><span class="shortcut-keys"><kbd>←</kbd> / <kbd>P</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Next Period</span><span class="shortcut-keys"><kbd>→</kbd> / <kbd>N</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Cycle Calendar Views</span><span class="shortcut-keys"><kbd>Tab</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Dismiss Screensaver</span><span class="shortcut-keys"><kbd>Any Key</kbd></span></div>
+        </div>
+
+        <div class="shortcut-guide-card">
+          <div class="shortcut-group-title">📅 Calendar Views</div>
+          <div class="shortcut-row"><span class="shortcut-desc">Month Calendar</span><span class="shortcut-keys"><kbd>M</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">7-Day Week Grid</span><span class="shortcut-keys"><kbd>W</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Schedule Agenda</span><span class="shortcut-keys"><kbd>S</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Day View</span><span class="shortcut-keys"><kbd>D</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Ambient Photo Frame</span><span class="shortcut-keys"><kbd>F</kbd></span></div>
+        </div>
+
+        <div class="shortcut-guide-card">
+          <div class="shortcut-group-title">💡 Physical Hardware</div>
+          <div class="shortcut-row"><span class="shortcut-desc">Wireless Bluetooth</span><span class="shortcut-keys"><span class="shortcut-tag">Auto-Detect</span></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Virtual Keyboard</span><span class="shortcut-keys"><span class="shortcut-tag">Auto-Hides</span></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Shortcuts Help</span><span class="shortcut-keys"><kbd>?</kbd></span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button type="button" id="btn-close-shortcuts-footer" class="btn btn-primary btn-sm">Got it</button>
     </div>
   </div>
 </div>

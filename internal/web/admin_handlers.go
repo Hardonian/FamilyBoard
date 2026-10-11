@@ -15,6 +15,7 @@ import (
 	"github.com/Hardonian/FamilyBoard/internal/auth"
 	"github.com/Hardonian/FamilyBoard/internal/buildinfo"
 	"github.com/Hardonian/FamilyBoard/internal/calendar/apple"
+	"github.com/Hardonian/FamilyBoard/internal/diagnostics"
 	"github.com/Hardonian/FamilyBoard/internal/hardware"
 	"github.com/Hardonian/FamilyBoard/internal/models"
 	"github.com/Hardonian/FamilyBoard/internal/oauth"
@@ -467,6 +468,7 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	queueItems, _ := s.store.ListAllMutations(ctx, 50, 0)
 	pendingCandidateCount, _ := s.store.CountPendingCandidates(ctx)
 	pendingQueueCount, _ := s.store.CountPendingMutations(ctx)
+	deadLetterCount, _ := s.store.CountDeadLetterMutations(ctx)
 	activeEventCount, _ := s.store.CountActiveEvents(ctx)
 	conflicts, _ := s.store.ListPendingConflicts(ctx)
 	var auditEntries []models.AuditEntry
@@ -506,6 +508,7 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		"QueueItems":            queueItems,
 		"PendingCandidateCount": pendingCandidateCount,
 		"PendingQueueCount":     pendingQueueCount,
+		"DeadLetterCount":       deadLetterCount,
 		"PendingConflictCount":  len(conflicts),
 		"ActiveEventCount":      activeEventCount,
 		"BuildVersion":          buildinfo.Version,
@@ -878,6 +881,37 @@ func (s *Server) handleAdminTrustedSenderDelete(w http.ResponseWriter, r *http.R
 		IPAddress:    remoteIP(r),
 	})
 	http.Redirect(w, r, "/admin?tab=senders&msg=Trusted+sender+removed", http.StatusSeeOther)
+}
+
+func (s *Server) handleAdminQueueRetry(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		http.Redirect(w, r, "/admin?tab=queue&err=Queue+item+ID+required", http.StatusSeeOther)
+		return
+	}
+	retried, err := s.store.RetryDeadLetterMutation(r.Context(), id)
+	if err != nil {
+		http.Redirect(w, r, "/admin?tab=queue&err="+url.QueryEscape("Could not retry queue item: "+err.Error()), http.StatusSeeOther)
+		return
+	}
+	if !retried {
+		http.Redirect(w, r, "/admin?tab=queue&err=Queue+item+is+not+in+dead-letter+state", http.StatusSeeOther)
+		return
+	}
+	_ = s.store.RecordAudit(r.Context(), &models.AuditEntry{
+		ID:           fmt.Sprintf("aud-%d", time.Now().UnixNano()),
+		Actor:        "admin",
+		Action:       "mutation_retry",
+		ResourceType: "mutation_queue",
+		ResourceID:   id,
+		Details:      "Reset dead-letter mutation for a full retry budget",
+		IPAddress:    remoteIP(r),
+	})
+	go func() {
+		_ = s.queueEngine.ProcessBatch(context.Background(), 5)
+		s.BroadcastReload()
+	}()
+	http.Redirect(w, r, "/admin?tab=queue&msg=Queue+item+reset+and+retry+started", http.StatusSeeOther)
 }
 
 func (s *Server) handleAdminOAuthStart(w http.ResponseWriter, r *http.Request) {
@@ -1298,4 +1332,18 @@ func (s *Server) handleAdminBackupDownload(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=familyboard-backup-%s.db", time.Now().Format("20060102-150405")))
 	http.ServeFile(w, r, backupFile)
+}
+
+func (s *Server) handleAdminDiagnosticsDownload(w http.ResponseWriter, r *http.Request) {
+	report, err := diagnostics.Generate(r.Context(), s.store, s.cfg.Database.Path)
+	if err != nil {
+		http.Error(w, "generate diagnostics: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"familyboard-diagnostics-%s.json\"", time.Now().Format("20060102-150405")))
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(report)
 }

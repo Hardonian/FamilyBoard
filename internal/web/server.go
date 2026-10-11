@@ -178,9 +178,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /admin/conflicts/{id}/resolve", s.requireAuth(s.requireCSRF(s.handleAdminConflictResolve)))
 	s.mux.HandleFunc("POST /admin/trusted-senders", s.requireAuth(s.requireCSRF(s.handleAdminTrustedSenderAdd)))
 	s.mux.HandleFunc("POST /admin/trusted-senders/{id}/delete", s.requireAuth(s.requireCSRF(s.handleAdminTrustedSenderDelete)))
+	s.mux.HandleFunc("POST /admin/queue/{id}/retry", s.requireAuth(s.requireCSRF(s.handleAdminQueueRetry)))
 	s.mux.HandleFunc("GET /admin/oauth/start", s.requireAuth(s.handleAdminOAuthStart))
 	s.mux.HandleFunc("POST /admin/apple/connect", s.requireAuth(s.requireCSRF(s.handleAdminAppleConnect)))
 	s.mux.HandleFunc("GET /admin/backup/download", s.requireAuth(s.handleAdminBackupDownload))
+	s.mux.HandleFunc("GET /admin/diagnostics", s.requireAuth(s.handleAdminDiagnosticsDownload))
 
 	// OAuth Callbacks
 	s.mux.HandleFunc("GET /oauth/callback/google", s.handleOAuthCallbackGoogle)

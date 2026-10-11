@@ -52,6 +52,7 @@
   const elEventDetailModal = document.getElementById('event-detail-modal');
   const elWifiSetupModal = document.getElementById('modal-wifi-setup');
   const elMobilePairModal = document.getElementById('modal-mobile-pair');
+  const elShortcutsHelpModal = document.getElementById('modal-shortcuts-help');
 
   // Virtual Keyboard
   const elVirtualKeyboard = document.getElementById('virtual-keyboard');
@@ -74,9 +75,11 @@
     setupNetworkMonitoring();
     setupHardwareTelemetry();
     setupNavigation();
+    setupTouchSwipeNavigation();
     setupQuickAddModal();
     setupEventDetailModal();
     setupDayDrawer();
+    setupShortcutsHelpModal();
     setupVirtualKeyboard();
     setupInactivityAutoReset();
     setupFotoCubePhotoFrame();
@@ -124,6 +127,7 @@
     if (elClockDate) {
       elClockDate.textContent = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
     }
+    updateWeekNowIndicator();
   }
 
   // --- Status & Connectivity ---
@@ -665,6 +669,20 @@
     });
   }
 
+  function safeStorageGet(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function safeStorageSet(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (_) {}
+  }
+
   // --- Fetch Events with Offline Resilience ---
   async function fetchEvents(startDate, endDate) {
     const startStr = startDate.toISOString();
@@ -778,6 +796,21 @@
     const today = new Date();
     const iterDate = new Date(startGridDate);
 
+    // Pre-index non-cancelled events by date string for O(1) cell lookup
+    const eventsByDate = new Map();
+    events.forEach(ev => {
+      if (ev.status === 'cancelled') return;
+      const key = new Date(ev.start_at).toDateString();
+      let list = eventsByDate.get(key);
+      if (!list) {
+        list = [];
+        eventsByDate.set(key, list);
+      }
+      list.push(ev);
+    });
+
+    const fragment = document.createDocumentFragment();
+
     for (let i = 0; i < 42; i++) {
       const cell = document.createElement('div');
       cell.className = 'day-cell';
@@ -814,10 +847,7 @@
       pillsContainer.className = 'event-pills-container';
 
       const cellDateStr = iterDate.toDateString();
-      const dayEvents = events.filter(ev => {
-        const evStart = new Date(ev.start_at);
-        return evStart.toDateString() === cellDateStr && ev.status !== 'cancelled';
-      });
+      const dayEvents = eventsByDate.get(cellDateStr) || [];
 
       // Show top 3 events
       const maxShow = 3;
@@ -861,9 +891,11 @@
         }
       });
 
-      elDaysGrid.appendChild(cell);
+      fragment.appendChild(cell);
       iterDate.setDate(iterDate.getDate() + 1);
     }
+
+    elDaysGrid.appendChild(fragment);
   }
 
   // --- 2. Render Week Grid ---
@@ -881,6 +913,21 @@
     const events = await fetchEvents(startOfWeek, endOfWeek);
     renderWeekAllDayRow(startOfWeek, events);
 
+    // Pre-index non-all-day events for O(1) column lookup
+    const timedEventsByDate = new Map();
+    events.forEach(ev => {
+      if (ev.status === 'cancelled' || ev.all_day) return;
+      const key = new Date(ev.start_at).toDateString();
+      let list = timedEventsByDate.get(key);
+      if (!list) {
+        list = [];
+        timedEventsByDate.set(key, list);
+      }
+      list.push(ev);
+    });
+
+    const fragment = document.createDocumentFragment();
+
     // Time Gutter (7 AM to 10 PM)
     const gutter = document.createElement('div');
     gutter.className = 'week-time-gutter';
@@ -894,7 +941,7 @@
       slot.textContent = formatClockValue(`${String(h).padStart(2, '0')}:00`);
       gutter.appendChild(slot);
     }
-    elWeekColumnsGrid.appendChild(gutter);
+    fragment.appendChild(gutter);
 
     // 7 Day Columns
     const today = new Date();
@@ -927,17 +974,15 @@
           const topPx = (currentHour - 7) * 60;
           const nowLine = document.createElement('div');
           nowLine.className = 'now-indicator-line';
+          nowLine.id = 'week-now-indicator-line';
           nowLine.style.top = `${topPx}px`;
           slots.appendChild(nowLine);
         }
       }
 
-      // Filter events for this column
+      // Filter events for this column via O(1) Map
       const colDateStr = iter.toDateString();
-      const colEvents = events.filter(ev => {
-        const evStart = new Date(ev.start_at);
-        return evStart.toDateString() === colDateStr && ev.status !== 'cancelled' && !ev.all_day;
-      });
+      const colEvents = timedEventsByDate.get(colDateStr) || [];
 
       colEvents.forEach(ev => {
         const evCard = document.createElement('div');
@@ -949,10 +994,6 @@
 
         let startHour = start.getHours() + (start.getMinutes() / 60);
         let endHour = end.getHours() + (end.getMinutes() / 60);
-        if (ev.all_day) {
-          startHour = 7;
-          endHour = 8.5;
-        }
 
         const clampedStart = Math.max(7, Math.min(22, startHour));
         const clampedEnd = Math.max(clampedStart + 0.5, Math.min(22, endHour));
@@ -986,9 +1027,11 @@
       });
 
       col.appendChild(slots);
-      elWeekColumnsGrid.appendChild(col);
+      fragment.appendChild(col);
       iter.setDate(iter.getDate() + 1);
     }
+
+    elWeekColumnsGrid.appendChild(fragment);
   }
 
   function renderWeekAllDayRow(startOfWeek, events) {
@@ -999,21 +1042,35 @@
     label.textContent = 'All day';
     elWeekAllDayRow.appendChild(label);
 
+    const allDayEventsByDate = new Map();
+    events.forEach(event => {
+      if (!event.all_day || event.status === 'cancelled') return;
+      const key = new Date(event.start_at).toDateString();
+      let list = allDayEventsByDate.get(key);
+      if (!list) {
+        list = [];
+        allDayEventsByDate.set(key, list);
+      }
+      list.push(event);
+    });
+
+    const rowFrag = document.createDocumentFragment();
     for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
       const day = new Date(startOfWeek);
       day.setDate(day.getDate() + dayIndex);
       const cell = document.createElement('div');
       cell.className = 'week-allday-cell';
-      events.filter(event => event.all_day && event.status !== 'cancelled' && new Date(event.start_at).toDateString() === day.toDateString())
-        .forEach(event => {
-          const chip = document.createElement('div');
-          chip.className = `week-allday-chip ${getEventColorClass(event)}`;
-          chip.textContent = event.title || 'Untitled event';
-          makeInteractive(chip, () => openEventDetailSheet(event), event.title);
-          cell.appendChild(chip);
-        });
-      elWeekAllDayRow.appendChild(cell);
+      const dayEvents = allDayEventsByDate.get(day.toDateString()) || [];
+      dayEvents.forEach(event => {
+        const chip = document.createElement('div');
+        chip.className = `week-allday-chip ${getEventColorClass(event)}`;
+        chip.textContent = event.title || 'Untitled event';
+        makeInteractive(chip, () => openEventDetailSheet(event), event.title);
+        cell.appendChild(chip);
+      });
+      rowFrag.appendChild(cell);
     }
+    elWeekAllDayRow.appendChild(rowFrag);
   }
 
   async function renderScheduleView() {
@@ -1171,11 +1228,13 @@
     todayEvents.sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
     tomorrowEvents.sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
 
+    const fragment = document.createDocumentFragment();
+
     if (todayEvents.length === 0) {
-      elRailEventsList.appendChild(createEmptyState('✨', 'Nothing scheduled today', 'Enjoy the breathing room.'));
+      fragment.appendChild(createEmptyState('✨', 'Nothing scheduled today', 'Enjoy the breathing room.'));
     } else {
       todayEvents.forEach(ev => {
-        elRailEventsList.appendChild(createRailEventCard(ev));
+        fragment.appendChild(createRailEventCard(ev));
       });
     }
 
@@ -1184,12 +1243,14 @@
       const tmrwHeader = document.createElement('div');
       tmrwHeader.className = 'rail-section-label';
       tmrwHeader.textContent = 'Tomorrow';
-      elRailEventsList.appendChild(tmrwHeader);
+      fragment.appendChild(tmrwHeader);
 
       tomorrowEvents.forEach(ev => {
-        elRailEventsList.appendChild(createRailEventCard(ev));
+        fragment.appendChild(createRailEventCard(ev));
       });
     }
+
+    elRailEventsList.appendChild(fragment);
   }
 
   function createRailEventCard(ev) {
@@ -2292,14 +2353,13 @@
     });
 
     function closePairModal() {
-      modal.classList.add('hidden');
-      modal.setAttribute('aria-hidden', 'true');
+      closeMobilePairModal();
     }
 
-    if (btnClose) btnClose.onclick = closePairModal;
-    if (btnCloseFooter) btnCloseFooter.onclick = closePairModal;
+    if (btnClose) btnClose.onclick = closeMobilePairModal;
+    if (btnCloseFooter) btnCloseFooter.onclick = closeMobilePairModal;
     modal.onclick = (e) => {
-      if (e.target === modal) closePairModal();
+      if (e.target === modal) closeMobilePairModal();
     };
 
     if (btnCopy) {
@@ -2315,6 +2375,116 @@
         }
       });
     }
+  }
+
+  function closeMobilePairModal() {
+    if (!elMobilePairModal) return;
+    elMobilePairModal.classList.add('hidden');
+    elMobilePairModal.style.display = 'none';
+    elMobilePairModal.setAttribute('aria-hidden', 'true');
+    restorePreviousFocus();
+  }
+
+  // --- Keyboard Shortcuts Guide Modal ---
+  function setupShortcutsHelpModal() {
+    const btnShortcuts = document.getElementById('btn-shortcuts-help');
+    const btnClose = document.getElementById('btn-close-shortcuts-modal');
+    const btnCloseFooter = document.getElementById('btn-close-shortcuts-footer');
+
+    if (btnShortcuts) {
+      btnShortcuts.addEventListener('click', () => {
+        triggerHaptic(12);
+        openShortcutsHelpModal();
+      });
+    }
+
+    if (btnClose) btnClose.onclick = closeShortcutsHelpModal;
+    if (btnCloseFooter) btnCloseFooter.onclick = closeShortcutsHelpModal;
+    if (elShortcutsHelpModal) {
+      elShortcutsHelpModal.addEventListener('click', (e) => {
+        if (e.target === elShortcutsHelpModal) closeShortcutsHelpModal();
+      });
+    }
+  }
+
+  function openShortcutsHelpModal() {
+    if (!elShortcutsHelpModal) return;
+    previouslyFocusedElement = document.activeElement;
+    elShortcutsHelpModal.classList.remove('hidden');
+    elShortcutsHelpModal.style.display = 'flex';
+    elShortcutsHelpModal.setAttribute('aria-hidden', 'false');
+    const closeBtn = document.getElementById('btn-close-shortcuts-modal');
+    if (closeBtn) closeBtn.focus();
+  }
+
+  function closeShortcutsHelpModal() {
+    if (!elShortcutsHelpModal) return;
+    elShortcutsHelpModal.classList.add('hidden');
+    elShortcutsHelpModal.style.display = 'none';
+    elShortcutsHelpModal.setAttribute('aria-hidden', 'true');
+    restorePreviousFocus();
+  }
+
+  // --- Real-Time Week View "Now" Indicator Line ---
+  function updateWeekNowIndicator() {
+    if (currentView !== 'week') return;
+    const indicator = document.getElementById('week-now-indicator-line');
+    if (!indicator) return;
+    const now = new Date();
+    const currentHour = now.getHours() + (now.getMinutes() / 60);
+    if (currentHour >= 7 && currentHour <= 22) {
+      const topPx = (currentHour - 7) * 60;
+      indicator.style.top = `${topPx}px`;
+      indicator.style.display = 'block';
+    } else {
+      indicator.style.display = 'none';
+    }
+  }
+
+  // --- Touch Gesture Navigation (Left/Right Swipe) ---
+  function setupTouchSwipeNavigation() {
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchStartTime = 0;
+
+    window.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      touchStartX = touch.clientX;
+      touchStartY = touch.clientY;
+      touchStartTime = Date.now();
+    }, { passive: true });
+
+    window.addEventListener('touchend', (e) => {
+      // Don't intercept swipe if any overlay modal or drawer is open
+      if (getVisibleOverlay()) return;
+
+      // Don't swipe if touching inside horizontal scroll containers or form controls
+      const target = e.target;
+      if (target && target.closest && target.closest(
+        '#virtual-keyboard, .suggestions-cloud, .relative-dates-row, .time-chips-grid, .templates-scroll-row, .dest-tiles-grid, input, textarea, select'
+      )) {
+        return;
+      }
+
+      if (e.changedTouches.length !== 1) return;
+      const touch = e.changedTouches[0];
+      const deltaX = touch.clientX - touchStartX;
+      const deltaY = touch.clientY - touchStartY;
+      const elapsed = Date.now() - touchStartTime;
+
+      // Swipe requirements: duration < 600ms, horizontal distance >= 60px, dominant horizontal axis
+      if (elapsed < 600 && Math.abs(deltaX) >= 60 && Math.abs(deltaX) > 1.6 * Math.abs(deltaY)) {
+        triggerHaptic(15);
+        if (deltaX < 0) {
+          // Swipe left -> advance to next period
+          navigateCalendar(1);
+        } else {
+          // Swipe right -> go back to previous period
+          navigateCalendar(-1);
+        }
+      }
+    }, { passive: true });
   }
 
   // Mobile PWA Home Screen Banner
@@ -2362,6 +2532,21 @@
 
   function formatTimeShort(d) {
     return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+
+  function formatClockValue(timeStr) {
+    if (!timeStr) return '';
+    const parts = timeStr.split(':');
+    let h = parseInt(parts[0], 10);
+    const m = parts[1] || '00';
+    if (isNaN(h)) return timeStr;
+    if (timeFormat === '24h') {
+      return `${String(h).padStart(2, '0')}:${m}`;
+    }
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12;
+    if (h === 0) h = 12;
+    return m === '00' ? `${h} ${ampm}` : `${h}:${m} ${ampm}`;
   }
 
   function getCalendarName(calID) {
@@ -2442,7 +2627,7 @@
   }
 
   function getVisibleOverlay() {
-    return [elEventDetailModal, elEventModal, elDayDrawerOverlay, elWifiSetupModal].find(overlay =>
+    return [elShortcutsHelpModal, elEventDetailModal, elEventModal, elDayDrawerOverlay, elMobilePairModal, elWifiSetupModal].find(overlay =>
       overlay && overlay.getAttribute('aria-hidden') === 'false'
     );
   }
@@ -2530,7 +2715,8 @@
       }
       if (key === '?' || (key === '/' && !event.shiftKey)) {
         event.preventDefault();
-        showToast('⌨️ C/N: Add · T: Today · M/W/S/D: Views · ←/→: Navigate · Esc: Close', false);
+        triggerHaptic(12);
+        openShortcutsHelpModal();
         return;
       }
       if (key === 'p' || key === 'P') {
@@ -2544,9 +2730,11 @@
     // Overlay IS open:
     if (event.key === 'Escape') {
       event.preventDefault();
-      if (overlay === elEventDetailModal) closeEventDetailSheet();
+      if (overlay === elShortcutsHelpModal) closeShortcutsHelpModal();
+      else if (overlay === elEventDetailModal) closeEventDetailSheet();
       else if (overlay === elEventModal) closeQuickAddModal();
       else if (overlay === elDayDrawerOverlay) closeDayDrawer();
+      else if (overlay === elMobilePairModal) closeMobilePairModal();
       else closeKioskWifiModal();
       return;
     }

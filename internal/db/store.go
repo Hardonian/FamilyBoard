@@ -684,6 +684,31 @@ func (s *Store) CountPendingMutations(ctx context.Context) (int, error) {
 	return count, err
 }
 
+// CountDeadLetterMutations returns work that needs an explicit administrator
+// decision instead of silently retrying forever.
+func (s *Store) CountDeadLetterMutations(ctx context.Context) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM mutation_queue WHERE state = 'dead_letter';").Scan(&count)
+	return count, err
+}
+
+// RetryDeadLetterMutation moves one failed item back into the durable queue.
+// It deliberately resets the attempt count so a corrected credential or
+// provider outage gets a complete retry budget.
+func (s *Store) RetryDeadLetterMutation(ctx context.Context, id string) (bool, error) {
+	result, err := s.db.ExecContext(ctx, `UPDATE mutation_queue
+		SET state = ?, attempt_count = 0, next_attempt_at = ?, last_error = '', updated_at = ?
+		WHERE id = ? AND state = 'dead_letter';`, string(models.QueuePending), time.Now(), time.Now(), id)
+	if err != nil {
+		return false, err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return changed == 1, nil
+}
+
 func (s *Store) ListAllMutations(ctx context.Context, limit, offset int) ([]models.MutationQueueItem, error) {
 	query := `SELECT id, operation, provider, calendar_id, local_event_id, payload, idempotency_key, attempt_count, next_attempt_at, last_error, state, created_at, updated_at
 		FROM mutation_queue
