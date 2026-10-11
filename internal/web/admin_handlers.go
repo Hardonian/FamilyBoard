@@ -812,7 +812,8 @@ func (s *Server) handleAdminConflictResolve(w http.ResponseWriter, r *http.Reque
 	}
 
 	remoteResolved := false
-	if resolution == "keep_both" {
+	switch resolution {
+	case "keep_both":
 		localEvent, err := s.store.GetEvent(r.Context(), conflict.LocalEventID)
 		if err != nil || localEvent == nil {
 			http.Redirect(w, r, "/admin?tab=conflicts&err=The+local+event+for+this+conflict+is+no+longer+available", http.StatusSeeOther)
@@ -844,7 +845,7 @@ func (s *Server) handleAdminConflictResolve(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		remoteResolved = true
-	} else if resolution == "resolved_remote" {
+	case "resolved_remote":
 		localEvent, err := s.store.GetEvent(r.Context(), conflict.LocalEventID)
 		if err != nil || localEvent == nil {
 			http.Redirect(w, r, "/admin?tab=conflicts&err=The+local+event+for+this+conflict+is+no+longer+available", http.StatusSeeOther)

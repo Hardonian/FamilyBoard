@@ -1057,17 +1057,17 @@
         </div>
       </div>
 
-      <div class="admin-update-instructions admin-text-muted" style="margin-top: 1.25rem; font-size: 0.875rem; line-height: 1.5;">
+      <div class="admin-update-instructions admin-text-muted">
         <p><strong>Supported Upgrade Procedure:</strong> Every release upgrade executes preflight validation, downloads verified checksums, takes an automatic SQLite backup, runs forward schema migrations, and confirms readiness via <code>/health/ready</code> before completing.</p>
-        <p style="margin-top: 0.5rem;">To trigger or verify updates from the host appliance console:</p>
-        <pre style="background: var(--bg-surface-elevated, #2a2c33); padding: 0.75rem 1rem; border-radius: 6px; overflow-x: auto; margin-top: 0.25rem;"><code>sudo /opt/familyboard/bin/familyboardctl backup create
+        <p>To trigger or verify updates from the host appliance console:</p>
+        <pre><code>sudo /opt/familyboard/bin/familyboardctl backup create
 sudo /opt/familyboard/deploy/pi/update.sh</code></pre>
-        <p style="margin-top: 0.5rem;"><strong>Emergency Rollback:</strong> If an update encounters host incompatibility, restore the pre-upgrade snapshot:</p>
-        <pre style="background: var(--bg-surface-elevated, #2a2c33); padding: 0.75rem 1rem; border-radius: 6px; overflow-x: auto; margin-top: 0.25rem;"><code>sudo /opt/familyboard/bin/familyboardctl backup restore &lt;path-to-backup.db&gt;
+        <p><strong>Emergency Rollback:</strong> If an update encounters host incompatibility, restore the pre-upgrade snapshot:</p>
+        <pre><code>sudo /opt/familyboard/bin/familyboardctl backup restore &lt;path-to-backup.db&gt;
 sudo systemctl restart familyboard</code></pre>
       </div>
 
-      <div class="admin-footer-actions" style="margin-top: 1.25rem;">
+      <div class="admin-footer-actions admin-footer-actions-spaced">
         <button type="button" class="btn btn-secondary" onclick="alert('Appliance is running the latest stable release v{{.BuildVersion}}.')">Check for Updates</button>
         <a href="https://github.com/Hardonian/FamilyBoard/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">View Release Notes</a>
       </div>

@@ -348,6 +348,7 @@ body.kiosk-ambient-dim {
   color: var(--text-muted);
   text-align: center;
   font-weight: 700;
+  -webkit-user-select: none;
   user-select: none;
   transition: all 0.2s ease;
 }
@@ -4970,4 +4971,33 @@ body.kiosk-ambient-dim {
 
 .kiosk-main-layout {
   will-change: auto;
+}
+
+/* ==========================================================================
+   Admin Software Updates & Release Channel Panel
+   ========================================================================== */
+.admin-update-instructions {
+  margin-top: 1.25rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.admin-update-instructions p {
+  margin-top: 0.5rem;
+}
+
+.admin-update-instructions p:first-child {
+  margin-top: 0;
+}
+
+.admin-update-instructions pre {
+  background: var(--bg-surface-elevated, #2a2c33);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-sm, 6px);
+  overflow-x: auto;
+  margin-top: 0.25rem;
+}
+
+.admin-footer-actions-spaced {
+  margin-top: 1.25rem;
 }
