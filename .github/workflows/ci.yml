@@ -28,75 +28,8 @@ jobs:
           go-version: '1.26.9'
           cache: true
 
-      - name: Validate release version metadata
-        run: bash scripts/check_version.sh
-
-      - name: Verify Formatting
-        run: |
-          UNFORMATTED=$(gofmt -l .)
-          if [ -n "$UNFORMATTED" ]; then
-            echo "Unformatted files found:"
-            echo "$UNFORMATTED"
-            exit 1
-          fi
-
-      - name: Go Vet
-        run: go vet ./...
-
-      - name: Staticcheck
-        run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
-
-      - name: Reachable Vulnerability Scan
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
-
-      - name: Verify Dependencies
-        run: go mod verify
-
-      - name: Verify Module Files Are Tidy
-        run: go mod tidy -diff
-
-      - name: Validate Browser JavaScript
-        run: |
-          node --check web/static/js/kiosk.js
-          node --check web/static/js/admin.js
-
-      - name: Run Unit & Integration Tests
-        run: go test -v ./...
-
-      - name: Run Race Detector Tests
-        run: go test -race -v ./...
+      - name: Run canonical release gate
+        run: make release-check
 
       - name: Build and verify supported platform archives
-        run: bash scripts/package_portable.sh "$(tr -d '\r\n' < VERSION)"
-
-      - name: Validate Pi Deployment Shell Scripts
-        run: |
-          for script in familyboard-setup.sh deploy/pi/*.sh deploy/pi/kiosk/*.sh scripts/*.sh; do
-            if [ -f "$script" ]; then
-              bash -n "$script"
-              echo "Syntax OK: $script"
-            fi
-          done
-
-      - name: Validate Radxa Deployment Shell Scripts
-        run: |
-          for script in deploy/radxa/*.sh scripts/prepare_radxa_sd.sh; do
-            if [ -f "$script" ]; then
-              bash -n "$script"
-              echo "Syntax OK: $script"
-            fi
-          done
-
-      - name: Validate PowerShell Preparation Scripts
-        shell: pwsh
-        run: |
-          Get-ChildItem scripts -Filter '*.ps1' | ForEach-Object {
-            $tokens = $null
-            $parseErrors = $null
-            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$parseErrors)
-            if ($parseErrors) { throw ($parseErrors | Out-String) }
-            Write-Host "Syntax OK: $($_.FullName)"
-          }
-
-      - name: Validate Systemd Units
-        run: systemd-analyze verify deploy/pi/systemd/*.service deploy/pi/systemd/*.timer deploy/radxa/*.service
+        run: make package-all

@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata"
 
 	"github.com/Hardonian/FamilyBoard/internal/buildinfo"
 	appleCal "github.com/Hardonian/FamilyBoard/internal/calendar/apple"

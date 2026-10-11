@@ -19,6 +19,7 @@ night_starts_at = "20:30"
 
 [security]
 session_secret = "demo-session-secret-kiosk-12345678"
+hotspot_password = "demo-hotspot-password"
 cookie_secure = false
 credentials_dir = "demo_run/credentials"
 

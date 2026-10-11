@@ -46,6 +46,9 @@ redirect_url = "http://127.0.0.1:8080/oauth/callback/google"
 
 [microsoft]
 enabled = false
+# Use "common" for personal and work accounts, "organizations" for work-only,
+# or a Microsoft Entra tenant UUID for a single organization.
+tenant_id = "common"
 client_id = ""
 client_secret = ""
 redirect_url = "http://127.0.0.1:8080/oauth/callback/microsoft"

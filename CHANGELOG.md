@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-11
+
 ### Added
 
 - `familyboardctl verify-backup` performs an isolated recovery drill by checking the archive manifest checksum and SQLite integrity before any restore.
@@ -23,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Embed the IANA timezone database in standalone binaries so portable Windows
+  installations can validate and use configured timezones without a separate
+  Go toolchain or host zoneinfo package.
 - Accepting a remote calendar conflict now applies the remote event, retires the conflicting local mutations, and records the resolution in one SQLite transaction.
 
 ## [1.4.0] - 2026-10-10

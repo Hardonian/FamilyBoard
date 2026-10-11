@@ -10,7 +10,7 @@ else
     EXE_EXT :=
 endif
 
-.PHONY: all fmt vet lint staticcheck vuln security-check tools-check verify-mod check-version check-js test test-race build build-arm64 package-arm64 package-all pi-bootstrap-check release-check release-package clean
+.PHONY: all fmt fmt-check vet lint staticcheck vuln security-check tools-check verify-mod verify-tidy check-version check-js check-runtime-deps check-powershell check-systemd test test-race build build-arm64 package-arm64 package-all pi-bootstrap-check release-check release-package clean
 
 VERSION ?= $(strip $(file <VERSION))
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
@@ -21,6 +21,9 @@ all: build
 
 fmt:
 	go fmt ./...
+
+fmt-check:
+	@unformatted="$$(gofmt -l .)"; if [ -n "$$unformatted" ]; then echo "Unformatted Go files:"; echo "$$unformatted"; exit 1; fi
 
 vet:
 	go vet ./...
@@ -41,6 +44,9 @@ security-check: staticcheck vuln
 verify-mod:
 	go mod verify
 
+verify-tidy:
+	go mod tidy -diff
+
 check-version:
 	@"$(BASH_BIN)" scripts/check_version.sh
 
@@ -48,6 +54,15 @@ check-js:
 	node --check web/static/js/kiosk.js
 	node --check web/static/js/admin.js
 	node --check web/static/sw.js
+
+check-runtime-deps:
+	@go list -deps ./cmd/familyboard | grep -qx 'time/tzdata' || { echo "ERROR: standalone daemon must embed time/tzdata." >&2; exit 1; }
+
+check-powershell:
+	@if command -v pwsh >/dev/null 2>&1; then pwsh -NoLogo -NoProfile -File scripts/check_powershell.ps1; elif command -v powershell.exe >/dev/null 2>&1; then powershell.exe -NoLogo -NoProfile -File scripts/check_powershell.ps1; else echo "ERROR: PowerShell is required to validate preparation scripts." >&2; exit 1; fi
+
+check-systemd:
+	@if command -v systemd-analyze >/dev/null 2>&1; then systemd-analyze verify deploy/pi/systemd/*.service deploy/pi/systemd/*.timer deploy/radxa/*.service; else echo "Skipping systemd unit validation: systemd-analyze is unavailable on this platform."; fi
 
 test:
 	go test -v ./...
@@ -113,7 +128,7 @@ pi-bootstrap-check:
 prepare-sd:
 	@"$(BASH_BIN)" scripts/prepare_sd.sh $(SD)
 
-release-check: check-version fmt vet security-check verify-mod check-js test test-race build build-arm64 radxa-check pi-bootstrap-check
+release-check: check-version fmt-check vet security-check verify-mod verify-tidy check-js check-runtime-deps check-powershell test test-race build build-arm64 radxa-check pi-bootstrap-check check-systemd
 	@echo "=== FamilyBoard Canonical Release Gate PASSED ==="
 
 release-package: release-check package-all

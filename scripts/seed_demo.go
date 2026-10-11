@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/Hardonian/FamilyBoard/internal/auth"
 	"github.com/Hardonian/FamilyBoard/internal/buildinfo"
 	"github.com/Hardonian/FamilyBoard/internal/db"
 	"github.com/Hardonian/FamilyBoard/internal/models"
@@ -231,9 +229,9 @@ func main() {
 		}
 	}
 
-	// Write demo config TOML
-	hash, _ := auth.HashPassword("admin123")
-	cfgContent := fmt.Sprintf(`[server]
+	// Keep the demo configuration deterministic so seeding never dirties the
+	// tracked checkout. The fixed credentials are for loopback demo use only.
+	cfgContent := `[server]
 host = "127.0.0.1"
 port = 8085
 base_url = "http://127.0.0.1:8085"
@@ -254,14 +252,15 @@ night_starts_at = "20:30"
 
 [security]
 session_secret = "demo-session-secret-kiosk-12345678"
+hotspot_password = "demo-hotspot-password"
 cookie_secure = false
 credentials_dir = "demo_run/credentials"
 
 [auth]
 admin_username = "admin"
-admin_password_hash = "%s"
-`, hash)
+admin_password_hash = "$2a$10$U6dUt0zC70M27AsS9IzQ5ugHD94grlIBq1BeKnQKFv42hDXlEfLRu"
+`
 
 	_ = os.WriteFile("demo_run/demo.toml", []byte(cfgContent), 0644)
-	fmt.Println("Demo environment seeded successfully at demo_run/demo.db and demo_run/demo.toml")
+	log.Println("Demo environment seeded successfully at demo_run/demo.db and demo_run/demo.toml")
 }

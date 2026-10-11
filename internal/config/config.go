@@ -165,6 +165,7 @@ func DefaultConfig() *Config {
 		},
 		Microsoft: MicrosoftConfig{
 			Enabled:      false,
+			TenantID:     "common",
 			ClientID:     "",
 			ClientSecret: "",
 			RedirectURL:  "http://127.0.0.1:8080/oauth/callback/microsoft",

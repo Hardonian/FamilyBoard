@@ -4,7 +4,8 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.0.x   | :white_check_mark: |
+| 1.5.x   | :white_check_mark: |
+| < 1.5   | :x:                |
 
 ---
 
@@ -15,7 +16,7 @@ The FamilyBoard team takes the security of personal family data seriously.
 If you discover a security vulnerability, please report it privately rather than opening a public issue.
 
 ### How to Report:
-- **Email:** `security@familyboard.local` (or submit a GitHub Private Security Advisory)
+- **Preferred:** Submit a [GitHub Private Security Advisory](https://github.com/Hardonian/FamilyBoard/security/advisories/new).
 - **Subject:** `[SECURITY] FamilyBoard Vulnerability Report`
 - **Details:** Please provide a detailed description of the vulnerability, steps to reproduce, potential impact, and any proof-of-concept code.
 

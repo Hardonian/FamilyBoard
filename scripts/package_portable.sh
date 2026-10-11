@@ -16,7 +16,12 @@ if [ "$VERSION" != "$RELEASE_VERSION" ]; then
   exit 1
 fi
 
-COMMIT="${COMMIT:-$(git rev-parse --short=12 HEAD 2>/dev/null || echo dev)}"
+if [ -z "${COMMIT:-}" ]; then
+  COMMIT="$(git rev-parse --short=12 HEAD 2>/dev/null || echo dev)"
+  if ! git diff --quiet --ignore-submodules HEAD -- 2>/dev/null; then
+    COMMIT="${COMMIT}-dirty"
+  fi
+fi
 SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git show -s --format=%ct HEAD 2>/dev/null || date +%s)}"
 BUILD_DATE="${BUILD_DATE:-$(git show -s --format=%cI HEAD 2>/dev/null || date -u +'%Y-%m-%dT%H:%M:%SZ')}"
 LDFLAGS="-s -w -X github.com/Hardonian/FamilyBoard/internal/buildinfo.Version=$VERSION -X github.com/Hardonian/FamilyBoard/internal/buildinfo.Commit=$COMMIT -X github.com/Hardonian/FamilyBoard/internal/buildinfo.Date=$BUILD_DATE"
@@ -24,6 +29,7 @@ OUTPUT_DIR="dist/releases/${VERSION}"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 mkdir -p "$OUTPUT_DIR"
+rm -f "$OUTPUT_DIR"/familyboard-"$VERSION"-*.tar.gz "$OUTPUT_DIR"/SHA256SUMS
 
 package_target() {
   local goos="$1"
