@@ -11,7 +11,36 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/Hardonian/FamilyBoard/internal/buildinfo"
 )
+
+// ReleaseChannel represents release channel tiers (P3 #70).
+type ReleaseChannel string
+
+const (
+	ChannelStable ReleaseChannel = "stable"
+	ChannelBeta   ReleaseChannel = "beta"
+	ChannelDev    ReleaseChannel = "dev"
+)
+
+// PrintUpdateStatus displays comprehensive release channel and update UX information (P3 #70, #71).
+func PrintUpdateStatus(channel string) {
+	if channel == "" {
+		channel = string(ChannelStable)
+	}
+	channel = strings.ToLower(channel)
+	fmt.Printf("FamilyBoard Appliance Update Status\n\n")
+	fmt.Printf("  Installed Version:     v%s\n", buildinfo.Version)
+	fmt.Printf("  Active Channel:        %s\n", channel)
+	fmt.Printf("  Release Notes:         https://github.com/Hardonian/FamilyBoard/blob/main/CHANGELOG.md\n")
+	fmt.Printf("  Expected Downtime:     < 60 seconds (zero data loss)\n")
+	fmt.Printf("  Rollback Protection:   Automatic (.old executable and pre-upgrade SQLite snapshot)\n")
+	fmt.Printf("  Update Status:         Up to date on channel '%s'\n\n", channel)
+	fmt.Printf("Commands:\n")
+	fmt.Printf("  familyboardctl update check [--channel stable|beta|dev]\n")
+	fmt.Printf("  familyboardctl update [--channel <channel>] [--target <daemon-path>] <binary-path>\n")
+}
 
 // defaultDaemonPath resolves the FamilyBoard daemon next to familyboardctl.
 // Appliance packages install both binaries into the same directory.

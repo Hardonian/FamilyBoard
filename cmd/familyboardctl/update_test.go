@@ -104,3 +104,11 @@ func assertFileContents(t *testing.T, path, want string) {
 		t.Fatalf("%s contains %q, want %q", path, data, want)
 	}
 }
+
+func TestPrintUpdateStatus(t *testing.T) {
+	// Ensure channels and update status prints cleanly without panic
+	PrintUpdateStatus(string(ChannelStable))
+	PrintUpdateStatus(string(ChannelBeta))
+	PrintUpdateStatus(string(ChannelDev))
+}
+

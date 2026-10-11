@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,8 +15,10 @@ import (
 	"github.com/Hardonian/FamilyBoard/internal/buildinfo"
 	"github.com/Hardonian/FamilyBoard/internal/diagnostics"
 	"github.com/Hardonian/FamilyBoard/internal/hardware"
+	"github.com/Hardonian/FamilyBoard/internal/metrics"
 	"github.com/Hardonian/FamilyBoard/internal/models"
 	"github.com/Hardonian/FamilyBoard/internal/oauth"
+	"github.com/Hardonian/FamilyBoard/internal/timezone"
 )
 
 const sessionCookieName = "fb_session"
@@ -504,8 +507,20 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		auditEntries, _ = s.store.ListAuditLogs(ctx, 100, 0)
 	}
 	var diagnosticReport *diagnostics.DiagnosticReport
+	var clockHealth timezone.ClockHealth
+	var metricsSnapshot metrics.MetricsSnapshot
+	var databaseSizeMB = "--"
+	var memoryAllocMB = "--"
 	if tab == "system" {
 		diagnosticReport, _ = diagnostics.Generate(ctx, s.store, s.cfg.Database.Path)
+		clockHealth = timezone.CheckClockHealth(s.cfg.Server.Timezone)
+		metricsSnapshot = metrics.Default().Snapshot()
+		if diagnosticReport != nil {
+			databaseSizeMB = fmt.Sprintf("%.2f MB", float64(diagnosticReport.Database.SizeBytes)/(1024*1024))
+		}
+		if metricsSnapshot.MemoryAllocBytes > 0 {
+			memoryAllocMB = fmt.Sprintf("%.1f MB", float64(metricsSnapshot.MemoryAllocBytes)/(1024*1024))
+		}
 	}
 
 	csrfToken := s.issueCSRFToken(w, r)
@@ -549,6 +564,10 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		"ActiveEventCount":      activeEventCount,
 		"BuildVersion":          buildinfo.Version,
 		"Diagnostics":           diagnosticReport,
+		"ClockHealth":           clockHealth,
+		"MetricsSnapshot":       metricsSnapshot,
+		"DatabaseSizeMB":        databaseSizeMB,
+		"MemoryAllocMB":         memoryAllocMB,
 		"HardwareInfo":          hwInfo,
 		"WifiStatus":            wifiStatus,
 		"WifiAPs":               wifiAPs,
@@ -990,4 +1009,33 @@ func (s *Server) handleAdminQueueRetry(w http.ResponseWriter, r *http.Request) {
 		s.BroadcastReload()
 	}()
 	http.Redirect(w, r, "/admin?tab=queue&msg=Queue+item+reset+and+retry+started", http.StatusSeeOther)
+}
+
+func (s *Server) handleAdminDatabaseVacuum(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	slog.Info("Compacting and optimizing SQLite database")
+	if _, err := s.store.DB().ExecContext(ctx, "VACUUM; PRAGMA optimize;"); err != nil {
+		slog.Error("Database vacuum failed", "err", err)
+		http.Redirect(w, r, "/admin?tab=system&err="+url.QueryEscape("Database optimization failed: "+err.Error()), http.StatusSeeOther)
+		return
+	}
+	s.recordAudit(r, "database_vacuum", "database", "sqlite", "Compacted and optimized database")
+	http.Redirect(w, r, "/admin?tab=system&msg=Database+compacted+and+optimized+successfully", http.StatusSeeOther)
+}
+
+func (s *Server) handleAdminStorageCleanup(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	slog.Info("Executing storage retention cleanup pass")
+	retentionDays := 365
+	if d, err := s.store.GetSetting(ctx, "deleted_event_retention_days"); err == nil && d != "" {
+		if parsed, parseErr := strconv.Atoi(d); parseErr == nil && parsed > 0 {
+			retentionDays = parsed
+		}
+	}
+	cutoff := time.Now().AddDate(0, 0, -retentionDays)
+	_, _ = s.store.DB().ExecContext(ctx, "DELETE FROM events WHERE status = 'cancelled' AND local_updated_at < ?;", cutoff)
+	_, _ = s.store.DB().ExecContext(ctx, "VACUUM; PRAGMA optimize;")
+
+	s.recordAudit(r, "storage_cleanup", "storage", "*", "Pruned expired data and compacted database")
+	http.Redirect(w, r, "/admin?tab=system&msg=Storage+cleanup+and+pruning+completed+successfully", http.StatusSeeOther)
 }

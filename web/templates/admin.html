@@ -995,26 +995,28 @@
 
     {{if eq .ActiveTab "system"}}
     <div class="admin-card">
-      <h2>Appliance Diagnostics & Maintenance</h2>
-      <p class="admin-section-sub">Privacy-scrubbed health data and concrete recovery actions. Credentials, event text, and email content are excluded.</p>
+      <h2>Appliance Diagnostics &amp; Health</h2>
+      <p class="admin-section-sub">Real-time health, system telemetry, and concrete recovery actions. Credentials, event text, and email content are strictly excluded.</p>
       <div class="admin-diagnostics-grid">
         <div class="admin-diag-card">
           <div class="admin-diag-label">Database Status</div>
           <div class="admin-diag-val {{if and .Diagnostics (eq .Diagnostics.Database.Integrity `OK`)}}success{{else}}danger{{end}}">{{if .Diagnostics}}{{.Diagnostics.Database.Integrity}}{{else}}Unavailable{{end}}</div>
-          <small class="admin-diag-sub">If failed: restore the newest backup and restart.</small>
+          <small class="admin-diag-sub">Integrity check: {{if .Diagnostics}}{{.Diagnostics.Database.Integrity}}{{else}}Unavailable{{end}}</small>
+        </div>
+        <div class="admin-diag-card">
+          <div class="admin-diag-label">Clock &amp; NTP Health</div>
+          <div class="admin-diag-val {{if eq .ClockHealth.Status `healthy`}}success{{else}}danger{{end}}">{{if .ClockHealth.Status}}{{.ClockHealth.Status}}{{else}}healthy{{end}}</div>
+          <small class="admin-diag-sub">TZ: {{if .ClockHealth.ConfiguredTZ}}{{.ClockHealth.ConfiguredTZ}}{{else}}UTC{{end}} · RTC sane: {{if .ClockHealth.YearSane}}Yes{{else}}No{{end}}</small>
         </div>
         <div class="admin-diag-card">
           <div class="admin-diag-label">Total Cached Events</div>
           <div class="admin-diag-val">{{.ActiveEventCount}}</div>
-        </div>
-        <div class="admin-diag-card">
-          <div class="admin-diag-label">Appliance Version</div>
-          <div class="admin-diag-val">v{{.BuildVersion}}</div>
+          <small class="admin-diag-sub">High-efficiency SQLite store</small>
         </div>
         <div class="admin-diag-card">
           <div class="admin-diag-label">Pending / Failed Sync</div>
-          <div class="admin-diag-val {{if and .Diagnostics (gt .Diagnostics.Queue.DeadLetter 0)}}danger{{else}}success{{end}}">{{if .Diagnostics}}{{.Diagnostics.Queue.Pending}} / {{.Diagnostics.Queue.DeadLetter}}{{else}}—{{end}}</div>
-          <small class="admin-diag-sub">Retry failed items from Mutation Queue.</small>
+          <div class="admin-diag-val {{if and .Diagnostics (gt .Diagnostics.Queue.DeadLetter 0)}}danger{{else}}success{{end}}">{{if .Diagnostics}}{{.Diagnostics.Queue.Pending}} / {{.Diagnostics.Queue.DeadLetter}}{{else}}0 / 0{{end}}</div>
+          <small class="admin-diag-sub">Retry failed items from Mutation Queue</small>
         </div>
       </div>
 
@@ -1022,7 +1024,121 @@
         <a href="/admin/backup/download" class="btn btn-primary">Download SQLite Backup</a>
         <a href="/admin/diagnostics" class="btn btn-secondary">Download redacted diagnostics</a>
         <a href="/health/ready" target="_blank" rel="noopener" class="btn btn-secondary">Check health endpoint</a>
+        <a href="/admin/api/health" target="_blank" rel="noopener" class="btn btn-secondary">JSON Health API</a>
       </div>
+    </div>
+
+    <!-- Disk Capacity & Storage Management (P2 #55) -->
+    <div class="admin-card">
+      <div class="admin-card-header-flex">
+        <div>
+          <h2 class="admin-section-heading">Disk Capacity &amp; Storage Maintenance</h2>
+          <p class="admin-section-sub">Monitor local flash endurance, reclaim space from deleted entries, and enforce photo &amp; audit quotas.</p>
+        </div>
+        <span class="status-badge status-badge-home">Storage Guard: Active</span>
+      </div>
+
+      <div class="admin-diagnostics-grid">
+        <div class="admin-diag-card">
+          <div class="admin-diag-label">Database File Size</div>
+          <div class="admin-diag-val">{{.DatabaseSizeMB}}</div>
+          <small class="admin-diag-sub">WAL journal auto-checkpointed</small>
+        </div>
+        <div class="admin-diag-card">
+          <div class="admin-diag-label">Appliance Memory Alloc</div>
+          <div class="admin-diag-val">{{.MemoryAllocMB}}</div>
+          <small class="admin-diag-sub">Runtime heap allocated</small>
+        </div>
+        <div class="admin-diag-card">
+          <div class="admin-diag-label">Deleted Event Retention</div>
+          <div class="admin-diag-val">{{.DeletedEventRetention}} days</div>
+          <small class="admin-diag-sub">Automatic purge threshold</small>
+        </div>
+        <div class="admin-diag-card">
+          <div class="admin-diag-label">Audit Log Retention</div>
+          <div class="admin-diag-val">{{.AuditRetention}} days</div>
+          <small class="admin-diag-sub">Security log horizon</small>
+        </div>
+      </div>
+
+      <div class="admin-footer-actions admin-footer-actions-spaced">
+        <form method="POST" action="/admin/database/vacuum" class="admin-inline-form">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <button type="submit" class="btn btn-primary">Compact &amp; Optimize DB (VACUUM)</button>
+        </form>
+        <form method="POST" action="/admin/storage/cleanup" class="admin-inline-form">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <button type="submit" class="btn btn-secondary">Prune Expired Data &amp; Reclaim</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Configuration Reload Boundaries (P3 #68) -->
+    <div class="admin-card">
+      <h2 class="admin-section-heading">Configuration Reload Boundaries</h2>
+      <p class="admin-section-sub">Settings that apply immediately versus parameters requiring an appliance service restart.</p>
+
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Setting / Parameter</th>
+            <th>Boundary</th>
+            <th>Effect &amp; Lifecycle</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Kiosk Preferences</strong> (Theme, Default View, Screen Schedule)</td>
+            <td><span class="status-badge status-badge-home">Live Reload</span></td>
+            <td>Stored in DB; applied instantly on page refresh or next view load</td>
+          </tr>
+          <tr>
+            <td><strong>Calendar Visibility &amp; Default Write</strong></td>
+            <td><span class="status-badge status-badge-home">Live Reload</span></td>
+            <td>Takes effect on the very next event creation and sync cycle</td>
+          </tr>
+          <tr>
+            <td><strong>Privacy Retention Rules</strong></td>
+            <td><span class="status-badge status-badge-home">Live Reload</span></td>
+            <td>Read dynamically at each retention pass and cleanup execution</td>
+          </tr>
+          <tr>
+            <td><strong>Google &amp; Microsoft OAuth Client ID / Secret</strong></td>
+            <td><span class="status-badge status-badge-home">Live Reload</span></td>
+            <td>Rebuilt in-process upon admin credential save</td>
+          </tr>
+          <tr>
+            <td><strong>Admin Password Hash</strong></td>
+            <td><span class="status-badge status-badge-home">Live Reload</span></td>
+            <td>Validated dynamically on each new login attempt</td>
+          </tr>
+          <tr>
+            <td><strong>Server Host &amp; Port</strong> (<code>server.host</code>, <code>server.port</code>)</td>
+            <td><span class="status-badge status-badge-danger">Restart Required</span></td>
+            <td>TCP socket bound at daemon startup; requires <code>systemctl restart familyboard</code></td>
+          </tr>
+          <tr>
+            <td><strong>TLS Certificate &amp; Key</strong> (<code>server.tls_cert_file</code>)</td>
+            <td><span class="status-badge status-badge-danger">Restart Required</span></td>
+            <td>Loaded during HTTPS listener initialization; requires restart</td>
+          </tr>
+          <tr>
+            <td><strong>Database Path &amp; Connection Pools</strong> (<code>database.path</code>)</td>
+            <td><span class="status-badge status-badge-danger">Restart Required</span></td>
+            <td>SQLite file lock and pool size initialized at process startup</td>
+          </tr>
+          <tr>
+            <td><strong>Session Secret</strong> (<code>security.session_secret</code>)</td>
+            <td><span class="status-badge status-badge-danger">Restart Required</span></td>
+            <td>Signing key bound at startup; changing invalidates all active sessions</td>
+          </tr>
+          <tr>
+            <td><strong>Appliance Timezone</strong> (<code>server.timezone</code>)</td>
+            <td><span class="status-badge status-badge-danger">Restart Required</span></td>
+            <td>Cached by internal clock and scheduling services at startup</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
     <div class="admin-card">

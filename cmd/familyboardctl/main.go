@@ -423,6 +423,17 @@ func runRepair() {
 }
 
 func runUpdate(args []string) {
+	if len(args) > 0 && args[0] == "check" {
+		fsCheck := flag.NewFlagSet("update check", flag.ContinueOnError)
+		fsCheck.SetOutput(os.Stderr)
+		channel := fsCheck.String("channel", "stable", "Release channel: stable, beta, or dev")
+		if err := fsCheck.Parse(args[1:]); err != nil {
+			os.Exit(1)
+		}
+		PrintUpdateStatus(*channel)
+		return
+	}
+
 	defaultTarget, err := defaultDaemonPath()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Resolve daemon path: %v\n", err)
@@ -431,16 +442,26 @@ func runUpdate(args []string) {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	targetPath := fs.String("target", defaultTarget, "Installed FamilyBoard daemon path")
+	channel := fs.String("channel", "stable", "Release channel: stable, beta, or dev")
 	if err := fs.Parse(args); err != nil {
 		os.Exit(1)
 	}
+	if fs.NArg() == 0 {
+		PrintUpdateStatus(*channel)
+		return
+	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(os.Stderr, "Usage: familyboardctl update [--target <daemon-path>] <binary-path>")
+		fmt.Fprintln(os.Stderr, "Usage: familyboardctl update [check] [--channel <stable|beta|dev>] [--target <daemon-path>] <binary-path>")
 		os.Exit(1)
 	}
 
 	newBinary := fs.Arg(0)
-	fmt.Printf("Validating and installing FamilyBoard daemon from %s...\n", newBinary)
+	if newBinary == "check" {
+		PrintUpdateStatus(*channel)
+		return
+	}
+
+	fmt.Printf("Validating and installing FamilyBoard daemon from %s (channel: %s)...\n", newBinary, *channel)
 	version, err := installDaemonBinary(newBinary, *targetPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Update failed without replacing the installed daemon: %v\n", err)

@@ -2373,6 +2373,18 @@
             const payload = JSON.parse(e.data);
             if (payload && payload.action) {
               triggerHaptic(10);
+              // P3 #62: Incremental delta application to local window cache
+              if (payload.action === 'delete' && (payload.id || (payload.event_ids && payload.event_ids.length > 0))) {
+                const targetId = payload.id || payload.event_ids[0];
+                const existingIndex = cachedEvents.findIndex(ev => ev.id === targetId);
+                if (existingIndex !== -1) {
+                  cachedEvents.splice(existingIndex, 1);
+                  safeStorageSet('fb_cached_events', JSON.stringify(cachedEvents));
+                  renderView();
+                  updateStatus('', 'Synced');
+                  return;
+                }
+              }
               updateStatus('syncing', 'Updating…');
               renderView().finally(() => {
                 updateStatus('', 'Synced');

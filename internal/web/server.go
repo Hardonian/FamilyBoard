@@ -45,6 +45,7 @@ type Server struct {
 	tokenMu      sync.Mutex
 	setupMu      sync.Mutex
 	sseMu        sync.Mutex
+	sseRevision  int64
 	sseClients   map[chan string]struct{}
 	mux          *http.ServeMux
 }
@@ -106,6 +107,15 @@ func (s *Server) initTemplates() error {
 	tmplFuncs := template.FuncMap{
 		"mul": func(a, b float64) float64 {
 			return a * b
+		},
+		"div": func(a, b float64) float64 {
+			if b == 0 {
+				return 0
+			}
+			return a / b
+		},
+		"float": func(value int64) float64 {
+			return float64(value)
 		},
 		"asset": assetURL,
 		"t":     func(key string) string { return i18n.T(s.cfg.Server.Locale, key) },
@@ -211,6 +221,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /admin/api/health", s.requireAuth(s.handleAdminHealth))
 	s.mux.HandleFunc("GET /admin/privacy/export", s.requireAuth(s.handleAdminPrivacyExport))
 	s.mux.HandleFunc("POST /admin/privacy/retention", s.requireAuth(s.requireCSRF(s.handleAdminPrivacyRetention)))
+	s.mux.HandleFunc("POST /admin/database/vacuum", s.requireAuth(s.requireCSRF(s.handleAdminDatabaseVacuum)))
+	s.mux.HandleFunc("POST /admin/storage/cleanup", s.requireAuth(s.requireCSRF(s.handleAdminStorageCleanup)))
 	s.mux.HandleFunc("POST /admin/devices/{id}/revoke", s.requireAuth(s.requireCSRF(s.handleAdminDeviceRevoke)))
 	s.mux.HandleFunc("POST /admin/devices/revoke-all", s.requireAuth(s.requireCSRF(s.handleAdminDevicesRevokeAll)))
 
@@ -306,17 +318,31 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // SSEEventPayload defines structured event change notifications broadcast to kiosks.
 type SSEEventPayload struct {
-	Action     string `json:"action"` // "create", "update", "delete", "restore", "reload"
-	ID         string `json:"id,omitempty"`
-	CalendarID string `json:"calendar_id,omitempty"`
+	Action     string   `json:"action"` // "create", "update", "delete", "restore", "reload"
+	ID         string   `json:"id,omitempty"`
+	EventIDs   []string `json:"event_ids,omitempty"`
+	CalendarID string   `json:"calendar_id,omitempty"`
+	Revision   int64    `json:"revision,omitempty"`
+	Resync     bool     `json:"resync,omitempty"`
 }
 
 // BroadcastEventChange broadcasts a granular change notification to connected kiosks.
 func (s *Server) BroadcastEventChange(action, eventID, calendarID string) {
+	s.sseMu.Lock()
+	s.sseRevision++
+	rev := s.sseRevision
+	s.sseMu.Unlock()
+
+	var eventIDs []string
+	if eventID != "" {
+		eventIDs = []string{eventID}
+	}
 	payload, err := json.Marshal(SSEEventPayload{
 		Action:     action,
 		ID:         eventID,
+		EventIDs:   eventIDs,
 		CalendarID: calendarID,
+		Revision:   rev,
 	})
 	if err != nil {
 		s.BroadcastReload()

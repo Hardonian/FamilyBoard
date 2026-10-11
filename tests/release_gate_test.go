@@ -84,6 +84,11 @@ func TestReleaseGate_RequiredReleaseFilesExist(t *testing.T) {
 		"../docs/NETWORK_TRUST.md",
 		"../docs/SECURITY_AUDIT_READINESS.md",
 		"../docs/VOCABULARY.md",
+		"../THIRD_PARTY_NOTICES.md",
+		"../docs/ARCHITECTURE_LAYERS.md",
+		"../docs/PERFORMANCE_BUDGETS.md",
+		"../docs/DISTRIBUTION.md",
+		"../docs/PRODUCT_POLICY.md",
 	}
 
 	for _, path := range requiredFiles {

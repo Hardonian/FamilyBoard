@@ -11,6 +11,8 @@ func TestEmbeddedTemplatesParse(t *testing.T) {
 	t.Parallel()
 	funcs := template.FuncMap{
 		"mul":             func(a, b float64) float64 { return a * b },
+		"div":             func(a, b float64) float64 { return a / b },
+		"float":           func(value int64) float64 { return float64(value) },
 		"asset":           func(path string) string { return path },
 		"t":               func(key string) string { return key },
 		"conflictSummary": func(payload string) string { return payload },
