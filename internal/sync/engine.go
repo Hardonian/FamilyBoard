@@ -15,6 +15,7 @@ import (
 	"github.com/Hardonian/FamilyBoard/internal/calendar/google"
 	"github.com/Hardonian/FamilyBoard/internal/clock"
 	"github.com/Hardonian/FamilyBoard/internal/db"
+	"github.com/Hardonian/FamilyBoard/internal/metrics"
 	"github.com/Hardonian/FamilyBoard/internal/models"
 	"github.com/Hardonian/FamilyBoard/internal/queue"
 )

@@ -78,6 +78,8 @@ func TestReleaseGate_RequiredReleaseFilesExist(t *testing.T) {
 		"../docs/QUEUE_SEMANTICS.md",
 		"../docs/MIGRATIONS.md",
 		"../docs/openapi.yaml",
+		"../docs/SUPPORT_LIFECYCLE.md",
+		"../docs/REMOTE_SUPPORT.md",
 	}
 
 	for _, path := range requiredFiles {

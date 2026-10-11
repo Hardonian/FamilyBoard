@@ -22,6 +22,7 @@ import (
 	"github.com/Hardonian/FamilyBoard/internal/oauth"
 	"github.com/Hardonian/FamilyBoard/internal/queue"
 	calsync "github.com/Hardonian/FamilyBoard/internal/sync"
+	"github.com/Hardonian/FamilyBoard/internal/watchdog"
 	"github.com/Hardonian/FamilyBoard/internal/web"
 )
 
@@ -169,6 +170,7 @@ func main() {
 
 	queueEngine.Start(appCtx)
 	syncEngine.Start(appCtx)
+	watchdog.StartWatchdog(appCtx)
 
 	// 9. HTTP Server
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
@@ -185,6 +187,7 @@ func main() {
 	serveErrCh := make(chan error, 1)
 	go func() {
 		slog.Info("FamilyBoard listening", "address", addr, "kiosk_url", cfg.Server.BaseURL)
+		_ = watchdog.NotifyReady()
 		var err error
 		if cfg.Server.TLSCertFile != "" && cfg.Server.TLSKeyFile != "" {
 			slog.Info("Direct HTTPS enabled", "certificate", cfg.Server.TLSCertFile)
@@ -213,6 +216,7 @@ func main() {
 		}
 	}
 
+	_ = watchdog.NotifyStopping()
 	slog.Info("Shutting down FamilyBoard appliance...")
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelShutdown()
