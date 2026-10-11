@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -14,18 +15,21 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
+const CurrentConfigVersion = 1
+
 type Config struct {
-	Server     ServerConfig    `toml:"server"`
-	Database   DatabaseConfig  `toml:"database"`
-	Kiosk      KioskConfig     `toml:"kiosk"`
-	Security   SecurityConfig  `toml:"security"`
-	Auth       AuthConfig      `toml:"auth"`
-	Google     GoogleConfig    `toml:"google"`
-	Microsoft  MicrosoftConfig `toml:"microsoft"`
-	Sync       SyncConfig      `toml:"sync"`
-	Mail       MailConfig      `toml:"mail"`
-	AI         AIConfig        `toml:"ai"`
-	sourcePath string
+	ConfigVersion int             `toml:"config_version"`
+	Server        ServerConfig    `toml:"server"`
+	Database      DatabaseConfig  `toml:"database"`
+	Kiosk         KioskConfig     `toml:"kiosk"`
+	Security      SecurityConfig  `toml:"security"`
+	Auth          AuthConfig      `toml:"auth"`
+	Google        GoogleConfig    `toml:"google"`
+	Microsoft     MicrosoftConfig `toml:"microsoft"`
+	Sync          SyncConfig      `toml:"sync"`
+	Mail          MailConfig      `toml:"mail"`
+	AI            AIConfig        `toml:"ai"`
+	sourcePath    string
 }
 
 // EnsureSessionSecret generates a cryptographically strong, process-stable
@@ -47,6 +51,7 @@ type ServerConfig struct {
 	Port        int    `toml:"port"`
 	BaseURL     string `toml:"base_url"`
 	Timezone    string `toml:"timezone"`
+	Locale      string `toml:"locale"`
 	DeviceName  string `toml:"device_name"`
 	TLSCertFile string `toml:"tls_cert_file"`
 	TLSKeyFile  string `toml:"tls_key_file"`
@@ -130,11 +135,13 @@ type AIConfig struct {
 
 func DefaultConfig() *Config {
 	return &Config{
+		ConfigVersion: CurrentConfigVersion,
 		Server: ServerConfig{
 			Host:       "127.0.0.1",
 			Port:       8080,
 			BaseURL:    "http://127.0.0.1:8080",
 			Timezone:   "America/Toronto",
+			Locale:     "en-CA",
 			DeviceName: "FamilyBoard Appliance",
 		},
 		Database: DatabaseConfig{
@@ -193,8 +200,71 @@ func DefaultConfig() *Config {
 	}
 }
 
-// Load loads configuration from the specified path, or checks standard locations.
-func Load(explicitPath string) (*Config, string, error) {
+// CheckDeprecationsAndUnknown inspects configuration data for deprecated keys
+// or unknown top-level sections, allowing graceful evolution.
+func CheckDeprecationsAndUnknown(data []byte) ([]string, []string, error) {
+	var raw map[string]any
+	if err := toml.Unmarshal(data, &raw); err != nil {
+		return nil, nil, fmt.Errorf("unmarshal raw TOML: %w", err)
+	}
+
+	knownSections := map[string]bool{
+		"config_version": true,
+		"server":         true,
+		"database":       true,
+		"kiosk":          true,
+		"security":       true,
+		"auth":           true,
+		"google":         true,
+		"microsoft":      true,
+		"sync":           true,
+		"mail":           true,
+		"ai":             true,
+	}
+
+	var unknown []string
+	for k := range raw {
+		if !knownSections[k] {
+			unknown = append(unknown, k)
+		}
+	}
+
+	var deprecations []string
+	if sec, ok := raw["security"].(map[string]any); ok {
+		if _, hasLegacy := sec["legacy_token_dir"]; hasLegacy {
+			deprecations = append(deprecations, "security.legacy_token_dir is deprecated; use security.credentials_dir")
+		}
+	}
+
+	return deprecations, unknown, nil
+}
+
+// MigrateConfig upgrades legacy configuration content to CurrentConfigVersion.
+func MigrateConfig(data []byte) ([]byte, bool, error) {
+	var raw map[string]any
+	if err := toml.Unmarshal(data, &raw); err != nil {
+		return nil, false, fmt.Errorf("unmarshal config for migration: %w", err)
+	}
+
+	ver := 0
+	if v, ok := raw["config_version"].(int64); ok {
+		ver = int(v)
+	}
+
+	if ver >= CurrentConfigVersion {
+		return data, false, nil
+	}
+
+	raw["config_version"] = CurrentConfigVersion
+	migrated, err := toml.Marshal(raw)
+	if err != nil {
+		return nil, false, fmt.Errorf("marshal migrated config: %w", err)
+	}
+	return migrated, true, nil
+}
+
+// LoadWithWarnings loads configuration and returns any deprecation or unknown-key advisories.
+func LoadWithWarnings(explicitPath string) (*Config, string, []string, error) {
 	cfg := DefaultConfig()
 
 	candidatePaths := []string{}
@@ -204,10 +274,6 @@ func Load(explicitPath string) (*Config, string, error) {
 		candidatePaths = append(candidatePaths, envPath)
 		explicitPath = envPath
 	} else {
-		// Priority:
-		// 1. /etc/familyboard/config.toml (appliance production)
-		// 2. ./config.toml (local/portable install)
-		// 3. ./config.example.toml (development fallback)
 		candidatePaths = append(candidatePaths,
 			"/etc/familyboard/config.toml",
 			"config.toml",
@@ -220,43 +286,62 @@ func Load(explicitPath string) (*Config, string, error) {
 		info, err := os.Stat(p)
 		if err == nil {
 			if info.IsDir() {
-				return nil, p, fmt.Errorf("config path is a directory: %s", p)
+				return nil, p, nil, fmt.Errorf("config path is a directory: %s", p)
 			}
 			foundPath = p
 			break
 		}
 		if explicitPath != "" {
 			if os.IsNotExist(err) {
-				return nil, p, fmt.Errorf("explicit config file does not exist: %s", p)
+				return nil, p, nil, fmt.Errorf("explicit config file does not exist: %s", p)
 			}
-			return nil, p, fmt.Errorf("inspect config file %s: %w", p, err)
+			return nil, p, nil, fmt.Errorf("inspect config file %s: %w", p, err)
 		}
 		if !os.IsNotExist(err) {
-			return nil, p, fmt.Errorf("inspect config file %s: %w", p, err)
+			return nil, p, nil, fmt.Errorf("inspect config file %s: %w", p, err)
 		}
 	}
 
 	if foundPath == "" {
 		if err := cfg.Validate(); err != nil {
-			return nil, "", err
+			return nil, "", nil, err
 		}
-		return cfg, "", nil // Return defaults if no config file found
+		return cfg, "", nil, nil
 	}
 
 	data, err := os.ReadFile(foundPath)
 	if err != nil {
-		return nil, foundPath, fmt.Errorf("read config file: %w", err)
+		return nil, foundPath, nil, fmt.Errorf("read config file: %w", err)
+	}
+
+	deprecations, unknown, _ := CheckDeprecationsAndUnknown(data)
+	var warnings []string
+	warnings = append(warnings, deprecations...)
+	for _, u := range unknown {
+		warnings = append(warnings, fmt.Sprintf("unknown configuration section %q", u))
 	}
 
 	if err := toml.Unmarshal(data, cfg); err != nil {
-		return nil, foundPath, fmt.Errorf("unmarshal config TOML: %w", err)
+		return nil, foundPath, warnings, fmt.Errorf("unmarshal config TOML: %w", err)
 	}
 	cfg.sourcePath = foundPath
 	if err := cfg.Validate(); err != nil {
-		return nil, foundPath, fmt.Errorf("validate config: %w", err)
+		return nil, foundPath, warnings, fmt.Errorf("validate config: %w", err)
 	}
 
-	return cfg, foundPath, nil
+	return cfg, foundPath, warnings, nil
+}
+
+// Load loads configuration from the specified path, or checks standard locations.
+func Load(explicitPath string) (*Config, string, error) {
+	cfg, path, warnings, err := LoadWithWarnings(explicitPath)
+	if err != nil {
+		return nil, path, err
+	}
+	for _, w := range warnings {
+		slog.Warn("Configuration advisory", "warning", w)
+	}
+	return cfg, path, nil
 }
 
 // Validate checks cross-field and operational constraints before the daemon
@@ -313,6 +398,17 @@ func (c *Config) Validate() error {
 	}
 	if _, err := time.LoadLocation(c.Server.Timezone); err != nil {
 		add("server.timezone %q is invalid", c.Server.Timezone)
+	}
+	locale := strings.TrimSpace(c.Server.Locale)
+	if locale == "" || len(locale) > 35 {
+		add("server.locale must be a BCP 47 language tag such as en-CA")
+	} else {
+		for _, char := range locale {
+			if !((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') || char == '-') {
+				add("server.locale must be a BCP 47 language tag such as en-CA")
+				break
+			}
+		}
 	}
 	if strings.TrimSpace(c.Server.DeviceName) == "" || len(c.Server.DeviceName) > 100 {
 		add("server.device_name must be between 1 and 100 characters")

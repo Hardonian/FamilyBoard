@@ -640,6 +640,11 @@ func (s *Server) handleAPIDeletePhoto(w http.ResponseWriter, r *http.Request) {
 		writeHardwareError(w, http.StatusInternalServerError, "failed to delete photo")
 		return
 	}
+	_ = s.store.RecordAudit(r.Context(), &models.AuditEntry{
+		ID: models.NewID("aud"), Actor: "household_device", Action: "photo_delete",
+		ResourceType: "photo", ResourceID: cleanName, Details: "Permanently deleted a photo",
+		IPAddress: remoteIP(r),
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{

@@ -184,7 +184,7 @@ func main() {
 
 	serveErrCh := make(chan error, 1)
 	go func() {
-		slog.Info("FamilyBoard listening", "address", addr, "kiosk_url", fmt.Sprintf("http://%s/", addr))
+		slog.Info("FamilyBoard listening", "address", addr, "kiosk_url", cfg.Server.BaseURL)
 		var err error
 		if cfg.Server.TLSCertFile != "" && cfg.Server.TLSKeyFile != "" {
 			slog.Info("Direct HTTPS enabled", "certificate", cfg.Server.TLSCertFile)

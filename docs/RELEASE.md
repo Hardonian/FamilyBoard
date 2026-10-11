@@ -6,7 +6,7 @@ into both executables; unversioned developer builds report `dev`.
 
 ## Supported release artifacts
 
-Each release contains static, CGO-free archives and a `SHA256SUMS` manifest:
+Each release contains static, CGO-free archives, a `SHA256SUMS` manifest, an SPDX JSON SBOM, and a signed GitHub build-provenance attestation:
 
 | Target | Archive |
 | --- | --- |
@@ -58,8 +58,8 @@ archives are written to `dist/releases/VERSION/`.
    ```
 
 4. The `Release` GitHub Actions workflow reruns the complete gate, rebuilds the
-   matrix from the tagged source, verifies checksums, and publishes all archives
-   plus `SHA256SUMS` to the GitHub release.
+   matrix from the tagged source, verifies checksums, generates the SBOM,
+   attests every release artifact, and publishes the complete set.
 
 The workflow refuses a tag whose name does not equal `v` plus the contents of
 `VERSION`, preventing mislabeled binaries.
@@ -74,3 +74,8 @@ sha256sum -c SHA256SUMS
 ```
 
 The reported version, commit, and build date should match the GitHub release.
+Verify provenance with GitHub CLI:
+
+```bash
+gh attestation verify familyboard-1.5.0-linux-arm64.tar.gz -R Hardonian/FamilyBoard
+```

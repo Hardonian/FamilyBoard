@@ -9,7 +9,7 @@ This document describes the security model, credential protection, attack mitiga
 The `FamilyBoard` appliance is designed for multi-user family households with independent identities (e.g., Parent 1: `alex@example.com` and Parent 2: `jordan@example.com`).
 
 ### Strict Identity Boundaries
-- **No Token Sharing:** Each user's OAuth refresh tokens, access tokens, and sync cursors are stored in separate token files restricted to filesystem permissions `0600` (`-rw-------`).
+- **No Token Sharing:** Each user's OAuth refresh and access tokens are stored separately with AES-256-GCM authenticated encryption derived from the per-installation secret, plus `0600` file permissions. Only credential references and sync cursors are stored in SQLite.
 - **Cryptographic Verification:** During OAuth callback handling, `VerifyAccountIsolation` queries the identity provider's user profile endpoint to verify the returned email matches the expected `person_id`.
 - **Silent Remap Prevention:** If one household member attempts to authenticate with another member's account, the callback is immediately aborted, an audit security event is logged, and the existing token is preserved unmodified.
 - **Database Constraints:** Foreign key constraints (`ON DELETE CASCADE`) enforce relation between `oauth_accounts`, `mail_sources`, `calendars`, and their respective `person_id`.
@@ -59,6 +59,15 @@ Every HTTP response emitted by `FamilyBoard` includes strict, modern security he
 - **Brute-Force Rate Limiting:** An in-memory limiter protects admin login endpoints (5 failed attempts per 10 minutes per source IP).
 - **Secret Bootstrap:** A unique 256-bit session secret and per-installation hotspot password are generated and persisted on first boot; there are no shared production fallback credentials.
 - **Sensitive Appliance APIs:** Hardware telemetry, Wi-Fi credentials/QR codes, Bluetooth presence, and family photos require the physical kiosk capability or an authenticated administrator.
+- **Phone Pairing:** QR codes contain one-time, ten-minute pairing codes stored only as hashes. Successful redemption issues a unique opaque device credential; administrators can review and revoke one or all paired devices.
+- **Trusted URLs:** Pairing URLs are derived from configured `server.base_url`; untrusted `Host` and forwarded-protocol headers are never used to mint capabilities.
+
+### C. LAN transport and exposure
+
+- Desktop-only deployments should bind `server.host` to `127.0.0.1`.
+- LAN deployments should use direct TLS (`server.tls_cert_file` and `server.tls_key_file`) or a trusted local reverse proxy, set an `https://` base URL, and enable secure cookies.
+- Do not port-forward FamilyBoard to the public internet. Put remote access behind a VPN with device authentication.
+- Firewall inbound traffic to the household LAN/VLAN and isolate untrusted/guest Wi-Fi from the appliance.
 
 ---
 
@@ -66,6 +75,7 @@ Every HTTP response emitted by `FamilyBoard` includes strict, modern security he
 
 - **Database Filesystem Location:** `/var/lib/familyboard/familyboard.db` owned by unprivileged system user `familyboard:familyboard` with mode `0640`.
 - **Token Directory:** `/var/lib/familyboard/tokens/` owned by `familyboard:familyboard` with mode `0700`.
+- **Photo Library:** uploads are decoded before acceptance, capped at 32 MiB/40 megapixels/12,000 pixels per side, constrained by a 1 GiB/2,000-file library quota, and stored under random private filenames.
 - **Configuration File:** `/etc/familyboard/config.toml` owned by `root:familyboard` with mode `0640`.
 - **Log Privacy:** Passwords, OAuth tokens, and client secrets are automatically redacted by the diagnostics scrubber before report export.
 

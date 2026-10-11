@@ -2,6 +2,7 @@ package config
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -87,5 +88,66 @@ func TestLoadRejectsMissingEnvironmentConfig(t *testing.T) {
 
 	if _, _, err := Load(""); err == nil {
 		t.Fatal("expected a missing FAMILYBOARD_CONFIG path to fail")
+	}
+}
+
+func TestValidateDirectTLSRequiresSecureOriginAndCookies(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Server.TLSCertFile = "server.crt"
+	cfg.Server.TLSKeyFile = "server.key"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected direct TLS with HTTP base URL and insecure cookie to fail")
+	}
+	cfg.Server.BaseURL = "https://familyboard.local:8443"
+	cfg.Security.CookieSecure = true
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected valid direct TLS configuration: %v", err)
+	}
+}
+
+func TestConfig_DeprecationsAndUnknownKeys(t *testing.T) {
+	raw := []byte(`
+[server]
+host = "127.0.0.1"
+
+[security]
+legacy_token_dir = "/tmp/old"
+
+[future_unknown_section]
+feature_xyz = true
+`)
+	deprecations, unknown, err := CheckDeprecationsAndUnknown(raw)
+	if err != nil {
+		t.Fatalf("CheckDeprecationsAndUnknown failed: %v", err)
+	}
+	if len(deprecations) != 1 {
+		t.Errorf("expected 1 deprecation warning, got %d", len(deprecations))
+	}
+	if len(unknown) != 1 || unknown[0] != "future_unknown_section" {
+		t.Errorf("expected unknown section 'future_unknown_section', got %v", unknown)
+	}
+}
+
+func TestConfig_MigrationFromUnversioned(t *testing.T) {
+	raw := []byte(`
+[server]
+host = "127.0.0.1"
+port = 8080
+`)
+	migrated, changed, err := MigrateConfig(raw)
+	if err != nil {
+		t.Fatalf("MigrateConfig failed: %v", err)
+	}
+	if !changed {
+		t.Errorf("expected unversioned config to be upgraded")
+	}
+	if !strings.Contains(string(migrated), "config_version = 1") {
+		t.Errorf("expected migrated config to contain config_version = 1, got:\n%s", string(migrated))
+	}
+
+	// Migrating already current config should make no changes
+	_, changed2, _ := MigrateConfig(migrated)
+	if changed2 {
+		t.Errorf("expected already current config not to be modified")
 	}
 }

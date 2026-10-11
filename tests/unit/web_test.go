@@ -414,10 +414,11 @@ func TestWeb_KioskRedirectAndEventCRUD(t *testing.T) {
 		t.Errorf("expected title 'Family Movie Night', got %s", created.Title)
 	}
 
-	// Verify event was queued in mutation_queue
-	pendingCount, _ := store.CountPendingMutations(ctx)
-	if pendingCount != 1 {
-		t.Errorf("expected 1 pending mutation, got %d", pendingCount)
+	// Verify event was durably queued. The background worker may already have
+	// advanced it to retry/dead-letter when this test has no provider client.
+	queued, _ := store.ListAllMutations(ctx, 10, 0)
+	if len(queued) != 1 {
+		t.Errorf("expected 1 durable mutation, got %d", len(queued))
 	}
 
 	// 4. API List Events
@@ -799,6 +800,8 @@ func TestWeb_MobilePairingAndCapabilityIssuance(t *testing.T) {
 	// 1. Physical kiosk requests pairing payload (localhost)
 	reqPair := httptest.NewRequest(http.MethodGet, "/api/system/mobile-pair", nil)
 	reqPair.RemoteAddr = "127.0.0.1:8080"
+	reqPair.Host = "attacker.example"
+	reqPair.Header.Set("X-Forwarded-Proto", "https")
 	wPair := httptest.NewRecorder()
 	srv.ServeHTTP(wPair, reqPair)
 	if wPair.Code != http.StatusOK {
@@ -813,6 +816,9 @@ func TestWeb_MobilePairingAndCapabilityIssuance(t *testing.T) {
 	token, tokOk := pairData["token"].(string)
 	if !ok || pairURL == "" || !tokOk || token == "" {
 		t.Fatalf("expected valid pair_url and token, got %+v", pairData)
+	}
+	if strings.Contains(pairURL, "attacker.example") {
+		t.Fatalf("pairing URL trusted an unverified Host header: %s", pairURL)
 	}
 
 	// 2. Verify QR Code generation
@@ -848,6 +854,15 @@ func TestWeb_MobilePairingAndCapabilityIssuance(t *testing.T) {
 		t.Fatalf("expected fb_kiosk_cap cookie to be issued to paired phone")
 	}
 
+	// Pairing codes are single-use and cannot be replayed.
+	replayReq := httptest.NewRequest(http.MethodGet, "/?pair="+token, nil)
+	replayReq.RemoteAddr = "192.168.1.151:54321"
+	replayRec := httptest.NewRecorder()
+	srv.ServeHTTP(replayRec, replayReq)
+	if replayRec.Code != http.StatusSeeOther || !strings.Contains(replayRec.Header().Get("Location"), "pairing=invalid") {
+		t.Fatalf("expected replayed pairing code to be rejected, got %d %q", replayRec.Code, replayRec.Header().Get("Location"))
+	}
+
 	// 4. Remote smartphone now uses the issued cookie to perform a write mutation (create event)
 	eventPayload := map[string]interface{}{
 		"calendar_id": "cal-primary",
@@ -866,6 +881,23 @@ func TestWeb_MobilePairingAndCapabilityIssuance(t *testing.T) {
 	srv.ServeHTTP(wEvent, reqEvent)
 	if wEvent.Code != http.StatusCreated {
 		t.Fatalf("expected 201 Created from paired mobile phone, got %d (body: %s)", wEvent.Code, wEvent.Body.String())
+	}
+
+	devices, err := store.ListPairedDevices(ctx)
+	if err != nil || len(devices) != 1 {
+		t.Fatalf("expected one paired device, got %d err=%v", len(devices), err)
+	}
+	if err := store.RevokePairedDevice(ctx, devices[0].ID); err != nil {
+		t.Fatalf("revoke paired device: %v", err)
+	}
+	revokedReq := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewReader(pBytes))
+	revokedReq.RemoteAddr = "192.168.1.150:54321"
+	revokedReq.Header.Set("Content-Type", "application/json")
+	revokedReq.AddCookie(kioskCookie)
+	revokedRec := httptest.NewRecorder()
+	srv.ServeHTTP(revokedRec, revokedReq)
+	if revokedRec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected revoked device to lose access, got %d", revokedRec.Code)
 	}
 }
 

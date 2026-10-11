@@ -760,12 +760,16 @@ func (s *Store) RestoreEventAndEnqueueMutation(ctx context.Context, id string, i
 }
 
 func (s *Store) GetPendingMutations(ctx context.Context, limit int) ([]models.MutationQueueItem, error) {
+	return s.GetPendingMutationsBefore(ctx, time.Now(), limit)
+}
+
+func (s *Store) GetPendingMutationsBefore(ctx context.Context, before time.Time, limit int) ([]models.MutationQueueItem, error) {
 	query := `SELECT id, operation, provider, calendar_id, local_event_id, payload, idempotency_key, attempt_count, next_attempt_at, last_error, state, created_at, updated_at
 		FROM mutation_queue
 		WHERE state IN ('pending', 'retry') AND next_attempt_at <= ?
 		ORDER BY created_at ASC LIMIT ?;`
 
-	rows, err := s.db.QueryContext(ctx, query, time.Now(), limit)
+	rows, err := s.db.QueryContext(ctx, query, before, limit)
 	if err != nil {
 		return nil, fmt.Errorf("get pending mutations: %w", err)
 	}
@@ -817,6 +821,22 @@ func (s *Store) CountDeadLetterMutations(ctx context.Context) (int, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM mutation_queue WHERE state = 'dead_letter';").Scan(&count)
 	return count, err
+}
+
+func (s *Store) GetMutation(ctx context.Context, id string) (*models.MutationQueueItem, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT id, operation, provider, calendar_id, local_event_id, payload, idempotency_key, attempt_count, next_attempt_at, last_error, state, created_at, updated_at
+		FROM mutation_queue WHERE id = ?;`, id)
+	var item models.MutationQueueItem
+	var stateStr string
+	if err := row.Scan(&item.ID, &item.Operation, &item.Provider, &item.CalendarID, &item.LocalEventID, &item.Payload, &item.IdempotencyKey,
+		&item.AttemptCount, &item.NextAttemptAt, &item.LastError, &stateStr, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get mutation: %w", err)
+	}
+	item.State = models.QueueState(stateStr)
+	return &item, nil
 }
 
 // RetryDeadLetterMutation moves one failed item back into the durable queue.

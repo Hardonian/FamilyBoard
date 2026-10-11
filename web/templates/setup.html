@@ -12,11 +12,18 @@
   </div>
   {{end}}
 
-  <form method="POST" action="/setup" class="setup-form">
+  <ol class="setup-progress" aria-label="Setup progress">
+    <li data-progress-step="1" class="active">Device</li>
+    <li data-progress-step="2">Security</li>
+    <li data-progress-step="3">Providers</li>
+    <li data-progress-step="4">Household</li>
+  </ol>
+
+  <form method="POST" action="/setup" class="setup-form" id="setup-form">
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
 
     <!-- Step 1: Device Configuration -->
-    <div class="admin-card">
+    <div class="admin-card" data-setup-step="1">
       <h3 class="setup-section-title">1. Device & Appliance Identity</h3>
       <div class="form-row">
         <div class="form-group">
@@ -44,7 +51,7 @@
     </div>
 
     <!-- Step 2: Admin Credentials -->
-    <div class="admin-card">
+    <div class="admin-card" data-setup-step="2">
       <h3 class="setup-section-title">2. Create Admin Password</h3>
       <p class="setup-section-desc">Set a secure password for appliance management via local network.</p>
       <div class="form-row">
@@ -61,7 +68,7 @@
     </div>
 
     <!-- Step 3: Google OAuth Configuration -->
-    <div class="admin-card">
+    <div class="admin-card" data-setup-step="3">
       <h3 class="setup-section-title">3. Google Cloud OAuth Credentials</h3>
       <p class="setup-section-desc">Optional. Add Google Cloud OAuth 2.0 Web Application credentials now, or configure providers later from Admin.</p>
       <p class="setup-member-note">In Google Cloud Console, add this exact authorized redirect URI: <code>{{.GoogleRedirectURL}}</code>. You can safely skip this step; after setup, Admin → Accounts guides Google, Microsoft, and Apple calendar connections.</p>
@@ -76,7 +83,7 @@
     </div>
 
     <!-- Step 4: Primary Family Accounts & Email Providers -->
-    <div class="admin-card">
+    <div class="admin-card" data-setup-step="4">
       <h3 class="setup-section-title">4. Family Member Accounts &amp; Email Providers</h3>
       <p class="setup-section-desc">Enter your family members' names and email addresses. FamilyBoard automatically detects Google Workspace / Gmail, Microsoft Exchange / Outlook, and Apple iCloud to configure calendar synchronization.</p>
       <div class="form-row">
@@ -107,4 +114,8 @@
     </div>
   </form>
 </main>
+{{end}}
+
+{{define "scripts"}}
+<script src="{{asset "/static/js/setup.js"}}"></script>
 {{end}}

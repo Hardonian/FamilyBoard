@@ -102,6 +102,32 @@ func TestTokenStorage_EncryptsCredentialsAtRest(t *testing.T) {
 	}
 }
 
+func TestTokenStorage_MigratesLegacyPlaintextAtomically(t *testing.T) {
+	tmpDir := t.TempDir()
+	legacy, err := oauth.NewTokenStorage(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.Save("legacy", &oauth.StoredToken{AccessToken: "legacy-secret"}); err != nil {
+		t.Fatal(err)
+	}
+	encrypted, err := oauth.NewTokenStorage(tmpDir, "installation-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := encrypted.Load("legacy")
+	if err != nil || loaded.AccessToken != "legacy-secret" {
+		t.Fatalf("legacy migration failed: token=%+v err=%v", loaded, err)
+	}
+	raw, err := os.ReadFile(filepath.Join(tmpDir, "legacy.token.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte("legacy-secret")) {
+		t.Fatal("legacy credential remained plaintext after migration")
+	}
+}
+
 func TestStateManager_HMACAndTampering(t *testing.T) {
 	secret := "test-secret-key-1234567890123456"
 	sm := oauth.NewStateManager(secret)

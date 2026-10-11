@@ -18,6 +18,7 @@
   let previouslyFocusedElement = null;
   let timeFormat = '12h';
   let birthdayHighlight = true;
+  let eventSearchQuery = '';
 
   // --- DOM Elements ---
   const elClockTime = document.getElementById('clock-time');
@@ -73,8 +74,10 @@
     setInterval(updateClock, 15000);
 
     setupNetworkMonitoring();
+    setupSyncStatus();
     setupHardwareTelemetry();
     setupNavigation();
+    setupEventSearch();
     setupTouchSwipeNavigation();
     setupQuickAddModal();
     setupEventDetailModal();
@@ -147,6 +150,49 @@
     if (!navigator.onLine) {
       updateStatus('offline', 'Offline · cached');
     }
+  }
+
+  function setupEventSearch() {
+    const input = document.getElementById('calendar-search');
+    if (!input) return;
+    let timer;
+    input.addEventListener('input', function() {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(function() {
+        eventSearchQuery = input.value.trim().toLocaleLowerCase(document.documentElement.lang || undefined);
+        renderView();
+      }, 150);
+    });
+  }
+
+  function filterVisibleEvents(events) {
+    if (!eventSearchQuery) return events;
+    return events.filter(function(event) {
+      return [event.title, event.description, event.location, event.organizer]
+        .some(function(value) { return String(value || '').toLocaleLowerCase(document.documentElement.lang || undefined).includes(eventSearchQuery); });
+    });
+  }
+
+  function setupSyncStatus() {
+    async function poll() {
+      if (!navigator.onLine) return;
+      try {
+        const response = await fetch('/api/system/status', { cache: 'no-store' });
+        if (!response.ok) throw new Error('status unavailable');
+        const status = await response.json();
+        const badgeState = status.state === 'healthy' ? '' : status.state;
+        updateStatus(badgeState, status.message || 'Up to date');
+        if (elStatusBadge) {
+          const lastSync = status.oldest_last_sync ? new Date(status.oldest_last_sync).toLocaleString() : 'not synced yet';
+          elStatusBadge.title = `${status.message}. Oldest calendar sync: ${lastSync}. Pending: ${status.pending_mutations}; failed: ${status.failed_mutations}.`;
+        }
+      } catch (error) {
+        updateStatus('error', 'Status unavailable');
+        if (elStatusBadge) elStatusBadge.title = 'Open Admin → System & Diagnostics for recovery steps.';
+      }
+    }
+    poll();
+    window.setInterval(poll, 30000);
   }
 
   function escapeKioskText(str) {
@@ -696,7 +742,7 @@
         cachedEvents = events;
         safeStorageSet('fb_cached_events', JSON.stringify(cachedEvents));
         updateStatus('', 'Up to date');
-        return cachedEvents;
+        return filterVisibleEvents(cachedEvents);
       }
       throw new Error(`Event request failed (${resp.status})`);
     } catch (e) {
@@ -710,11 +756,11 @@
           cachedEvents = [];
         }
         updateStatus('offline', 'Showing cached events');
-        return cachedEvents;
+        return filterVisibleEvents(cachedEvents);
       }
       updateStatus('error', 'Could not load events');
     }
-    return cachedEvents || [];
+    return filterVisibleEvents(cachedEvents || []);
   }
 
   // --- Master View Switcher ---

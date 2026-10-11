@@ -144,7 +144,17 @@ func (ts *TokenStorage) Load(accountID string) (*StoredToken, error) {
 			return nil, fmt.Errorf("unmarshal credential envelope: %w", err)
 		}
 		if envelope.Version != 1 || envelope.Nonce == "" || envelope.Ciphertext == "" {
-			return nil, errors.New("credential file is not encrypted with this installation key")
+			// One-time in-place migration for credentials created before encrypted
+			// envelopes were introduced. Save uses an atomic rename, so an
+			// interrupted migration keeps either the old or new complete file.
+			var legacy StoredToken
+			if err := json.Unmarshal(data, &legacy); err != nil || (legacy.AccessToken == "" && legacy.RefreshToken == "") {
+				return nil, errors.New("credential file is neither an encrypted envelope nor a valid legacy token")
+			}
+			if err := ts.Save(accountID, &legacy); err != nil {
+				return nil, fmt.Errorf("migrate legacy credential: %w", err)
+			}
+			return &legacy, nil
 		}
 		nonce, err := base64.RawStdEncoding.DecodeString(envelope.Nonce)
 		if err != nil {

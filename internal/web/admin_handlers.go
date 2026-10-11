@@ -478,6 +478,10 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	if tab == "audit" {
 		auditEntries, _ = s.store.ListAuditLogs(ctx, 100, 0)
 	}
+	var diagnosticReport *diagnostics.DiagnosticReport
+	if tab == "system" {
+		diagnosticReport, _ = diagnostics.Generate(ctx, s.store, s.cfg.Database.Path)
+	}
 
 	csrfToken := s.issueCSRFToken(w, r)
 
@@ -516,6 +520,7 @@ func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		"PendingConflictCount":  len(conflicts),
 		"ActiveEventCount":      activeEventCount,
 		"BuildVersion":          buildinfo.Version,
+		"Diagnostics":           diagnosticReport,
 		"HardwareInfo":          hwInfo,
 		"WifiStatus":            wifiStatus,
 		"WifiAPs":               wifiAPs,

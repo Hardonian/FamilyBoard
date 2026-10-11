@@ -165,7 +165,7 @@ func (e *Engine) ProcessBatch(ctx context.Context, batchSize int) error {
 	if batchSize <= 0 {
 		batchSize = 10
 	}
-	items, err := e.store.GetPendingMutations(ctx, batchSize)
+	items, err := e.store.GetPendingMutationsBefore(ctx, e.clock.Now(), batchSize)
 	if err != nil {
 		e.mu.Lock()
 		e.status.LastError = err.Error()

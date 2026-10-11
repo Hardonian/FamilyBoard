@@ -51,11 +51,14 @@
 
 <!-- Main Kiosk Layout -->
 <main class="kiosk-main-layout" data-default-view="{{.DefaultView}}" data-time-format="{{.TimeFormat}}" data-birthday-highlight="{{.BirthdayHighlight}}">
+  <h1 class="sr-only">FamilyBoard household calendar</h1>
   <!-- Calendar Main Pane -->
   <div class="calendar-main-pane">
     <div class="calendar-nav-bar">
       <div class="nav-title-group">
         <h2 id="nav-title" class="nav-title">Loading Calendar...</h2>
+        <label for="calendar-search" class="sr-only">Search visible events</label>
+        <input id="calendar-search" class="calendar-search" type="search" placeholder="Search events" autocomplete="off" spellcheck="false">
       </div>
       <div class="nav-arrows">
         <button id="btn-today" class="btn btn-today" title="Jump to Today (Key: T)">Today <kbd class="btn-kbd-badge" aria-hidden="true">T</kbd></button>

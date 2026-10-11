@@ -109,3 +109,33 @@ func (s *Server) handleAdminPrivacyExport(w http.ResponseWriter, r *http.Request
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(export)
 }
+
+func (s *Server) handleAPISystemStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	calendars, calErr := s.store.ListCalendars(ctx)
+	pending, queueErr := s.store.CountPendingMutations(ctx)
+	dead, _ := s.store.CountDeadLetterMutations(ctx)
+	oldestSync := (*time.Time)(nil)
+	for i := range calendars {
+		if calendars[i].LastSyncedAt != nil && (oldestSync == nil || calendars[i].LastSyncedAt.Before(*oldestSync)) {
+			value := *calendars[i].LastSyncedAt
+			oldestSync = &value
+		}
+	}
+	state := "healthy"
+	message := "Up to date"
+	if calErr != nil || queueErr != nil || dead > 0 {
+		state, message = "error", "Synchronization needs attention"
+	} else if pending > 0 {
+		state, message = "syncing", fmt.Sprintf("%d change(s) waiting to sync", pending)
+	} else if len(calendars) == 0 {
+		state, message = "setup", "Connect a calendar in Admin"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"state": state, "message": message, "pending_mutations": pending,
+		"failed_mutations": dead, "calendar_count": len(calendars), "oldest_last_sync": oldestSync,
+		"calendars": calendars,
+	})
+}

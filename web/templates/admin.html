@@ -411,21 +411,24 @@
       <h2>Calendar Conflict Resolution</h2>
       <p class="admin-section-sub-spaced">A remote change arrived while an appliance edit was waiting to sync. Pick the version your family should keep; the alternate local queue entry is retired when you accept the remote version.</p>
       <table class="admin-table">
-        <thead><tr><th>Conflict</th><th>Detected</th><th>Local / remote record</th><th>Resolution</th></tr></thead>
+        <thead><tr><th>Conflict</th><th>Detected</th><th>Side-by-side comparison</th><th>Resolution</th></tr></thead>
         <tbody>
           {{range .Conflicts}}
           <tr>
             <td><strong>{{.ConflictType}}</strong><br><small class="admin-text-muted">Local: {{.LocalEventID}}<br>Remote: {{.RemoteEventID}}</small></td>
             <td>{{.CreatedAt.Format "Jan 02 15:04"}}</td>
             <td>
-              <details class="admin-payload-details"><summary>Inspect local record</summary><pre>{{.LocalPayload}}</pre></details>
-              <details class="admin-payload-details"><summary>Inspect remote record</summary><pre>{{.RemotePayload}}</pre></details>
+              <div class="conflict-compare">
+                <section aria-label="Your local version"><strong>Your appliance edit</strong><pre>{{conflictSummary .LocalPayload}}</pre></section>
+                <section aria-label="Calendar provider version"><strong>Provider version</strong><pre>{{conflictSummary .RemotePayload}}</pre></section>
+              </div>
+              <details class="admin-payload-details"><summary>Technical details</summary><pre>LOCAL\n{{.LocalPayload}}\n\nREMOTE\n{{.RemotePayload}}</pre></details>
             </td>
             <td>
               <form method="POST" action="/admin/conflicts/{{.ID}}/resolve" class="admin-resolution-form">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                <button name="resolution" value="resolved_local" type="submit" class="btn btn-primary btn-sm">Keep local</button>
-                <button name="resolution" value="resolved_remote" type="submit" class="btn btn-secondary btn-sm">Use remote</button>
+                <button name="resolution" value="resolved_local" type="submit" class="btn btn-primary btn-sm">Keep my edit</button>
+                <button name="resolution" value="resolved_remote" type="submit" class="btn btn-secondary btn-sm">Keep provider version</button>
                 <button name="resolution" value="dismissed" type="submit" class="btn btn-ghost btn-sm">Dismiss</button>
               </form>
             </td>
@@ -976,10 +979,12 @@
     {{if eq .ActiveTab "system"}}
     <div class="admin-card">
       <h2>Appliance Diagnostics & Maintenance</h2>
+      <p class="admin-section-sub">Privacy-scrubbed health data and concrete recovery actions. Credentials, event text, and email content are excluded.</p>
       <div class="admin-diagnostics-grid">
         <div class="admin-diag-card">
           <div class="admin-diag-label">Database Status</div>
-          <div class="admin-diag-val success">Healthy (WAL)</div>
+          <div class="admin-diag-val {{if and .Diagnostics (eq .Diagnostics.Database.Integrity `OK`)}}success{{else}}danger{{end}}">{{if .Diagnostics}}{{.Diagnostics.Database.Integrity}}{{else}}Unavailable{{end}}</div>
+          <small class="admin-diag-sub">If failed: restore the newest backup and restart.</small>
         </div>
         <div class="admin-diag-card">
           <div class="admin-diag-label">Total Cached Events</div>
@@ -989,10 +994,16 @@
           <div class="admin-diag-label">Appliance Version</div>
           <div class="admin-diag-val">v{{.BuildVersion}}</div>
         </div>
+        <div class="admin-diag-card">
+          <div class="admin-diag-label">Pending / Failed Sync</div>
+          <div class="admin-diag-val {{if and .Diagnostics (gt .Diagnostics.Queue.DeadLetter 0)}}danger{{else}}success{{end}}">{{if .Diagnostics}}{{.Diagnostics.Queue.Pending}} / {{.Diagnostics.Queue.DeadLetter}}{{else}}—{{end}}</div>
+          <small class="admin-diag-sub">Retry failed items from Mutation Queue.</small>
+        </div>
       </div>
 
       <div class="admin-footer-actions">
         <a href="/admin/backup/download" class="btn btn-primary">Download SQLite Backup</a>
+        <a href="/admin/diagnostics" class="btn btn-secondary">Download redacted diagnostics</a>
         <a href="/health/ready" target="_blank" rel="noopener" class="btn btn-secondary">Check health endpoint</a>
       </div>
     </div>

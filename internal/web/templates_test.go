@@ -10,8 +10,9 @@ import (
 func TestEmbeddedTemplatesParse(t *testing.T) {
 	t.Parallel()
 	funcs := template.FuncMap{
-		"mul":   func(a, b float64) float64 { return a * b },
-		"asset": func(path string) string { return path },
+		"mul":             func(a, b float64) float64 { return a * b },
+		"asset":           func(path string) string { return path },
+		"conflictSummary": func(payload string) string { return payload },
 	}
 	for _, page := range []string{"kiosk.html", "login.html", "setup.html", "admin.html"} {
 		t.Run(page, func(t *testing.T) {

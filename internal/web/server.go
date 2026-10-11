@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -106,6 +107,23 @@ func (s *Server) initTemplates() error {
 			return a * b
 		},
 		"asset": assetURL,
+		"conflictSummary": func(payload string) string {
+			var value map[string]interface{}
+			if json.Unmarshal([]byte(payload), &value) != nil {
+				return payload
+			}
+			lines := make([]string, 0, 5)
+			for _, field := range []string{"title", "start_at", "end_at", "location", "description"} {
+				if v, ok := value[field]; ok && strings.TrimSpace(fmt.Sprint(v)) != "" {
+					lines = append(lines, strings.ReplaceAll(field, "_", " ")+": "+fmt.Sprint(v))
+				}
+			}
+			if len(lines) == 0 {
+				pretty, _ := json.MarshalIndent(value, "", "  ")
+				return string(pretty)
+			}
+			return strings.Join(lines, "\n")
+		},
 	}
 
 	pages := []string{"kiosk.html", "login.html", "setup.html", "admin.html"}
@@ -156,6 +174,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/kiosk/templates", s.handleAPIGetTemplates)
 	s.mux.HandleFunc("POST /api/kiosk/parse-natural", s.handleAPIParseNatural)
 	s.mux.HandleFunc("GET /api/events/stream", s.handleSSEStream)
+	s.mux.HandleFunc("GET /api/system/status", s.requireApplianceAccess(s.handleAPISystemStatus))
 
 	// Auth & Setup
 	s.mux.HandleFunc("GET /setup", s.handleSetupGet)
@@ -298,6 +317,11 @@ func (s *Server) render(w http.ResponseWriter, page string, data interface{}) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if values, ok := data.(map[string]interface{}); ok {
+		if _, exists := values["Locale"]; !exists {
+			values["Locale"] = s.cfg.Server.Locale
+		}
+	}
 	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
 		slog.Error("Template execute failed", "page", page, "err", err)
 	}

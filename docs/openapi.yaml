@@ -1,0 +1,325 @@
+openapi: 3.0.3
+info:
+  title: FamilyBoard Appliance Internal API
+  description: Official OpenAPI contract specification for the sovereign FamilyBoard smart display appliance.
+  version: 1.5.0
+servers:
+  - url: http://127.0.0.1:8080
+    description: Local appliance daemon
+
+paths:
+  /health/live:
+    get:
+      summary: Liveness probe
+      description: Returns 200 OK as long as the process HTTP listener is alive.
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /health/ready:
+    get:
+      summary: Readiness probe
+      description: Checks database connectivity, migration state, and background worker status.
+      responses:
+        '200':
+          description: Appliance is ready for household interaction
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessReport'
+        '503':
+          description: Appliance degraded or database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/calendars:
+    get:
+      summary: List calendars
+      description: Retrieves all calendars enabled for display on the kiosk.
+      responses:
+        '200':
+          description: List of calendars
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Calendar'
+
+  /api/events:
+    get:
+      summary: Get events in date range
+      description: Returns all visible calendar events between RFC3339 start and end parameters.
+      parameters:
+        - name: start
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: end
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Events in range
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Event'
+        '400':
+          description: Invalid date range or format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: Create event
+      description: Creates a new event in SQLite and enqueues sync mutation for remote calendars.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventInput'
+      responses:
+        '201':
+          description: Created event
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/events/{id}:
+    put:
+      summary: Update event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventInput'
+      responses:
+        '200':
+          description: Updated event
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete event (soft delete)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Event deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: deleted
+        '404':
+          description: Event not found
+
+  /api/events/{id}/restore:
+    post:
+      summary: Restore deleted event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Event restored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+
+  /api/kiosk/templates:
+    get:
+      summary: List quick templates
+      responses:
+        '200':
+          description: Available 1-tap event templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/QuickTemplate'
+
+  /api/kiosk/parse-natural:
+    post:
+      summary: Parse natural language event draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  example: "Dentist next Tuesday at 3pm"
+      responses:
+        '200':
+          description: Extracted event candidate draft
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventInput'
+
+components:
+  schemas:
+    Calendar:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        provider:
+          type: string
+          enum: [local, google, microsoft, apple]
+        display_color:
+          type: string
+          example: "#3b82f6"
+        writable:
+          type: boolean
+        enabled_for_display:
+          type: boolean
+        default_write_target:
+          type: boolean
+
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+        calendar_id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        location:
+          type: string
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+        all_day:
+          type: boolean
+        status:
+          type: string
+          enum: [confirmed, tentative, cancelled]
+        source:
+          type: string
+
+    EventInput:
+      type: object
+      required:
+        - title
+        - start_at
+        - end_at
+      properties:
+        calendar_id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        location:
+          type: string
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+        all_day:
+          type: boolean
+
+    QuickTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        icon:
+          type: string
+        category:
+          type: string
+        default_duration_minutes:
+          type: integer
+        all_day:
+          type: boolean
+
+    ReadinessReport:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ready
+        database:
+          type: string
+          example: ok
+        schema_version:
+          type: integer
+          example: 5
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string

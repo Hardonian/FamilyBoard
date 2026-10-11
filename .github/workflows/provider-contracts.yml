@@ -1,0 +1,23 @@
+name: Provider contracts
+
+on:
+  schedule:
+    - cron: '43 6 * * 2,5'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    name: Google, Microsoft & Apple protocol contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.9'
+          cache: true
+      - name: Run provider and ecosystem contract suites
+        run: go test -count=1 -v ./internal/calendar/... ./internal/oauth ./tests/integration/...

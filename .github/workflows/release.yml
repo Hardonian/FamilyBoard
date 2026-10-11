@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -47,6 +49,20 @@ jobs:
 
       - name: Run canonical release gate and package matrix
         run: make release-package
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          path: dist/releases/${{ env.VERSION }}
+          format: spdx-json
+          output-file: dist/releases/${{ env.VERSION }}/familyboard-${{ env.VERSION }}.spdx.json
+          upload-artifact: false
+
+      - name: Attest release provenance
+        if: github.ref_type == 'tag'
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/releases/${{ env.VERSION }}/*
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4

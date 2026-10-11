@@ -14,8 +14,8 @@ FamilyBoard provides sovereign, appliance-grade digital family calendar and dash
 
 2. **Zero-Friction Camera QR Code Pairing:**
    - No typing passwords or complex account logins on mobile phones.
-   - Tap **"📱 Phone"** on the kitchen board to display a cryptographically signed HMAC pairing QR code.
-   - Point your phone camera at the screen to establish trusted household capability (`fb_kiosk_cap`), granting full event creation, editing, and deletion privileges.
+   - Tap **"📱 Phone"** on the kitchen board to display a one-time QR code that expires after ten minutes.
+   - Point your phone camera at the screen to establish a unique household-device credential (`fb_kiosk_cap`), granting event creation, editing, and deletion privileges until that device is revoked.
 
 3. **Flawless Real-Time Push Synchronization:**
    - Server-Sent Events (SSE) with high-frequency 15-second keepalive heartbeats (`: keepalive\n\n`) preventing carrier NAT drops and battery-saver TCP sleeps.
@@ -43,7 +43,7 @@ FamilyBoard provides sovereign, appliance-grade digital family calendar and dash
 2. Open the built-in **Camera** app on your iPhone.
 3. Point your camera at the QR code on the kitchen display.
 4. Tap the yellow **"FamilyBoard"** Safari link banner that appears under the code.
-5. Safari will open, validate your physical pairing signature, and grant household access.
+5. Safari consumes the one-time code and receives its own revocable household-device credential. Reopening or sharing the QR link cannot pair another phone.
 
 ### Step 2: Add to Home Screen (PWA Mode)
 
@@ -142,6 +142,6 @@ If initializing an appliance for the first time from an iPhone or Poco F7:
 
 ## Security & Privacy Considerations
 
-- **Strict Appliance Isolation:** The mobile pairing token is cryptographically signed using HMAC-SHA256 with the appliance's unique 256-bit session secret and is bounded to a 24-hour expiration window.
+- **Strict Appliance Isolation:** One-time pairing codes expire in ten minutes, are stored only as hashes, and are atomically consumed. Each paired phone receives a random credential stored only as a hash on the appliance and can be revoked under **Admin → Privacy & Devices**.
 - **Physical Proximity Assurance:** Only family members physically in front of the kitchen display can scan the active QR code.
 - **Zero Cloud Relay:** Synchronization occurs 100% locally on your home private LAN. No third-party servers, no telemetry, and no push notification services ever inspect your family's daily calendar activities.
