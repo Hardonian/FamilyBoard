@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Raise the minimum Go toolchain from 1.26.9 to 1.26.10 to fix GO-2026-6809,
+  a reachable `crypto/x509` standard-library vulnerability exercised from
+  `internal/releasefeed`, and align CI and contributor documentation with the
+  patched release.
+
 ## [1.6.0] - 2026-10-11
 
 ### Added

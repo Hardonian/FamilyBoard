@@ -3,7 +3,7 @@
 [![CI](https://github.com/Hardonian/FamilyBoard/actions/workflows/ci.yml/badge.svg)](https://github.com/Hardonian/FamilyBoard/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platforms](https://img.shields.io/badge/Platforms-Linux%20%7C%20Windows%20%7C%20macOS-orange.svg)](#portable-local-quick-start)
-[![Go Version](https://img.shields.io/badge/Go-1.26.9-00ADD8.svg)](https://go.dev)
+[![Go Version](https://img.shields.io/badge/Go-1.26.10-00ADD8.svg)](https://go.dev)
 
 **FamilyBoard** is an appliance-grade, sovereign, local-first digital family calendar and email event ingestion system for dedicated kitchen and refrigerator touchscreens. It targets Linux ARM64 appliances, with first-class Radxa Dragon Q64 support and a low-resource Raspberry Pi 3B profile.
 

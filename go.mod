@@ -1,6 +1,6 @@
 module github.com/Hardonian/FamilyBoard
 
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/pelletier/go-toml/v2 v2.4.3
